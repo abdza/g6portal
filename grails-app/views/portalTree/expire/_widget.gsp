@@ -1,0 +1,1 @@
+<input id='${property}' placeholder="dd-mm-yyyy" name='${property}' <g:if test='${value}'>value="<g:formatDate format="yyyy-MM-dd" date="${value}"/>"</g:if> type='date' />

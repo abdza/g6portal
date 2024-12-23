@@ -1,0 +1,25 @@
+/*
+* This is a manifest file that'll be compiled into application.css, which will include all the files
+* listed below.
+*
+* Any CSS file within this directory can be referenced here using a relative path.
+*
+* You're free to add application-wide styles to this file and they'll appear at the top of the
+* compiled file, but it's generally better to create a new file per style scope.
+*
+*= require grails
+*= require bootstrap-5.3.3/bootstrap
+*= require bootstrap-icons/bootstrap-icons
+*= require boxicons/css/boxicons
+*= require quill/quill.snow
+*= require quill/quill.bubble
+*= require remixicon/remixicon
+*= require simple-datatables/style
+*= require tagify/tagify
+*= require dragsort/dragsort
+*= require select2/css/select2
+*= require niceadmin/css/style
+*= require main
+*= require mobile
+*= require_self
+*/

@@ -1,0 +1,6 @@
+#Mon, 23 Dec 2024 17:31:40 +0800
+
+info.app.version=0.1
+info.app.name=g6portal
+grails.env=production
+info.app.grailsVersion=6.2.2

@@ -31,3 +31,5 @@
 
 # "temporary" build files
 /target
+
+/grails-app/conf/application.yml
