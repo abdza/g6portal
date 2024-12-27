@@ -9,7 +9,7 @@ class PortalTracker {
 
     transient MailService mailService
 
-    static hasMany=[emails:PortalTrackerEmail,datas:PortalTrackerData,fields:PortalTrackerField,statuses:PortalTrackerStatus,roles:PortalTrackerRole,transitions:PortalTrackerTransition]
+    static hasMany=[emails:PortalTrackerEmail,datas:PortalTrackerData,fields:PortalTrackerField,statuses:PortalTrackerStatus,roles:PortalTrackerRole,transitions:PortalTrackerTransition,flows:PortalTrackerFlow]
 
     static constraints = {
         name()
@@ -134,9 +134,12 @@ class PortalTracker {
     def updatedb(datasource){
         def sql = new Sql(datasource)
         def query = ""
-        if(!sql.firstRow("select * from INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '" + this.data_table() + "'")){
+        if(!sql.firstRow("select * from INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '" + this.data_table().toUpperCase() + "'")){
             if(config.dataSource.url.contains("jdbc:postgresql")){
                 query = 'create table if not exists "' + this.data_table() + '" (id SERIAL PRIMARY KEY, dataupdate_id numeric(19,0) null )'
+            }
+            else if(config.dataSource.url.contains("jdbc:h2")){
+                query = 'create table ' + this.data_table() + ' (id INT AUTO_INCREMENT, dataupdate_id numeric(19,0) null, primary key (id))'
             }
             else {
                 query = 'create table ' + this.data_table() + ' (id INT NOT NULL IDENTITY(1, 1), dataupdate_id numeric(19,0) null,CONSTRAINT PK_'+this.data_table() +' PRIMARY KEY(id))'
@@ -144,29 +147,38 @@ class PortalTracker {
             sql.execute(query)
         }
         if(this.tracker_type!='DataStore') {
-            def rsq = "select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.data_table() + "' and COLUMN_NAME = 'record_status'"
+            def rsq = "select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.data_table().toUpperCase() + "' and COLUMN_NAME = 'RECORD_STATUS'"
             if(!sql.firstRow(rsq)){
                 if(config.dataSource.url.contains("jdbc:postgresql")){
                     sql.execute('alter table "' + this.data_table() + '" add record_status varchar(255) NULL' )
+                }
+                else if(config.dataSource.url.contains("jdbc:h2")){
+                    sql.execute('alter table "' + this.data_table().toUpperCase() + '" add record_status varchar(255) NULL' )
                 }
                 else {
                     sql.execute("alter table " + this.data_table() + " add [record_status]varchar(255) NULL" )
                 }
             }
         }
-        def didq = "select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.data_table() + "' and COLUMN_NAME = 'dataupdate_id'"
+        def didq = "select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.data_table().toUpperCase() + "' and COLUMN_NAME = 'DATAUPDATE_ID'"
         if(!sql.firstRow(didq)){
             if(config.dataSource.url.contains("jdbc:postgresql")){
                 sql.execute('alter table "' + this.data_table() + '" add dataupdate_id numeric(19,0) NULL' )
+            }
+            else if(config.dataSource.url.contains("jdbc:h2")){
+                sql.execute('alter table "' + this.data_table().toUpperCase() + '" add dataupdate_id numeric(19,0) NULL' )
             }
             else {
                 sql.execute("alter table " + this.data_table() + " add [dataupdate_id] numeric(19,0) NULL" )
             }
         }
         if(this.tracker_type=='Tracker') {
-            if(!sql.firstRow("select * from INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '" + this.trail_table() + "'")){
+            if(!sql.firstRow("select * from INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '" + this.trail_table().toUpperCase() + "'")){
                 if(config.dataSource.url.contains("jdbc:postgresql")){
                     query = 'create table ' + this.trail_table() + ' (id SERIAL PRIMARY KEY, attachment_id numeric(19,0), description text, record_id numeric(19,0), update_date timestamp, updater_id numeric(19,0), status varchar(255), changes text, allowedroles varchar(255))'
+                }
+                else if(config.dataSource.url.contains("jdbc:h2")){
+                    query = 'create table ' + this.trail_table().toUpperCase() + ' (id INT AUTO_INCREMENT, attachment_id numeric(19,0),description text,record_id numeric(19,0),update_date datetime,updater_id numeric(19,0),status varchar(255),changes text,allowedroles varchar(255), PRIMARY KEY(id))'
                 }
                 else {
                     query = 'create table ' + this.trail_table() + ' (id INT NOT NULL IDENTITY(1, 1), [attachment_id] numeric(19,0),[description] text,[record_id] numeric(19,0),[update_date] datetime,[updater_id] numeric(19,0),[status]varchar(255),[changes]text,[allowedroles]varchar(255),CONSTRAINT PK_'+this.trail_table() + ' PRIMARY KEY(id))'
@@ -176,6 +188,9 @@ class PortalTracker {
             def tablename = this.trail_table()
             def fname = 'record_id'
             if(config.dataSource.url.contains("jdbc:postgresql")){
+                query = "create index if not exists ix_" + fname + " on " + tablename + " (" + fname + ")"
+            }
+            else if(config.dataSource.url.contains("jdbc:h2")){
                 query = "create index if not exists ix_" + fname + " on " + tablename + " (" + fname + ")"
             }
             else{
@@ -1550,10 +1565,10 @@ class PortalTracker {
                         }
                         else if(tfield.field_type=='User'){
                             if(config.dataSource.url.contains("jdbc:postgresql")){
-                                likequery << tfield.name + " in (select id from user where name ilike '%" + params.search + "%' or UserID ilike '%" + params.search + "%' or EMAIL ilike '%" + params.search + "%')"
+                                likequery << tfield.name + " in (select id from IAP_User where EMP_NAME ilike '%" + params.search + "%' or new_staffid ilike '%" + params.search + "%' or old_staffid ilike '%" + params.search + "%' or StaffId ilike '%" + params.search + "%' or EMAIL ilike '%" + params.search + "%')"
                             }
                             else {
-                                likequery << tfield.name + " in (select id from user where name like '%" + params.search + "%' or UserID like '%" + params.search + "%' or EMAIL like '%" + params.search + "%')"
+                                likequery << tfield.name + " in (select id from IAP_User where EMP_NAME like '%" + params.search + "%' or new_staffid like '%" + params.search + "%' or old_staffid like '%" + params.search + "%' or StaffId like '%" + params.search + "%' or EMAIL like '%" + params.search + "%')"
 
                             }
                         }

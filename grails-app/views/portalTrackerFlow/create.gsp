@@ -32,7 +32,13 @@
                     </g:hasErrors>
                     <g:form resource="${this.portalTrackerFlow}" method="POST">
                         <fieldset class="form">
+			    <g:if test='${params.tracker_id}'>
+				<f:all except='tracker' bean='portalTrackerFlow'/>
+				<input type='hidden' name='tracker' id='tracker' value='${params.tracker_id}'/>
+			    </g:if>
+			    <g:else>
                             <f:all bean="portalTrackerFlow"/>
+			    </g:else>
                         </fieldset>
                         <fieldset class="buttons">
                             <g:submitButton name="create" class="save" value="${message(code: 'default.button.create.label', default: 'Create')}" />

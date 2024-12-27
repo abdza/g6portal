@@ -34,7 +34,8 @@
                     <g:form resource="${this.portalTrackerFlow}" method="PUT">
                         <g:hiddenField name="version" value="${this.portalTrackerFlow?.version}" />
                         <fieldset class="form">
-                            <f:all bean="portalTrackerFlow"/>
+                            <f:all except='tracker' bean="portalTrackerFlow"/>
+			    <input type='hidden' name='tracker' id='tracker' value='${this.portalTrackerFlow?.tracker?.id}'/>
                         </fieldset>
                         <fieldset class="buttons">
                             <input class="save" type="submit" value="${message(code: 'default.button.update.label', default: 'Update')}" />

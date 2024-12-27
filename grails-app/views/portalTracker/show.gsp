@@ -46,6 +46,9 @@
 			  <button class="nav-link w-100" id="transitions-tab" data-bs-toggle="tab" data-bs-target="#transitions" type="button" role="tab" aria-controls="transitions" aria-selected="false">Transitions</button>
 			</li>
 			<li class="nav-item flex-fill" role="presentation">
+			  <button class="nav-link w-100" id="pages-tab" data-bs-toggle="tab" data-bs-target="#flow" type="button" role="tab" aria-controls="flow" aria-selected="false">Flows</button>
+			</li>
+			<li class="nav-item flex-fill" role="presentation">
 			  <button class="nav-link w-100" id="dataupdates-tab" data-bs-toggle="tab" data-bs-target="#dataupdates" type="button" role="tab" aria-controls="dataupdates" aria-selected="false">Data Updates</button>
 			</li>
 			<li class="nav-item flex-fill" role="presentation">
@@ -57,7 +60,7 @@
 		      </ul>
 		      <div class="tab-content pt-2" id="trackercontents">
 			<div class="tab-pane fade show active" id="details" role="tabpanel" aria-labelledby="details-tab">
-			    <f:display except='fields,transitions,statuses,roles,datas,emails' bean="portalTracker" />
+			    <f:display except='fields,transitions,statuses,roles,datas,emails,flows' bean="portalTracker" />
 			    <g:form useToken="true" resource="${this.portalTracker}" method="DELETE">
 				<fieldset class="buttons">
 				    <g:link class="edit" action="edit" resource="${this.portalTracker}"><g:message code="default.button.edit.label" default="Edit" /></g:link>
@@ -76,6 +79,9 @@
 			</div>
 			<div class="tab-pane fade" id="transitions" role="tabpanel" aria-labelledby="transitions-tab">
 				<g:render template="transitionsList" model="[portalTracker:this.portalTracker]"/>
+			</div>
+			<div class="tab-pane fade" id="flow" role="tabpanel" aria-labelledby="flow-tab">
+				<g:render template="flowList" model="[portalTracker:this.portalTracker]"/>
 			</div>
 			<div class="tab-pane fade" id="dataupdates" role="tabpanel" aria-labelledby="dataupdates-tab">
 				<g:render template="datasList" model="[portalTracker:this.portalTracker]"/>

@@ -34,4 +34,7 @@
 
 /grails-app/conf/application.yml
 /.gradle
+/build
 /g6db.mv.db
+/g6db.trace.db
+/uploads

@@ -157,6 +157,7 @@ class PortalModuleController {
   def importform() {
       if(request.method == 'POST') {
           try {
+              println "Updated import module"
               // def curuser = User.get(session.userid)
               def curuser = session.curuser
               def f = request.getFile('fileupload')
@@ -176,7 +177,9 @@ class PortalModuleController {
                           flash.message = 'You are not authorized to update that module'
                       }
                   }
+                  println "Before doing import"
                   if(doimport) {
+                      println "Doing import"
                       if(!(new File(migrationfolder).exists())){
                           new File(migrationfolder).mkdirs()
                       }
@@ -200,9 +203,13 @@ class PortalModuleController {
                           while (zipEntry != null) {
                               def zipstr = zipEntry.toString().replace('\\','/')
                               if(zipEntry.toString()[0] != '/' && zipEntry.toString()[0] != '\\') {
-                                  destfolder = PortalSetting.namedefault('migrationfolder',curfolder + '/modulemigration') + '/' + modulename + '/'
+                                  destfolder = PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration') + '/' + modulename + '/'
                               }
                               println "File destfolder:" + destfolder
+                              def destfile = new File(destfolder)
+                              if(!destfile.isDirectory() && !destfile.mkdirs()) {
+                                  throw new IOException("Failed to create directory " + destfile);
+                              }
                               File newFile = new File(destfolder + zipstr);
                               println "New File:" + newFile
                               if (zipEntry.isDirectory()) {
@@ -228,6 +235,7 @@ class PortalModuleController {
                           }
                           zis.closeEntry();
                           zis.close();
+                          println "Done extract zip file"
                           PortalModule.withTransaction { sqltrans-> 
                               def module = PortalModule.findByName(modulename)
                               if(!module) {
@@ -235,7 +243,9 @@ class PortalModuleController {
                                   module.name = modulename
                                   module.save(flush:true)
                               }
+                              println "Importing module " + module
                               portalService.import_module(module.id,true,true)
+                              println "Done import"
                               flash.message = "Module imported"
                               redirect action:"show", method:"GET", id:module.id
                           }

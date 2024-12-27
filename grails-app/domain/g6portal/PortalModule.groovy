@@ -73,7 +73,7 @@ class PortalModule {
         if(userrolefile.exists()){
             def userrolearray = jsonSlurper.parseText(userrolefile.text)
             userrolearray.each { iuserrole->
-                def cuser = User.findByUserID(iuserrole.user)
+                def cuser = User.findByNewStaffID(iuserrole.user)
                 if(cuser){
                     def curuserrole = UserRole.findByUserAndModuleAndRole(cuser,iuserrole.module,iuserrole.role)
                     if(!curuserrole){
@@ -122,8 +122,10 @@ class PortalModule {
     }
 
     def importpages(migrationfolder,jsonSlurper) {
+        println "Importing pages from " + migrationfolder
         def pagefile = new File(migrationfolder + '/pagelist.json')
         if(pagefile.exists()){
+            println "Got json file"
             def pagearray = jsonSlurper.parseText(pagefile.text)
             pagearray.each { ipage->
                 println "Importing page: " + ipage.module + ":" + ipage.slug
@@ -340,7 +342,8 @@ class PortalModule {
                             currole.role_type=irole.role_type
                             currole.role_rule=irole.role_rule
                             currole.role_desc=irole.role_desc
-                            currole.lastUpdated=Date.parse("yyyy-MM-dd'T'HH:mm:ss",irole.lastUpdated)
+                            // currole.lastUpdated=Date.parse("yyyy-MM-dd'T'HH:mm:ss",irole.lastUpdated)
+                            currole.lastUpdated = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss").parse(irole.lastUpdated)
                             if(!currole.validate()){
                                 currole.errors.allErrors.each {
                                     println 't error:' + it
@@ -451,6 +454,18 @@ class PortalModule {
                             curtransition.save(flush:true)
                         }
 
+                        itracker.flows.each { iflow-> 
+                            def curflow = PortalTrackerFlow.findByTrackerAndName(curtracker,iflow.name)
+                            if(!curflow){
+                                curflow = new PortalTrackerFlow()
+                            }
+                            curflow.tracker = curtracker
+                            curflow.name=iflow.name
+                            curflow.fields=iflow.fields
+                            curflow.transitions=iflow.transitions
+                            curflow.save(flush:true)
+                        }
+
                         if(itracker.initial_status){
                             def curstatus = PortalTrackerStatus.findByTrackerAndName(curtracker,itracker.initial_status)
                             if(curstatus){
@@ -470,7 +485,7 @@ class PortalModule {
         }
     }
 
-    def importmodule(file_on,user_on) {
+    def importmodule(file_on,staff_on) {
         def curfolder = System.getProperty("user.dir")
         def migrationfolder = PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration') + '/' + this.name
         def jsonSlurper = new JsonSlurper()
@@ -479,7 +494,7 @@ class PortalModule {
             if(file_on) {
               importfiles(migrationfolder,jsonSlurper)
             }
-            if(user_on) {
+            if(staff_on) {
               importuserroles(migrationfolder,jsonSlurper)
             }
             importsettings(migrationfolder,jsonSlurper)
@@ -549,7 +564,7 @@ class PortalModule {
             def userrolearray = []
             userroles.each { userrole->
                 userrolearray << [
-                    user: userrole.user.userID, 
+                    user: userrole.user.newStaffID, 
                     module: userrole.module,
                     role: userrole.role
                 ]
@@ -714,6 +729,14 @@ class PortalModule {
                         emails: emails
                     ]
                 }
+                def flowsarray = []
+                tracker.flows.each { flow->
+                    flowsarray << [
+                        name: flow.name,
+                        fields: flow.fields,
+                        transitions: flow.transitions,
+                    ]
+                }
                 trackerarray << [
                     name: tracker.name, 
                     slug: tracker.slug,
@@ -747,14 +770,15 @@ class PortalModule {
                     fields: fieldsarray,
                     statuses: statusesarray,
                     roles: rolesarray,
-                    transitions: transitionsarray
+                    transitions: transitionsarray,
+                    flows: flowsarray
                 ]
             }
             trackerfile.write(JsonOutput.toJson(trackerarray))
         }
     }
 
-    def exportmodule(file_on,user_on) {
+    def exportmodule(file_on,staff_on) {
         def curfolder = System.getProperty("user.dir")
         def migrationfolder = PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration') + '/' + this.name
         if(!(new File(migrationfolder).exists())){
@@ -765,7 +789,7 @@ class PortalModule {
             if(file_on) {
               exportfilelinks(migrationfolder)
             }
-            if(user_on) {
+            if(staff_on) {
               exportuserroles(migrationfolder)
             }
             exportsettings(migrationfolder)

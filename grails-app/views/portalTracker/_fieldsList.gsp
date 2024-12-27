@@ -10,4 +10,4 @@
     </ul>
 </div>
 </section>
-<f:table except='tracker,field_options,field_format,hide_heading,classes,params_override,field_display,field_query' collection="${portalTracker.fields.sort{ a, b -> a.name.compareToIgnoreCase(b.name) }}" />
+<f:table except='tracker,hyperscript,url_value,is_encrypted,role_query,encode_exception,suppress_follow_link,error_checks,field_format,hide_heading,classes,params_override,field_display,field_query' collection="${portalTracker.fields.sort{ a, b -> a.name.compareToIgnoreCase(b.name) }}" />

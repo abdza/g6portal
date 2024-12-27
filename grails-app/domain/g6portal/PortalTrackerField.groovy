@@ -127,9 +127,12 @@ class PortalTrackerField {
         }
         if(this.field_type!='HasMany') {
             try{
-                if(!sql.firstRow("select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.tracker.data_table() + "' and COLUMN_NAME = '" + this.name + "'")){
+                if(!sql.firstRow("select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.tracker.data_table().toUpperCase() + "' and COLUMN_NAME = '" + this.name.toUpperCase() + "'")){
                     def query = ''
                     if(config.dataSource.url.contains("jdbc:postgresql")){
+                        query = 'alter table "' + this.tracker.data_table() + '" add "' + this.name + '" ' + sqltype + ' NULL' 
+                    }
+                    else if(config.dataSource.url.contains("jdbc:h2")){
                         query = 'alter table "' + this.tracker.data_table() + '" add "' + this.name + '" ' + sqltype + ' NULL' 
                     }
                     else {
@@ -143,6 +146,9 @@ class PortalTrackerField {
                     def fname = this.name
                     def query = "if not exists (select * from sys.indexes where name='ix_" + fname + "' and object_id=object_id('" + tablename + "'))begin create nonclustered index ix_" + fname + " on [" + tablename + "] ([" + fname + "]); end"
                     if(config.dataSource.url.contains("jdbc:postgresql")){
+                        query = 'create index if not exists ix_' + fname + ' on "' + tablename + '" ("' + fname + '")'
+                    }
+                    else if(config.dataSource.url.contains("jdbc:h2")){
                         query = 'create index if not exists ix_' + fname + ' on "' + tablename + '" ("' + fname + '")'
                     }
                     println "Updatedb query:" + query
