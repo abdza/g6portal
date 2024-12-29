@@ -1050,7 +1050,7 @@ content: event.description
             }
             def comp_string = ""
             if(comp_field.size()>0){ 
-                if(config.dataSource.url.contains("jdbc:postgresql")){
+                if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                     comp_string = '"' + comp_field.join('","') + '",'
                 }
                 else {
@@ -1548,7 +1548,7 @@ content: event.description
                 }
                 userrules = "and (allowedroles = 'null' or allowedroles = '' or " + currules.join('or') + ")"
             }
-            if(config.dataSource.url.contains("jdbc:postgresql")){
+            if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                 query = "select * from " + attrs.tracker.trail_table() + " where record_id=:id $userrules order by update_date desc,id desc"
             }
             else {

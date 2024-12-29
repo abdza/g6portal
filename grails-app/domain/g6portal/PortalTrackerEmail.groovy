@@ -44,7 +44,8 @@ class PortalTrackerEmail {
         def titleoutput = new StringWriter()
         def bodyreturn = null
         try{
-            def location = "page_" + this.id + this.body?.lastUpdated.format('yyyyMdhms')
+            def lastdate = 	new java.text.SimpleDateFormat('yyyyMMddHHmmss').format(this.body?.lastUpdated)  
+            def location = "page_" + this.id + lastdate
             Template template = groovyPagesTemplateEngine.createTemplate(toeval,location)
             template.make([datas:datas]).writeTo(bodyoutput)                
             bodyreturn = bodyoutput.toString()
@@ -67,7 +68,8 @@ Params: ''' + params
         toeval = this.body?.title
         def titlereturn = null
         try{
-            def location = "title_" + this.id + this.body?.lastUpdated.format('yyyyMdhms')
+            def lastdate = 	new java.text.SimpleDateFormat('yyyyMMddHHmmss').format(this.body?.lastUpdated)  
+            def location = "title_" + this.id + lastdate
             Template template = groovyPagesTemplateEngine.createTemplate(toeval,location)
             template.make([datas:datas]).writeTo(titleoutput)                
             titlereturn = titleoutput.toString()

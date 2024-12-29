@@ -28,7 +28,7 @@ class PortalService {
         def goterror = false
         curfield.error_checks.each { error->
             if(error.error_type=='Not Empty') {
-                if(!val || (val && val.trim().size()==0)) {
+                if(!val || (val instanceof String && val.trim().size()==0)) {
                     if(error.error_msg) {
                         Binding binding = new Binding()
                         binding.setVariable("field",curfield)

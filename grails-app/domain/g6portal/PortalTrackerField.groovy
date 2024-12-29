@@ -87,6 +87,7 @@ class PortalTrackerField {
     }
 
     def updatedb(datasource){
+        println "Updating db field " + this
         def createindex = false
         def sql = new Sql(datasource)
         def sqltype = 'varchar(256)'
@@ -100,7 +101,7 @@ class PortalTrackerField {
             sqltype = 'date'
         }
         else if(this.field_type=='DateTime'){
-            if(config.dataSource.url.contains("jdbc:postgresql")){
+            if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                 sqltype = 'timestamp'
             }
             else {
@@ -108,7 +109,7 @@ class PortalTrackerField {
             }
         }
         else if(this.field_type=='Checkbox'){
-            if(config.dataSource.url.contains("jdbc:postgresql")){
+            if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                 sqltype = 'boolean'
             }
             else{
@@ -121,18 +122,17 @@ class PortalTrackerField {
         else if(this.field_type=='Number'){
             sqltype = 'decimal(24,6)'
         }      
-        else if(this.field_type in ['Branch','User','File','BelongsTo','TreeNode']){
+        else if(this.field_type in ['User','File','BelongsTo','TreeNode']){
             sqltype = 'numeric(19,0)'
             createindex = true
         }
         if(this.field_type!='HasMany') {
             try{
-                if(!sql.firstRow("select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.tracker.data_table().toUpperCase() + "' and COLUMN_NAME = '" + this.name.toUpperCase() + "'")){
+                def testq = "select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.tracker.data_table() + "' and COLUMN_NAME = '" + this.name + "'"
+                if(!sql.firstRow(testq)){
+                    println "Did not find:" + this.name
                     def query = ''
-                    if(config.dataSource.url.contains("jdbc:postgresql")){
-                        query = 'alter table "' + this.tracker.data_table() + '" add "' + this.name + '" ' + sqltype + ' NULL' 
-                    }
-                    else if(config.dataSource.url.contains("jdbc:h2")){
+                    if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                         query = 'alter table "' + this.tracker.data_table() + '" add "' + this.name + '" ' + sqltype + ' NULL' 
                     }
                     else {
@@ -140,19 +140,16 @@ class PortalTrackerField {
                     }
                     println "Updatedb query:" + query
                     sql.execute(query)
-                }
-                if(createindex) {
-                    def tablename = this.tracker.data_table()
-                    def fname = this.name
-                    def query = "if not exists (select * from sys.indexes where name='ix_" + fname + "' and object_id=object_id('" + tablename + "'))begin create nonclustered index ix_" + fname + " on [" + tablename + "] ([" + fname + "]); end"
-                    if(config.dataSource.url.contains("jdbc:postgresql")){
-                        query = 'create index if not exists ix_' + fname + ' on "' + tablename + '" ("' + fname + '")'
+                    if(createindex) {
+                        def tablename = this.tracker.data_table()
+                        def fname = this.name
+                        def inquery = "if not exists (select * from sys.indexes where name='ix_" + fname + "' and object_id=object_id('" + tablename + "'))begin create nonclustered index ix_" + fname + " on [" + tablename + "] ([" + fname + "]); end"
+                        if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
+                            inquery = 'create index if not exists ix_' + fname + ' on "' + tablename + '" ("' + fname + '")'
+                        }
+                        println "Updatedb query:" + inquery
+                        sql.execute(inquery)
                     }
-                    else if(config.dataSource.url.contains("jdbc:h2")){
-                        query = 'create index if not exists ix_' + fname + ' on "' + tablename + '" ("' + fname + '")'
-                    }
-                    println "Updatedb query:" + query
-                    sql.execute(query)
                 }
             }
             catch(Exception e){

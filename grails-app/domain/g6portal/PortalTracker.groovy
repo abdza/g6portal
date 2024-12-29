@@ -134,12 +134,9 @@ class PortalTracker {
     def updatedb(datasource){
         def sql = new Sql(datasource)
         def query = ""
-        if(!sql.firstRow("select * from INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '" + this.data_table().toUpperCase() + "'")){
-            if(config.dataSource.url.contains("jdbc:postgresql")){
+        if(!sql.firstRow("select * from INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '" + this.data_table() + "'")){
+            if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                 query = 'create table if not exists "' + this.data_table() + '" (id SERIAL PRIMARY KEY, dataupdate_id numeric(19,0) null )'
-            }
-            else if(config.dataSource.url.contains("jdbc:h2")){
-                query = 'create table ' + this.data_table() + ' (id INT AUTO_INCREMENT, dataupdate_id numeric(19,0) null, primary key (id))'
             }
             else {
                 query = 'create table ' + this.data_table() + ' (id INT NOT NULL IDENTITY(1, 1), dataupdate_id numeric(19,0) null,CONSTRAINT PK_'+this.data_table() +' PRIMARY KEY(id))'
@@ -147,38 +144,31 @@ class PortalTracker {
             sql.execute(query)
         }
         if(this.tracker_type!='DataStore') {
-            def rsq = "select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.data_table().toUpperCase() + "' and COLUMN_NAME = 'RECORD_STATUS'"
+            def rsq = "select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.data_table() + "' and COLUMN_NAME = 'record_status'"
             if(!sql.firstRow(rsq)){
-                if(config.dataSource.url.contains("jdbc:postgresql")){
+                if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                     sql.execute('alter table "' + this.data_table() + '" add record_status varchar(255) NULL' )
-                }
-                else if(config.dataSource.url.contains("jdbc:h2")){
-                    sql.execute('alter table "' + this.data_table().toUpperCase() + '" add record_status varchar(255) NULL' )
                 }
                 else {
                     sql.execute("alter table " + this.data_table() + " add [record_status]varchar(255) NULL" )
                 }
             }
         }
-        def didq = "select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.data_table().toUpperCase() + "' and COLUMN_NAME = 'DATAUPDATE_ID'"
+        def didq = "select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.data_table() + "' and COLUMN_NAME = 'dataupdate_id'"
         if(!sql.firstRow(didq)){
-            if(config.dataSource.url.contains("jdbc:postgresql")){
+            if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                 sql.execute('alter table "' + this.data_table() + '" add dataupdate_id numeric(19,0) NULL' )
-            }
-            else if(config.dataSource.url.contains("jdbc:h2")){
-                sql.execute('alter table "' + this.data_table().toUpperCase() + '" add dataupdate_id numeric(19,0) NULL' )
             }
             else {
                 sql.execute("alter table " + this.data_table() + " add [dataupdate_id] numeric(19,0) NULL" )
             }
         }
         if(this.tracker_type=='Tracker') {
-            if(!sql.firstRow("select * from INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '" + this.trail_table().toUpperCase() + "'")){
-                if(config.dataSource.url.contains("jdbc:postgresql")){
+            def testq = "select * from INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '" + this.trail_table() + "'"
+
+            if(!sql.firstRow(testq)){
+                if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                     query = 'create table ' + this.trail_table() + ' (id SERIAL PRIMARY KEY, attachment_id numeric(19,0), description text, record_id numeric(19,0), update_date timestamp, updater_id numeric(19,0), status varchar(255), changes text, allowedroles varchar(255))'
-                }
-                else if(config.dataSource.url.contains("jdbc:h2")){
-                    query = 'create table ' + this.trail_table().toUpperCase() + ' (id INT AUTO_INCREMENT, attachment_id numeric(19,0),description text,record_id numeric(19,0),update_date datetime,updater_id numeric(19,0),status varchar(255),changes text,allowedroles varchar(255), PRIMARY KEY(id))'
                 }
                 else {
                     query = 'create table ' + this.trail_table() + ' (id INT NOT NULL IDENTITY(1, 1), [attachment_id] numeric(19,0),[description] text,[record_id] numeric(19,0),[update_date] datetime,[updater_id] numeric(19,0),[status]varchar(255),[changes]text,[allowedroles]varchar(255),CONSTRAINT PK_'+this.trail_table() + ' PRIMARY KEY(id))'
@@ -187,10 +177,7 @@ class PortalTracker {
             }
             def tablename = this.trail_table()
             def fname = 'record_id'
-            if(config.dataSource.url.contains("jdbc:postgresql")){
-                query = "create index if not exists ix_" + fname + " on " + tablename + " (" + fname + ")"
-            }
-            else if(config.dataSource.url.contains("jdbc:h2")){
+            if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                 query = "create index if not exists ix_" + fname + " on " + tablename + " (" + fname + ")"
             }
             else{
@@ -209,7 +196,7 @@ class PortalTracker {
             tfields.each { tfield->
                 def tablename = this.data_table()
                 def fname = tfield.name
-                if(config.dataSource.url.contains("jdbc:postgresql")){
+                if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                     query = "create index if not exists ix_" + fname + " on " + tablename + " (" + fname + ")"
                 }
                 else{
@@ -231,7 +218,7 @@ class PortalTracker {
             ftfields.each { tfield->
                 def tablename = this.data_table()
                 def fname = tfield.name
-                if(config.dataSource.url.contains("jdbc:postgresql")){
+                if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                     query = "create index if not exists ix_" + fname + " on " + tablename + " (" + fname + ")"
                 }
                 else{
@@ -516,7 +503,7 @@ class PortalTracker {
             }
             query = "insert into " + data_table() + " (" + fieldname.join(',') + ") values (" + fieldval.join(" , ") + ")"
             def maxid = null
-            if(config.dataSource.url.contains("jdbc:postgresql")){
+            if(config.dataSource.url.contains("jdbc:postgresql")) {
                 query += " returning id"
                 try{
                     maxid = sql.firstRow(query,qparams)
@@ -525,9 +512,17 @@ class PortalTracker {
                     PortalErrorLog.record(datas,null,'tracker','updaterow',e.toString() + ' query:' + query + ' qparams:' + qparams,this.slug)
                 }
             }
+            else if(config.dataSource.url.contains("jdbc:h2")){
+                try{
+                    maxid = ['id':sql.executeInsert(query,qparams)[0][0]]
+                }
+                catch(Exception e){
+                    PortalErrorLog.record(datas,null,'tracker','updaterow',e.toString() + ' query:' + query + ' qparams:' + qparams,this.slug)
+                }
+            }
             else {
                 try{
-                    maxid = sql.executeInsert(query,qparams)
+                    maxid = ['id':sql.executeInsert(query,qparams)[0][0]]
                 }
                 catch(Exception e){
                     println "Got exception:" + e
@@ -535,7 +530,7 @@ class PortalTracker {
                 }
             }
             if(maxid){
-                if(config.dataSource.url.contains("jdbc:postgresql")){
+                if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                     datas['id'] = maxid['id']
                 }
                 else {
@@ -553,7 +548,7 @@ class PortalTracker {
         if(tracker_type!='DataStore') {
             def sql = new Sql(datasource)
             def query = "select top 1 record_status from " + data_table() + " where id=:id"
-            if(config.dataSource.url.contains("jdbc:postgresql")){
+            if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                 query = "select record_status from " + data_table() + " where id=:id limit 1"
             }
             def rec_status=sql.firstRow(query,['id':record_id])
@@ -625,7 +620,7 @@ class PortalTracker {
                     def hasileval = role.evalrole(curuser,datas)
                     if(hasileval && hasileval.trim()){
                         def query = ""
-                        if(config.dataSource.url.contains("jdbc:postgresql")){
+                        if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                             query = "select id from " + data_table() + " where "
                         }
                         else{
@@ -637,7 +632,7 @@ class PortalTracker {
                         else{
                             query += hasileval
                         }
-                        if(config.dataSource.url.contains("jdbc:postgresql")){
+                        if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                             query += " limit 1"
                         }
                         def data = raw_firstRow(query)
@@ -682,7 +677,8 @@ class PortalTracker {
                         def copytarget = folderbasepath+'/'+uploadedfile.originalFilename
                         uploadedfile.transferTo(new File(copytarget))
                         if(new File(copytarget).exists()){
-                            attachment = new FileLink(name:uploadedfile.originalFilename,path:copytarget,module:module,slug:slug+'_'+params.id+'_'+(new Date()).format('yyyyMMddHHmm'),tracker_data_id:params?.id,tracker_id:this.id)
+                            def curdate = new java.text.SimpleDateFormat("yyyyMMddHHmm").format(new Date())
+                            attachment = new FileLink(name:uploadedfile.originalFilename,path:copytarget,module:module,slug:slug+'_'+params.id+'_'+curdate,tracker_data_id:params?.id,tracker_id:this.id)
                             attachment.save()
                         }
                     }
@@ -719,7 +715,7 @@ class PortalTracker {
         def curdate = new Date()
         qparams['update_date'] = curdate
         def maxid = null
-        if(config.dataSource.url.contains("jdbc:postgresql")){
+        if(config.dataSource.url.contains("jdbc:postgresql")) {
             if(attachment){
                 qparams['attachment_id'] = attachment?.id
                 query = "insert into " + trail_table() + " (attachment_id,description,record_id,update_date,updater_id,status,allowedroles) values (:attachment_id , :description , :record_id , :update_date , :updater_id , :status , :allowedroles) returning id"
@@ -730,8 +726,25 @@ class PortalTracker {
             try{
                 // print("Update trail query:" + query)
                 // print("Update trail params:" + qparams)
-                sql.execute(query,qparams)
-                maxid = sql.firstRow(ddq);
+                // sql.execute(query,qparams)
+                maxid = sql.firstRow(query,qparams)
+            }
+            catch(Exception e){
+                PortalErrorLog.record(params,curuser,'tracker','updatetrail',e.toString() + ' query:' + query + ' qparams:' + qparams,this.slug)
+            }
+        }
+        else if(config.dataSource.url.contains("jdbc:h2")){
+            if(attachment){
+                qparams['attachment_id'] = attachment?.id
+                query = "insert into " + trail_table() + " (attachment_id,description,record_id,update_date,updater_id,status,allowedroles) values (:attachment_id , :description , :record_id , :update_date , :updater_id , :status , :allowedroles)"
+            }
+            else{
+                query = "insert into " + trail_table() + " (description,record_id,update_date,updater_id,status,allowedroles) values (:description , :record_id , :update_date , :updater_id , :status , :allowedroles)"
+            }
+            try{
+                // print("Update trail query:" + query)
+                // print("Update trail params:" + qparams)
+                maxid = ['id':sql.executeInsert(query,qparams)[0][0]]
             }
             catch(Exception e){
                 PortalErrorLog.record(params,curuser,'tracker','updatetrail',e.toString() + ' query:' + query + ' qparams:' + qparams,this.slug)
@@ -850,7 +863,7 @@ class PortalTracker {
                 def gotq = false
                 if(qpval instanceof String || qpval instanceof GString) {
                     if(qpval.indexOf('%')>-1) {
-                        if(config.dataSource.url.contains("jdbc:postgresql")){
+                        if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                             qq << " " + qpkey + " ilike :" + qpkey + " "
                         }
                         else {
@@ -888,7 +901,7 @@ class PortalTracker {
                         else {
                             def ddkey = qpkey + '_' + posp.toString()
                             if(arval.indexOf('%')>-1) {
-                                if(config.dataSource.url.contains("jdbc:postgresql")){
+                                if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                                     dp << " " + qpkey + " ilike :" + ddkey + " "
                                 }
                                 else {
@@ -930,7 +943,7 @@ class PortalTracker {
                                     else {
                                         def ddkey = qpkey + '_in_' + inposp.toString()
                                         if(iv.indexOf('%')>-1) {
-                                            if(config.dataSource.url.contains("jdbc:postgresql")){
+                                            if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                                                 inp << " " + qpkey + " ilike :" + ddkey + " "
                                             }
                                             else {
@@ -1194,9 +1207,13 @@ class PortalTracker {
         else{
             def maxid = null
             if(tracker_type!='DataStore') {
-                if(config.dataSource.url.contains("jdbc:postgresql")){
+                if(config.dataSource.url.contains("jdbc:postgresql")) {
                     def ddq = "insert into " + data_table() + " (record_status) values ('sys_draft') returning id"
                     maxid = sql.firstRow(ddq);
+                }
+                if(config.dataSource.url.contains("jdbc:h2")){
+                    def ddq = "insert into " + data_table() + " (record_status) values ('sys_draft')"
+                    maxid = ['id':sql.executeInsert(ddq)[0][0]]
                 }
                 else {
                     sql.execute("insert into " + data_table() + " (record_status) values ('sys_draft')");
@@ -1288,6 +1305,16 @@ class PortalTracker {
                                     validfield = false
                                 }
                             }
+                            else if(pfield.field_type=='Date'){
+                                try {
+                                    if(!value){
+                                        value = null
+                                    }
+                                }
+                                catch(Exception e) {
+                                    validfield = false
+                                }
+                            }
                             else if(pfield.field_type in ['Number']) {
                                 if(value==''){
                                     validfield = false
@@ -1322,7 +1349,7 @@ class PortalTracker {
                                 }
                                 else {
                                     if(value=='on' || value=='1' || value==1){
-                                        if(config.dataSource.url.contains("jdbc:postgresql")){
+                                        if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                                             value = true
                                         }
                                         else {
@@ -1330,7 +1357,7 @@ class PortalTracker {
                                         }
                                     }
                                     else{
-                                        if(config.dataSource.url.contains("jdbc:postgresql")){
+                                        if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                                             value = false
                                         }
                                         else {
@@ -1390,7 +1417,8 @@ class PortalTracker {
                                                     }
                                                     uploadedfile.transferTo(thetarget)
                                                     if(thetarget.exists()){
-                                                        attachment = new FileLink(name:uploadedfile.originalFilename,path:thetarget,module:module,slug:key+'_'+curdatas['id']+'_'+(new Date()).format('yyyyMMddHHmm'),tracker_data_id:params.id,tracker_id:this.id)
+                                                        def curdate = new java.text.SimpleDateFormat("yyyyMMddHHmm").format(new Date())
+                                                        attachment = new FileLink(name:uploadedfile.originalFilename,path:thetarget,module:module,slug:key+'_'+curdatas['id']+'_'+curdate,tracker_data_id:params.id,tracker_id:this.id)
                                                         if(attachment.save()){
                                                             validfield = true
                                                             value = attachment.id
@@ -1435,7 +1463,7 @@ class PortalTracker {
             def updatefields = []
             def fieldnamepos = []
             fieldnames.eachWithIndex() { val,i->
-                if(config.dataSource.url.contains("jdbc:postgresql")){
+                if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                     updatefields << '"' + val + '"=:' + val
                 }
                 else{
@@ -1461,9 +1489,13 @@ class PortalTracker {
                     PortalTracker.withSession { intsession -> 
                         def maxid = null
                         def internalsql = new Sql(intsession.connection())
-                        if(config.dataSource.url.contains("jdbc:postgresql")){
+                        if(config.dataSource.url.contains("jdbc:postgresql")) {
                             def ddq = "insert into " + data_table() + " (\"" + fieldnames.join('","') + "\") values (" + fieldnamepos.join(' , ') + ") returning id"
-                            maxid = internalsql.firstRow(ddq,qparams);
+                            maxid = internalsql.firstRow(ddq,qparams)
+                        }
+                        else if(config.dataSource.url.contains("jdbc:h2")){
+                            def ddq = "insert into " + data_table() + " (\"" + fieldnames.join('","') + "\") values (" + fieldnamepos.join(' , ') + ")"
+                            maxid = ['id':internalsql.executeInsert(ddq,qparams)[0][0]]
                         }
                         else {
                             try {
@@ -1506,7 +1538,7 @@ class PortalTracker {
         if(defaultsort){
             activesort = defaultsort
         }
-        if(config.dataSource.url.contains("jdbc:postgresql")){
+        if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
         }
         else {
             if(select=="select * ") {
@@ -1554,7 +1586,7 @@ class PortalTracker {
                         if(tfield.field_type=='BelongsTo') {
                             def othertracker = tfield.othertracker()
                             if(othertracker){
-                                if(config.dataSource.url.contains("jdbc:postgresql")){
+                                if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                                     likequery << tfield.name + " in (select id from " + othertracker.data_table() + " where " + tfield.field_format + " ilike '%" + params.search + "%')"
                                 }
                                 else {
@@ -1564,35 +1596,17 @@ class PortalTracker {
                             }
                         }
                         else if(tfield.field_type=='User'){
-                            if(config.dataSource.url.contains("jdbc:postgresql")){
-                                likequery << tfield.name + " in (select id from IAP_User where EMP_NAME ilike '%" + params.search + "%' or new_staffid ilike '%" + params.search + "%' or old_staffid ilike '%" + params.search + "%' or StaffId ilike '%" + params.search + "%' or EMAIL ilike '%" + params.search + "%')"
+                            if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
+                                likequery << tfield.name + " in (select id from portal_user where name ilike '%" + params.search + "%' or StaffId ilike '%" + params.search + "%' or EMAIL ilike '%" + params.search + "%')"
                             }
                             else {
-                                likequery << tfield.name + " in (select id from IAP_User where EMP_NAME like '%" + params.search + "%' or new_staffid like '%" + params.search + "%' or old_staffid like '%" + params.search + "%' or StaffId like '%" + params.search + "%' or EMAIL like '%" + params.search + "%')"
-
-                            }
-                        }
-                        else if(tfield.field_type=='Event'){
-                            if(config.dataSource.url.contains("jdbc:postgresql")){
-                                likequery << tfield.name + " in (select id from event where title ilike '%" + params.search + "%' or description ilike '%" + params.search + "%' or avenue ilike '%" + params.search + "%' or type ilike '%" + params.search + "%')"
-                            }
-                            else {
-                                likequery << tfield.name + " in (select id from event where title like '%" + params.search + "%' or description like '%" + params.search + "%' or avenue like '%" + params.search + "%' or type like '%" + params.search + "%')"
-
-                            }
-                        }
-                        else if(tfield.field_type=='Branch'){
-                            if(config.dataSource.url.contains("jdbc:postgresql")){
-                                likequery << tfield.name + " in (select id from Branch_Listing where Branch_Code ilike '%" + params.search + "%' or br_short_name ilike '%" + params.search + "%' or Br_Address ilike '%" + params.search + "%' or Branch_Name ilike '%" + params.search + "%')"
-                            }
-                            else {
-                                likequery << tfield.name + " in (select id from Branch_Listing where Branch_Code like '%" + params.search + "%' or br_short_name like '%" + params.search + "%' or Br_Address like '%" + params.search + "%' or Branch_Name like '%" + params.search + "%')"
+                                likequery << tfield.name + " in (select id from portal_user where name like '%" + params.search + "%' or StaffId like '%" + params.search + "%' or EMAIL like '%" + params.search + "%')"
 
                             }
                         }
                         else{
                             // likequery << tfield.name + " like '%" + params.search.replace("'","''") + "%'"
-                            if(config.dataSource.url.contains("jdbc:postgresql")){
+                            if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                                 likequery << tfield.name + " ilike :" + tfield.name + " "
                             }
                             else {
@@ -1647,7 +1661,7 @@ class PortalTracker {
                             }
                             else{
                                 if(tfield.field_type == 'Drop Down'){
-                                    if(config.dataSource.url.contains("jdbc:postgresql")){
+                                    if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                                         condition << curkey + "= :" + curkey
                                     }
                                     else {
@@ -1724,7 +1738,7 @@ class PortalTracker {
 
         if(condition_q){
             if(condition_q && params.max){
-                if(config.dataSource.url.contains("jdbc:postgresql")){
+                if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                     query += "where " + activecond + " order by " + activesort + " limit " + params.max + " offset " + offset
                 }
                 else {
@@ -1742,7 +1756,7 @@ class PortalTracker {
             }
         }else{
             if(params.max){
-                if(config.dataSource.url.contains("jdbc:postgresql")){
+                if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                     query += " order by " + activesort + " limit " + params.max + " offset " + offset
                 }
                 else {

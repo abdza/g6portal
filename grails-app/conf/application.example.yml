@@ -124,7 +124,8 @@ dataSource:
   pooled: true
   jmxExport: true
   # driverClassName: com.microsoft.sqlserver.jdbc.SQLServerDriver
-  driverClassName: org.h2.Driver
+  driverClassName: org.h2.Driver      
+  # Disable both driverClassName above to use postgres
   username: sa
   password:
 
@@ -132,7 +133,7 @@ environments:
   development:
     dataSource:
       dbCreate: update
-      url: jdbc:h2:./g6db;LOCK_TIMEOUT=10000;DB_CLOSE_ON_EXIT=FALSE
+      url: jdbc:h2:./g6db;LOCK_TIMEOUT=10000;DB_CLOSE_ON_EXIT=FALSE;DATABASE_TO_LOWER=TRUE;MODE=PostgreSQL
     # url: jdbc:postgresql://localhost:5432/g6portal?stringtype=unspecified
     # url: jdbc:sqlserver://localhost:1433;databaseName=g6portal;encrypt=true;trustServerCertificate=true;
       properties:
@@ -156,7 +157,7 @@ environments:
   test:
     dataSource:
       dbCreate: update
-      url: jdbc:h2:./g6db;LOCK_TIMEOUT=10000;DB_CLOSE_ON_EXIT=FALSE
+      url: jdbc:h2:./g6db;LOCK_TIMEOUT=10000;DB_CLOSE_ON_EXIT=FALSE;DATABASE_TO_LOWER=TRUE;MODE=PostgreSQL
     # url: jdbc:postgresql://localhost:5432/g6portal?stringtype=unspecified
     # url: jdbc:sqlserver://localhost:1433;databaseName=g6portal;encrypt=true;trustServerCertificate=true;
       properties:
@@ -180,7 +181,7 @@ environments:
   production:
     dataSource:
       dbCreate: update
-      url: jdbc:h2:./g6db;LOCK_TIMEOUT=10000;DB_CLOSE_ON_EXIT=FALSE
+      url: jdbc:h2:./g6db;LOCK_TIMEOUT=10000;DB_CLOSE_ON_EXIT=FALSE;DATABASE_TO_LOWER=TRUE;MODE=PostgreSQL
       # url: jdbc:postgresql://localhost:5432/g6portal?stringtype=unspecified
       # url: jdbc:sqlserver://localhost:1433;databaseName=g6portal;encrypt=true;trustServerCertificate=true;
       properties:

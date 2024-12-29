@@ -16,6 +16,35 @@ class PortalModule {
       return roles = UserRole.findAllByUserAndModule(curuser,name)*.role
     }
 
+    def textconvert(source) {
+        if(source) {
+            println "Before source:" + source
+            source = source.replaceAll('g5portal','g6portal')
+            source = source.replaceAll(
+                /\(new Date\(\)\)\.format\('yyyy-MM-dd HH:mm:ss'\)/, 
+                /new java.text.SimpleDateFormat('yyyy-MM-dd HH:mm:ss').format\(new Date\(\)\)/
+            )
+            source = source.replaceAll(
+                /\(new Date\(\)\)\.format\('yyyy-MM-dd HH:mm'\)/, 
+                /new java.text.SimpleDateFormat('yyyy-MM-dd HH:mm').format\(new Date\(\)\)/
+            )
+            source = source.replaceAll(
+                /new Date\(\)\.format\('yyyy-MM-dd HH:mm'\)/, 
+                /new java.text.SimpleDateFormat('yyyy-MM-dd HH:mm').format\(new Date\(\)\)/
+            )
+            source = source.replaceAll(
+                /\(new Date\(\)\)\.format\('yyyy'\)/, 
+                /new java.text.SimpleDateFormat('yyyy').format\(new Date\(\)\)/
+            )
+            source = source.replaceAll(
+                /\(new Date\(\)\)\.format\('HH:mm'\)/, 
+                /new java.text.SimpleDateFormat('HH:mm').format\(new Date\(\)\)/
+            )
+            println "After source :" + source
+        }
+        return source
+    }
+
     def importfiles(migrationfolder, jsonSlurper) {
         def filelinkfile = new File(migrationfolder + '/filelinklist.json')
         if(filelinkfile.exists()){
@@ -142,11 +171,11 @@ class PortalModule {
                         }
                         def contentfile = new File(migrationfolder + '/pages/content_' + ipage.slug + '.gsp')
                         if(contentfile.exists()){
-                            curpage.content = contentfile.text
+                            curpage.content = textconvert(contentfile.text)
                         }
                         def ppfile = new File(migrationfolder + '/pages/pp_' + ipage.slug + '.gsp')
                         if(ppfile.exists()){
-                            curpage.preprocess = ppfile.text
+                            curpage.preprocess = textconvert(ppfile.text)
                         }
                         curpage.title=ipage.title
                         curpage.slug=ipage.slug
@@ -176,7 +205,7 @@ class PortalModule {
                                 cds.page = curpage
                                 cds.name = ids.name
                                 cds.return_one = ids.return_one
-                                cds.query = ids.query
+                                cds.query = textconvert(ids.query)
                                 if(!cds.validate()){
                                     cds.errors.allErrors.each {
                                         println 't error:' + it
@@ -196,11 +225,13 @@ class PortalModule {
     }
 
     def importtrackers(migrationfolder,jsonSlurper) {
+        println "Importing trackers"
         def trackerfile = new File(migrationfolder + '/trackerlist.json')
 
         if(trackerfile.exists()){
             def trackerarray = jsonSlurper.parseText(trackerfile.text)
             trackerarray.each { itracker->
+                println "Importing tracker: " + itracker
                 PortalTracker.withTransaction { dbtrans-> 
                     def curtracker = PortalTracker.findAllByModuleAndSlug(itracker.module,itracker.slug)
                     if(curtracker.size()>0){
@@ -255,10 +286,10 @@ class PortalModule {
                             curfield.name=ifield.name
                             curfield.label=ifield.label
                             curfield.field_type=ifield.field_type
-                            curfield.field_options=ifield.field_options
-                            curfield.field_format=ifield.field_format
-                            curfield.field_default=ifield.field_default
-                            curfield.hyperscript=ifield.hyperscript
+                            curfield.field_options=textconvert(ifield.field_options)
+                            curfield.field_format=textconvert(ifield.field_format)
+                            curfield.field_default=textconvert(ifield.field_default)
+                            curfield.hyperscript=textconvert(ifield.hyperscript)
                             curfield.field_display=ifield.field_display
                             curfield.field_query=ifield.field_query
                             curfield.classes=ifield.classes
@@ -281,9 +312,9 @@ class PortalModule {
                                 error_check.description = ec.description
                                 error_check.error_type = ec.error_type
                                 error_check.format = ec.format
-                                error_check.error_msg = ec.error_msg
                                 error_check.allow_submission = ec.allow_submission
-                                error_check.error_function = ec.error_function
+                                error_check.error_msg = textconvert(ec.error_msg)
+                                error_check.error_function = textconvert(ec.error_function)
                                 error_check.save(flush:true)
                             }
                         }
@@ -340,7 +371,7 @@ class PortalModule {
                             currole.tracker = curtracker
                             currole.name=irole.name
                             currole.role_type=irole.role_type
-                            currole.role_rule=irole.role_rule
+                            currole.role_rule=textconvert(irole.role_rule)
                             currole.role_desc=irole.role_desc
                             // currole.lastUpdated=Date.parse("yyyy-MM-dd'T'HH:mm:ss",irole.lastUpdated)
                             currole.lastUpdated = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss").parse(irole.lastUpdated)
@@ -395,7 +426,7 @@ class PortalModule {
                             curtransition.displayfields=itransition.displayfields
                             curtransition.requiredfields=itransition.requiredfields
                             curtransition.richtextfields=itransition.richtextfields
-                            curtransition.enabledcondition=itransition.enabledcondition
+                            curtransition.enabledcondition=textconvert(itransition.enabledcondition)
                             curtransition.updatetrails=itransition.updatetrails
                             curtransition.submitbuttontext=itransition.submitbuttontext
                             curtransition.gotoprevstatuslist=itransition.gotoprevstatuslist
@@ -427,8 +458,8 @@ class PortalModule {
                                     cemail.transition = curtransition
                                     cemail.name = iemail.name
                                     cemail.tracker = curtracker
-                                    cemail.emailto = iemail.emailto
-                                    cemail.emailcc = iemail.emailcc
+                                    cemail.emailto = textconvert(iemail.emailto)
+                                    cemail.emailcc = textconvert(iemail.emailcc)
                                     def curbody = PortalPage.findByModuleAndSlug(curtracker.module,iemail.body)
                                     if(curbody){
                                         cemail.body = curbody
