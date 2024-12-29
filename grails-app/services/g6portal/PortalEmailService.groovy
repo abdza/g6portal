@@ -33,6 +33,9 @@ interface PortalEmailService {
     @Query("from ${PortalEmail email} where ${email.emailSent}='0' and (${email.deliveryTime} is null or ${email.deliveryTime}<=CURRENT_TIMESTAMP)")
     List<PortalEmail> tosend()
 
+    @Query("from ${PortalEmail email} where ${email.emailSent}=false and (${email.deliveryTime} is null or ${email.deliveryTime}<=CURRENT_TIMESTAMP)")
+    List<PortalEmail> h2tosend()
+
     void delete(Serializable id)
 
     PortalEmail save(PortalEmail portalEmail)

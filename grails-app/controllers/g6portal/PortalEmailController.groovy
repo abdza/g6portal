@@ -2,6 +2,7 @@ package g6portal
 
 import grails.validation.ValidationException
 import static org.springframework.http.HttpStatus.*
+import static grails.util.Holders.config
 
 class PortalEmailController {
 
@@ -15,7 +16,13 @@ class PortalEmailController {
     static allowedMethods = [save: "POST", update: "PUT", delete: "DELETE"]
 
     def run() {
-        def emails = portalEmailService.tosend()
+        def emails = null
+        if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
+            emails = portalEmailService.h2tosend()
+        }
+        else {
+            emails = portalEmailService.tosend()
+        }
         def emailfrom = PortalSetting.namedefault("portal.emailfrom","portal@portal.com")
         PortalEmail.withTransaction { etrans -> 
             emails.each { email->
