@@ -8,6 +8,8 @@ class SecurityInterceptor {
         matchAll()
         .except(controller:'user', action:'login')
         .except(controller:'user', action:'authenticate')
+        .except(controller:'googleOAuth', action:'initiate')
+        .except(controller:'googleOAuth', action:'callback')
     }
 
     boolean before() { 

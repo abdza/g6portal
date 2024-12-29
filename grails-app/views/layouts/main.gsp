@@ -200,6 +200,13 @@ G6 Portal
                       <p class="small mb-0">Don't have account? <g:link controller='user' action='register'>Create an account</g:link></p>
                     </div>
                     </g:if>
+                    <g:if test="${grailsApplication.config.getProperty('google.oauth.clientId')}">
+                    <div class="col-12">
+                        <g:link controller="googleOAuth" action="initiate" class="btn btn-primary w-100">
+                            Sign in with Google
+                        </g:link>
+                    </div>
+                    </g:if>
                   </g:form>
 	    </li>
 	  </g:else>

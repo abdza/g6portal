@@ -4,6 +4,15 @@ class UrlMappings {
 
     static mappings = {
 
+  "/auth/google" {
+    controller = "googleOAuth"
+    action = "initiate"
+  }
+
+  "/auth/google/callback" {
+      controller = "googleOAuth"
+      action = "callback"
+  }
 
 	"/login" {
         controller = "user"
