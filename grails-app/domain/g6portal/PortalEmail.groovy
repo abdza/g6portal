@@ -41,28 +41,29 @@ class PortalEmail {
     }
 
     def send(mailService) {
-      println "In send email service"
-      def emailfrom = PortalSetting.namedefault("portal.emailfrom","portal@portal.com")
-      def sendto = this.emailto?.tokenize(',')
-      def ccto = this.emailcc?.tokenize(',')
-      try {
-        mailService.sendMail {
-            to sendto
-            if(ccto?.size()) {
-              cc ccto
+        def emailfrom = PortalSetting.namedefault("portal.emailfrom","portal@portal.com")
+        def sendto = this.emailto?.tokenize(',')
+        def ccto = this.emailcc?.tokenize(',')
+        try {
+            PortalEmail.withTransaction { sqltrans->
+                mailService.sendMail {
+                    to sendto
+                    if(ccto?.size()) {
+                      cc ccto
+                    }
+                    from emailfrom
+                    subject this.title
+                    html this.body
+                }
+                this.timeSent = new Date()
+                // this.timeSent = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date())
+                this.emailSent = true
+                this.save(flush:true)
             }
-            from emailfrom
-            subject this.title
-            html this.body
+        } catch (ValidationException e) {
+            PortalErrorLog.record(params,null,controllerName,actionName,e.toString(),email.title,email.module)
+            respond portalEmail.errors, view:'create'
+            return
         }
-        this.timeSent = new Date()
-        this.emailSent = true
-        this.save(flush:true)
-      } catch (ValidationException e) {
-          PortalErrorLog.record(params,null,controllerName,actionName,e.toString(),email.title,email.module)
-          respond portalEmail.errors, view:'create'
-          return
-      }
     }
-
 }
