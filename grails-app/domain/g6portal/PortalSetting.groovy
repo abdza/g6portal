@@ -112,6 +112,9 @@ class PortalSetting {
         def cur = null
         if(btoken.size()>1){
             cur = findByModuleAndName(btoken[0],btoken[1])
+            if(!cur) {
+                cur = findByName(name)
+            }
         }
         else {
             cur = findByName(btoken[0])
