@@ -54,9 +54,16 @@ class FileLinkTagLib {
         }
         else {
             def slug = ''
-            def module = ''
+            def module = null
             if(attrs.slug) {
-                slug = attrs.slug
+                def parts = attrs.slug.tokenize('.')
+                if(parts.size()>1) {
+                    slug = parts[1]
+                    module = parts[0]
+                }
+                else {
+                    slug = attrs.slug
+                }
             }
             if(attrs.module) {
                 module = attrs.module

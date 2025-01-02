@@ -17,9 +17,14 @@ grails:
       events: false
 info:
   app:
-    name: "@info.app.name@"
-    version: "@info.app.version@"
+    name: "G6 Portal"
+    version: "0.0.1"
     grailsVersion: "@info.app.grailsVersion@"
+    homepage: "https://g6portal.abdullahsoutions.com"
+    copyright: "G6 Portal"
+    team: "G6 Portal Team"
+    # logo_slug: "logo"
+    # logo_url: "https://g6portal.abdullahsolutions.com/images/logo.png"
 spring:
   jmx:
     unique-names: true

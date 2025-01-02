@@ -6,7 +6,12 @@
   <meta content="width=device-width, initial-scale=1.0" name="viewport">
 
   <title>
+<g:if test="${grailsApplication.config.getProperty('info.app.name')}">
+${grailsApplication.config.getProperty('info.app.name')}
+</g:if>
+<g:else>
 G6 Portal
+</g:else>
 <g:layoutTitle default="Grails"/>
 </title>
   <meta content="" name="description">

@@ -6,7 +6,12 @@
   <meta content="width=device-width, initial-scale=1.0" name="viewport">
 
   <title>
+<g:if test="${grailsApplication.config.getProperty('info.app.name')}">
+${grailsApplication.config.getProperty('info.app.name')}
+</g:if>
+<g:else>
 G6 Portal
+</g:else>
 <g:layoutTitle default="Grails"/>
 </title>
   <meta content="" name="description">
@@ -37,8 +42,25 @@ G6 Portal
 
     <div class="d-flex align-items-center justify-content-between">
       <a href="index.html" class="logo d-flex align-items-center">
-        <img src="${resource(dir:'images',file:'logo.png')}" alt="">
-        <span class="d-none d-lg-block">G6 Portal</span>
+<g:if test="${grailsApplication.config.getProperty('info.app.logo_slug')}">
+        <img src="<g:download_file slug='${grailsApplication.config.getProperty('info.app.logo_slug')}'/>" alt="">
+</g:if>
+<g:else>
+  <g:if test="${grailsApplication.config.getProperty('info.app.logo_url')}">
+          <img src="${grailsApplication.config.getProperty('info.app.logo_url')}" alt="">
+  </g:if>
+  <g:else>
+          <img src="${resource(dir:'images',file:'logo.png')}" alt="">
+  </g:else>
+</g:else>
+        <span class="d-none d-lg-block">
+<g:if test="${grailsApplication.config.getProperty('info.app.name')}">
+${grailsApplication.config.getProperty('info.app.name')}
+</g:if>
+<g:else>
+G6 Portal
+</g:else>
+        </span>
       </a>
       <i class="bi bi-list toggle-sidebar-btn"></i>
     </div><!-- End Logo -->
@@ -351,10 +373,31 @@ G6 Portal
   <!-- ======= Footer ======= -->
   <footer id="footer" class="footer">
     <div class="copyright">
-      &copy; Copyright <strong><span>G6 Portal</span></strong>. All Rights Reserved
+      &copy; Copyright <strong><span>
+<g:if test="${grailsApplication.config.getProperty('info.app.copyright')}">
+${grailsApplication.config.getProperty('info.app.copyright')}
+</g:if>
+<g:else>
+G6 Portal
+</g:else>
+      </span></strong>. All Rights Reserved
     </div>
     <div class="credits">
-      Designed by <a href="https://g6portal.com/">G6Portal Portal Team</a>
+      Designed by <a href="
+<g:if test="${grailsApplication.config.getProperty('info.app.homepage')}">
+${grailsApplication.config.getProperty('info.app.homepage')}
+</g:if>
+<g:else>
+https://g6portal.abdullahsolutions.com/
+</g:else>
+      ">
+<g:if test="${grailsApplication.config.getProperty('info.app.team')}">
+${grailsApplication.config.getProperty('info.app.team')}
+</g:if>
+<g:else>
+G6Portal Portal Team
+</g:else>
+      </a>
     </div>
   </footer><!-- End Footer -->
 

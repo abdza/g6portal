@@ -33,6 +33,11 @@
 /target
 
 /grails-app/conf/application.yml
+/grails-app/conf/application.h2.yml
+/grails-app/conf/application.old.yml
+/grails-app/conf/application.mssql.yml
+/grails-app/conf/application.postgresql.yml
+/packageall.sh
 /.gradle
 /build
 /g6db.mv.db
