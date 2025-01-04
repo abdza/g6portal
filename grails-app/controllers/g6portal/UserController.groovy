@@ -103,8 +103,8 @@ class UserController {
 
 
     def my_profile() {
-        // def curuser = User.get(session.userid)
-        [user:session.curuser]
+        def curuser = User.get(session.userid)
+        [user:curuser]
     }
 
     def my_profile_save(User user) {
@@ -114,6 +114,7 @@ class UserController {
         }
 
         try {
+            user.lastInfoUpdate = new Date()
             userService.save(user)
         } catch (ValidationException e) {
             respond user.errors, view:'my_profile'
@@ -256,25 +257,87 @@ class UserController {
             }
 
             if(user) {
-              if(params.password2 && params.password==params.password2) {
-                  flash.message = 'User registered. Please login to continue'
-                  redirect(controller:"user",action:"login")
-                  return 
-              }
-              request.withFormat {
-                  form multipartForm {
-                      flash.message = message(code: 'default.created.message', args: [message(code: 'user.label', default: 'User'), user.id])
-                      redirect user
-                  }
-                  '*' { respond user, [status: CREATED] }
-              }
+                if(params.password2 && params.password==params.password2) {
+                    flash.message = 'User registered. Please login to continue'
+                    redirect(controller:"user",action:"login")
+                    return 
+                }
+                request.withFormat {
+                    form multipartForm {
+                        flash.message = message(code: 'default.created.message', args: [message(code: 'user.label', default: 'User'), user.id])
+                        redirect user
+                    }
+                    '*' { respond user, [status: CREATED] }
+                }
             }
             else {
-              if(params.password2 && params.password==params.password2) {
-                flash.message = 'User registered. Please login to continue'
-              }
-              redirect(controller:"user",action:"login")
+                if(params.password2 && params.password==params.password2) {
+                  flash.message = 'User registered. Please login to continue'
+                }
+                redirect(controller:"user",action:"login")
             }
+        }
+    }
+
+    def change_password() {
+        def user = session.curuser
+        if (!user) {
+            flash.message = "Please login to change your password"
+            flash.messageType = "warning"
+            redirect(controller: "user", action: "login")
+            return
+        }
+        ['user':user]
+    }
+
+    def update_password() {
+        def user = User.get(session.userid)
+        if (!user) {
+            flash.message = "Please login to change your password"
+            flash.messageType = "warning"
+            redirect(controller: "user", action: "login")
+            return
+        }
+
+        // Verify the current password
+        if (!user.verifyPassword(params.currentPassword)) {
+            flash.message = "Current password is incorrect"
+            flash.messageType = "danger"
+            redirect(action: "change_password")
+            return
+        }
+
+        // Verify password confirmation
+        if (params.newPassword != params.confirmPassword) {
+            flash.message = "New passwords do not match"
+            flash.messageType = "danger"
+            redirect(action: "change_password")
+            return
+        }
+
+        // Check password strength
+        def passwordPattern = ~/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])[A-Za-z\d\W]{8,}$/
+        if (!(params.newPassword ==~ passwordPattern)) {
+            flash.message = "Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character"
+            flash.messageType = "danger"
+            redirect(action: "change_password")
+            return
+        }
+
+        try {
+            params.password = user.hashPassword(params.newPassword)
+            User.withTransaction { sqltrans->
+                user.lastInfoUpdate = new Date()
+                user.save(flush:true)
+            }
+            flash.message = "Password successfully changed"
+            flash.messageType = "success"
+            redirect(controller: "portalPage", action: "home")
+        } catch (Exception e) {
+            log.error "Error changing password: ${e.message}", e
+            flash.message = "An error occurred while changing your password"
+            flash.messageType = "danger"
+            redirect(action: "change_password")
         }
     }
 
@@ -390,6 +453,8 @@ class UserController {
                 session.userid = null
                 session.realuserid = null
                 session.painfo = null
+                session.curuser = null
+                session.realuser = null
                 session.adminlink = null
                 session.chosenrole = null
                 if(session['redirectAfterLogin']){

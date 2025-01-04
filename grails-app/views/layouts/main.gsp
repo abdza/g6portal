@@ -167,6 +167,15 @@ G6 Portal
             <li>
               <hr class="dropdown-divider">
             </li>
+            <li>
+              <g:link class="dropdown-item d-flex align-items-center" controller='user' action='change_password'>
+                <i class="bi bi-key"></i>
+                <span>Change Password</span>
+              </g:link>
+            </li>
+            <li>
+              <hr class="dropdown-divider">
+            </li>
 
             <li>
               <g:link class="dropdown-item d-flex align-items-center" controller='portalPage' action='display' params="[module:'portal',slug:'help']">
