@@ -1299,14 +1299,18 @@ content: event.description
                     out << submitButton(name:"submit",class:"save button btn btn-primary mx-auto col-1",value:"Create")
                 }
                 if(attrs.transition.cancelbutton){
+                    def canceltext = 'Cancel'
+                    if(attrs.transition.cancelbuttontext) {
+                        canceltext = attrs.transition.cancelbuttontext
+                    }
                     if(attrs.record_id){
                         out << link(name:"cancel",class:"save button btn btn-warning mx-auto col-2",controller:'portalTracker',action:'display_data',params:['module':attrs.transition.tracker.module,'slug':attrs.transition.tracker.slug,'id':attrs.record_id]){ 
-                            out << 'Cancel' 
+                            out << canceltext
                         }
                     }
                     else {
                         out << link(name:"cancel",class:"save button btn btn-warning mx-auto col-2",controller:'portalTracker',action:'list',params:['module':attrs.transition.tracker.module,'slug':attrs.transition.tracker.slug]){ 
-                            out << 'Cancel' 
+                            out << canceltext
                         }
                     }
                 }
@@ -1317,6 +1321,42 @@ content: event.description
             }
             out << """
             <script>
+
+            function toggleField(\$element,status=null) {
+              if(status!=null) {
+                if(status==1) {
+                  if(\$element.prop('type')!='hidden') {
+                      \$element.closest('div').show();
+                  }
+                  \$element.prop('disabled',false);
+                  \$element.data('toggle',1);
+                }
+                else {
+                  if(\$element.prop('type')!='hidden') {
+                      \$element.closest('div').hide();
+                  }
+                  \$element.prop('disabled',true);
+                  \$element.data('toggle',0);
+                }
+              }
+              else {
+                if(\$element.data('toggle') || isElementVisible(\$element)) {
+                  if(\$element.prop('type')!='hidden') {
+                      \$element.closest('div').hide();
+                  }
+                  \$element.prop('disabled',true);
+                  \$element.data('toggle',0);
+                }
+                else {
+                  if(\$element.prop('type')!='hidden') {
+                      \$element.closest('div').show();
+                  }
+                  \$element.prop('disabled',false);
+                  \$element.data('toggle',1);
+                }
+              }
+            }
+
             function isElementVisible(\$element) {
               // Check if element exists
               if (!\$element.length) {

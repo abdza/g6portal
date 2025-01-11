@@ -27,6 +27,7 @@ class PortalTrackerTransition {
       redirect_after(nullable:true)
       gotoprevstatuslist(nullable:true)
       submitbuttontext(nullable:true)
+      cancelbuttontext(nullable:true)
       display_name(nullable:true)
       cancelbutton(nullable:true)
       immediate_submission(nullable:true)
@@ -53,6 +54,7 @@ class PortalTrackerTransition {
     String enabledcondition
     String updatetrails
     String submitbuttontext
+    String cancelbuttontext
     String redirect_after
     Boolean gotoprevstatuslist
     Boolean same_status
