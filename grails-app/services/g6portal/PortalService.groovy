@@ -709,6 +709,13 @@ class PortalService {
     }
 
     @Transactional
+    PortalTracker createIndex(PortalTracker tracker) {
+        println "Will created Index for :" + tracker
+        tracker.createIndex(sessionFactory.currentSession.connection())
+        return tracker
+    }
+
+    @Transactional
     PortalTreeNode movenode(node,othernode,position) {
         PortalTreeNode.withTransaction { status ->
             PortalTreeNode.withSession {

@@ -144,6 +144,13 @@ class PortalTrackerFieldController {
         }
     }
 
+    def createIndex(Long id) {
+        def currentTracker = portalTrackerService.get(id)
+        flash.message = 'DB index created'
+        portalService.createIndex(currentTracker)
+        redirect controller: "portalTracker", action: "show", id:currentTracker.id
+    }
+
     def excelTemplateFields(Long id) {
         def currentTracker = portalTrackerService.get(id)
         def f = request.getFile('fileupload')

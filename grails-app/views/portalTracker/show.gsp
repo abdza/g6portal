@@ -49,6 +49,9 @@
 			  <button class="nav-link w-100" id="pages-tab" data-bs-toggle="tab" data-bs-target="#flow" type="button" role="tab" aria-controls="flow" aria-selected="false">Flows</button>
 			</li>
 			<li class="nav-item flex-fill" role="presentation">
+			  <button class="nav-link w-100" id="pages-tab" data-bs-toggle="tab" data-bs-target="#index" type="button" role="tab" aria-controls="index" aria-selected="false">Index</button>
+			</li>
+			<li class="nav-item flex-fill" role="presentation">
 			  <button class="nav-link w-100" id="dataupdates-tab" data-bs-toggle="tab" data-bs-target="#dataupdates" type="button" role="tab" aria-controls="dataupdates" aria-selected="false">Data Updates</button>
 			</li>
 			<li class="nav-item flex-fill" role="presentation">
@@ -82,6 +85,9 @@
 			</div>
 			<div class="tab-pane fade" id="flow" role="tabpanel" aria-labelledby="flow-tab">
 				<g:render template="flowList" model="[portalTracker:this.portalTracker]"/>
+			</div>
+			<div class="tab-pane fade" id="index" role="tabpanel" aria-labelledby="index-tab">
+				<g:render template="indexList" model="[portalTracker:this.portalTracker]"/>
 			</div>
 			<div class="tab-pane fade" id="dataupdates" role="tabpanel" aria-labelledby="dataupdates-tab">
 				<g:render template="datasList" model="[portalTracker:this.portalTracker]"/>

@@ -9,7 +9,7 @@ class PortalTracker {
 
     transient MailService mailService
 
-    static hasMany=[emails:PortalTrackerEmail,datas:PortalTrackerData,fields:PortalTrackerField,statuses:PortalTrackerStatus,roles:PortalTrackerRole,transitions:PortalTrackerTransition,flows:PortalTrackerFlow]
+    static hasMany=[emails:PortalTrackerEmail,datas:PortalTrackerData,fields:PortalTrackerField,statuses:PortalTrackerStatus,roles:PortalTrackerRole,transitions:PortalTrackerTransition,flows:PortalTrackerFlow,indexes:PortalTrackerIndex]
 
     static constraints = {
         name()
@@ -131,6 +131,88 @@ class PortalTracker {
         return PortalTrackerField.findByTrackerAndName(this,name)
     }
 
+    def createIndex(datasource){
+        def sql = new Sql(datasource)
+        def query = ""
+        def totalindex = []
+        def tablename = this.data_table()
+        this.indexes.each { cin ->
+            cin.updateDb()
+        }
+        if(searchfields) {
+            def tfields = PortalTrackerField.createCriteria().list(){
+                'eq'('tracker',this)
+                'in'('name',searchfields?.tokenize(',')*.trim())
+            } 
+            tfields.each { tfield->
+                if(!(tfield.field_type in ['Text Area','HasMany'])) {
+                    def fname = tfield.name.trim()
+                    totalindex << fname
+                    def indexname = "ix_f_" + tablename + "_" + fname
+                    if(config.dataSource.url.contains("jdbc:postgresql")){
+                        query = "create index if not exists " + indexname + " on " + tablename + " (" + fname + ")"
+                    }
+                    else{
+                        query = "if not exists (select * from sys.indexes where name='" + indexname + "' and object_id=object_id('" + tablename + "'))begin create nonclustered index " + indexname + " on [" + tablename + "] ([" + fname + "]); end"
+                    }
+                    try {
+                        println "Creating search index:" + query
+                        sql.execute(query)
+                    }
+                    catch(Exception e){
+                        PortalErrorLog.record(null,null,'tracker','create index',e.toString() + " query: " + query,slug,module)
+                    }
+                }
+            }
+        }
+        if(filterfields) {
+            def ftfields = PortalTrackerField.createCriteria().list(){
+                'eq'('tracker',this)
+                'in'('name',filterfields?.tokenize(',')*.trim())
+            } 
+            ftfields.each { tfield->
+                if(!(tfield.field_type in ['Text Area','HasMany'])) {
+                    def fname = tfield.name.trim()
+                    def indexname = "ix_f_" + tablename + "_" + fname
+                    if(!(fname in totalindex)) {
+                        totalindex << fname
+                    }
+                    if(config.dataSource.url.contains("jdbc:postgresql")){
+                        query = "create index if not exists " + indexname + " on " + tablename + " (" + fname + ")"
+                    }
+                    else{
+                        query = "if not exists (select * from sys.indexes where name='" + indexname + "' and object_id=object_id('" + tablename + "'))begin create nonclustered index " + indexname + " on [" + tablename + "] ([" + fname + "]); end"
+                    }
+                    try {
+                        println "Creating filter index:" + query
+                        sql.execute(query)
+                    }
+                    catch(Exception e){
+                        PortalErrorLog.record(null,null,'tracker','create index',e.toString() + " query: " + query,slug,module)
+                    }
+                }
+            }
+        }
+        if(totalindex.size()>2) {
+            def indexname = "ix_total_" + tablename
+            def delquery = "drop index if exists " + indexname
+            if(config.dataSource.url.contains("jdbc:postgresql")){
+                query = "CREATE INDEX IF NOT EXISTS " + indexname + " ON " + tablename + " (" + totalindex.join(',') + ");"
+            }
+            else{
+                delquery = "drop index if exists " + indexname + " ON " + tablename
+                query = "if not exists (select * from sys.indexes where name='" + indexname + "' and object_id=object_id('" + tablename + "'))begin create nonclustered index " + indexname + " on [" + tablename + "] ([" + totalindex.join('],[') + "]); end"
+            }
+            try {
+                sql.execute(delquery)
+                sql.execute(query)
+            }
+            catch(Exception e){
+                PortalErrorLog.record(null,null,'tracker','create total index',e.toString() + " query: " + query,slug,module)
+            }
+        }
+    }
+
     def updatedb(datasource){
         def sql = new Sql(datasource)
         def query = ""
@@ -187,50 +269,6 @@ class PortalTracker {
         }
         this.fields.each { field->
             field.updatedb(datasource)
-        }
-        if(searchfields) {
-            def tfields = PortalTrackerField.createCriteria().list(){
-                'eq'('tracker',this)
-                'in'('name',searchfields?.tokenize(',')*.trim())
-            } 
-            tfields.each { tfield->
-                def tablename = this.data_table()
-                def fname = tfield.name
-                if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
-                    query = "create index if not exists ix_" + fname + " on " + tablename + " (" + fname + ")"
-                }
-                else{
-                    query = "if not exists (select * from sys.indexes where name='ix_" + fname + "' and object_id=object_id('" + tablename + "'))begin create nonclustered index ix_" + fname + " on [" + tablename + "] ([" + fname + "]); end"
-                }
-                try {
-                    sql.execute(query)
-                }
-                catch(Exception e){
-                    PortalErrorLog.record(null,null,'tracker','create index',e.toString() + " query: " + query,slug,module)
-                }
-            }
-        }
-        if(filterfields) {
-            def ftfields = PortalTrackerField.createCriteria().list(){
-                'eq'('tracker',this)
-                'in'('name',filterfields?.tokenize(',')*.trim())
-            } 
-            ftfields.each { tfield->
-                def tablename = this.data_table()
-                def fname = tfield.name
-                if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
-                    query = "create index if not exists ix_" + fname + " on " + tablename + " (" + fname + ")"
-                }
-                else{
-                    query = "if not exists (select * from sys.indexes where name='ix_" + fname + "' and object_id=object_id('" + tablename + "'))begin create nonclustered index ix_" + fname + " on [" + tablename + "] ([" + fname + "]); end"
-                }
-                try {
-                    sql.execute(query)
-                }
-                catch(Exception e){
-                    PortalErrorLog.record(null,null,'tracker','create index',e.toString() + " query: " + query,slug,module)
-                }
-            }
         }
     }
 
