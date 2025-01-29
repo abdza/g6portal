@@ -34,7 +34,7 @@
                     <g:form useToken="true" resource="${this.portalTracker}" method="PUT">
                         <g:hiddenField name="version" value="${this.portalTracker?.version}" />
                         <fieldset class="form">
-                            <f:all except='emails,fields,statuses,roles,transitions,datas' bean="portalTracker"/>
+                            <f:all except='emails,fields,statuses,roles,transitions,datas,indexes,flows' bean="portalTracker"/>
                         </fieldset>
                         <fieldset class="buttons">
                             <input class="save" type="submit" value="${message(code: 'default.button.update.label', default: 'Update')}" />

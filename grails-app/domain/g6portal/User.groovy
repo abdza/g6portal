@@ -3,6 +3,7 @@ package g6portal
 import org.apache.directory.ldap.client.api.*
 import org.apache.directory.api.ldap.model.message.*
 import at.favre.lib.crypto.bcrypt.BCrypt
+import static grails.util.Holders.config
 
 class User {
 
@@ -94,6 +95,26 @@ class User {
             return true
         }
         else return userID in PortalSetting.namedefault('portal.switchusers',[])
+    }
+
+    def load_profile() {
+        if(config.server?.user_profile){
+            def tokens = config.server?.user_profile?.tokenize('.')
+            def profile_module = tokens[0]
+            def profile_slug = 'user'
+            def profile_column = 'user_id'
+            if(tokens.size()>1) {
+                profile_slug = tokens[1]
+                if(tokens.size()>2) {
+                    profile_column = tokens[2]
+                }
+            }
+            def rowquery = [:]
+            rowquery[profile_column] = this.id
+            def profile = PortalTracker.load_datas(profile_module,profile_slug,rowquery)
+            return profile
+        }
+        return null
     }
 
     def hashPassword(String tohash) {

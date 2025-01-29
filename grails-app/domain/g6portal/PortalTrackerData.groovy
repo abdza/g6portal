@@ -85,10 +85,10 @@ class PortalTrackerData {
             }
         }
         try {
-          def thefile = new File(path)
-          if(thefile.exists()){
-              thefile.delete()
-          }
+            def thefile = new File(path)
+            if(thefile.exists()){
+                thefile.delete()
+            }
         }
         catch(Exception e) {
             println "Got error deleting file: " + e

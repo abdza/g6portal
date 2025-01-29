@@ -32,7 +32,7 @@
                     </g:hasErrors>
                     <g:form useToken="true" resource="${this.portalTracker}" method="POST">
                         <fieldset class="form">
-                            <f:all except='postprocess,datas,listfields,filterfields,initial_status,excelfields,allowadd,downloadexcel,excel_audit,defaultsort,tickactions,actionbuttons,searchfields,defaultfield,anonymous_list,anonymous_view,require_login,condition_q,rowclassval,fields,statuses,roles,transitions,emails,flows' bean="portalTracker"/>
+                            <f:all except='postprocess,datas,listfields,filterfields,initial_status,excelfields,allowadd,downloadexcel,excel_audit,defaultsort,tickactions,actionbuttons,searchfields,defaultfield,anonymous_list,anonymous_view,require_login,condition_q,rowclassval,fields,statuses,roles,transitions,emails,flows,indexes' bean="portalTracker"/>
                         </fieldset>
                         <fieldset class="buttons">
                             <g:submitButton name="create" class="save" value="${message(code: 'default.button.create.label', default: 'Create')}" />

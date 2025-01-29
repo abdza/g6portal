@@ -592,6 +592,7 @@ class UserController {
 	    */
             session['userid']=user.id
             session['curuser']=user
+            session['profile']=user.load_profile()
             // session['realuserid']=user.id
             def troles = user.treeroles(params)
             session['rolestext']=[]
