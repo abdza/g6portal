@@ -1524,6 +1524,84 @@ content: event.description
         }
     }
 
+    def trackerTransitions = { attrs->
+        if(attrs.tracker && attrs.record_id){
+            // def curuser = User.get(session.userid)
+            def curuser = session.curuser
+            def sql = new Sql(sessionFactory.currentSession.connection())
+            def query = "select * from " + attrs.tracker.data_table() + " where id=" + attrs.record_id
+            def datas = sql.firstRow(query)
+            def curstatus = null
+            if(datas?.containsKey('record_status')) {
+                curstatus = PortalTrackerStatus.createCriteria().get(){
+                    'eq'('tracker',attrs.tracker)
+                    'eq'('name',datas['record_status'])
+                }
+            }
+            def userroles = attrs.tracker.user_roles(curuser,datas)
+            // userroles would consist of tracker roles that is valid for the current user
+            if(!userroles && !attrs.tracker.anonymous_view){
+                out << "<script>alert('You are not authorised to view that record');window.location='" + createLink(controller:'tracker',action:'display',params:['slug':attrs.tracker.slug])  + "';</script>"
+                return
+            }
+            def fields = []
+            if(curstatus){
+                def ftags = curstatus.displayfields?.tokenize(',')*.trim()
+                ftags.each { ftag->
+                    def tfield = PortalTrackerField.createCriteria().get(){
+                        'eq'('tracker',attrs.tracker)
+                        'eq'('name',ftag)
+                    }
+                    if(tfield){
+                        fields << tfield
+                    }
+                }
+                if(fields.size()==0) {
+                    ftags = attrs.tracker.listfields?.tokenize(',')*.trim()
+                    ftags.each { ftag->
+                        def tfield = PortalTrackerField.createCriteria().get(){
+                            'eq'('tracker',attrs.tracker)
+                            'eq'('name',ftag)
+                        }
+                        if(tfield){
+                            fields << tfield
+                        }
+                    }
+                }
+            }
+            else {
+                if(attrs.tracker.tracker_type=='DataStore' && attrs.tracker.initial_status) {
+                    def ftags = attrs.tracker.initial_status.displayfields?.tokenize(',')*.trim()
+                    ftags.each { ftag->
+                        def tfield = PortalTrackerField.createCriteria().get(){
+                            'eq'('tracker',attrs.tracker)
+                            'eq'('name',ftag)
+                        }
+                        if(tfield){
+                            fields << tfield
+                        }
+                    }
+                } 
+                if(fields.size()==0) {
+                    def ftags = attrs.tracker.listfields?.tokenize(',')*.trim()
+                    ftags.each { ftag->
+                        def tfield = PortalTrackerField.createCriteria().get(){
+                            'eq'('tracker',attrs.tracker)
+                            'eq'('name',ftag)
+                        }
+                        if(tfield){
+                            fields << tfield
+                        }
+                    }
+                }
+            }
+
+            attrs.datas = datas
+            out << transitionButtons(record_id:attrs.record_id,userroles:userroles,tracker:attrs.tracker,datas:attrs.datas)
+            out << "&nbsp;"
+        }
+    }
+
     def transitionButtons = { attrs->
         if(!attrs.datas) {
             return;
