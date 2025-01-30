@@ -108,6 +108,11 @@ class PortalTracker {
         return PortalTracker.findByModuleAndSlug(module,slug)
     }
 
+    def static array2sql(arrayval) {
+        def toret = "('" + arrayval.join("','") + "')"
+        return toret
+    }
+
     def transition(transition_name) {
         def toret = PortalTrackerTransition.findByTrackerAndName(this,transition_name)
         return toret
