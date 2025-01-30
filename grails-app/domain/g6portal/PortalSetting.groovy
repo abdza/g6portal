@@ -9,7 +9,7 @@ class PortalSetting {
         text(nullable:true,maxSize:5000,widget:'textarea')
         date_value(nullable:true)
         number(nullable:true)
-        datum_type(nullable:true,inList:['String','Integer','Float','Date','DateTime'])
+        datum_type(nullable:true,inList:['String','Integer','Float','Date','DateTime','Array'])
     }
 
     static mapping = {
@@ -86,6 +86,9 @@ class PortalSetting {
                         }
                         else if(datum_type=='DateTime') {
                             toreturn[btoken[0]] = Date.parse("yyyy-MM-dd H:m:s",btoken[1])
+                        }
+                        else if(datum_type=='Array') {
+                            toreturn[btoken[0]] = btoken[1].tokenize(':')
                         }
                     }
                 }
