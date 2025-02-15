@@ -476,8 +476,9 @@ class PortalPageController {
             // curuser = User.get(session.userid)
             curuser = session.curuser
         }
-        if(pageInstance){
+        if(pageInstance && pageInstance.published){
             try{
+                def content = pageInstance.content
                 def sql = new Sql(sessionFactory.currentSession.connection())
                 Binding binding = new Binding()
                 binding.setVariable("datasource",sessionFactory.currentSession.connection())

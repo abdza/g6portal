@@ -63,7 +63,7 @@
 		      </ul>
 		      <div class="tab-content pt-2" id="trackercontents">
 			<div class="tab-pane fade show active" id="details" role="tabpanel" aria-labelledby="details-tab">
-			    <f:display except='fields,transitions,statuses,roles,datas,emails,flows' bean="portalTracker" />
+			    <f:display except='fields,transitions,statuses,roles,datas,emails,flows,indexes' bean="portalTracker" />
 			    <g:form useToken="true" resource="${this.portalTracker}" method="DELETE">
 				<fieldset class="buttons">
 				    <g:link class="edit" action="edit" resource="${this.portalTracker}"><g:message code="default.button.edit.label" default="Edit" /></g:link>

@@ -32,7 +32,7 @@
                     <g:form useToken="true" action="my_profile_save" resource="${this.user}" method="PUT">
                         <g:hiddenField name="version" value="${this.user?.version}" />
                         <fieldset class="form">
-                            <f:all except='role,roletargetid,lastlogin,nodes,profilepic,lastUpdated,lastInfoUpdate,lastReminder,password,resetexception,secretquestion,secretanswer,date_joined,lanid,treesdate,lanidexception,isActive,isAdmin,resetPassword,password5' bean="user"/>
+                            <f:all except='profile_id,role,roletargetid,lastlogin,nodes,profilepic,lastUpdated,lastInfoUpdate,lastReminder,password,resetexception,secretquestion,secretanswer,date_joined,lanid,treesdate,lanidexception,isActive,isAdmin,resetPassword,password5' bean="user"/>
                         </fieldset>
                         <fieldset class="buttons">
                             <input class="save" type="submit" value="${message(code: 'default.button.update.label', default: 'Update')}" />

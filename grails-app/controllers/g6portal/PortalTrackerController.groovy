@@ -892,7 +892,7 @@ class PortalTrackerController {
                 if(params.submit){
                     /* this is the part where we actually create or update the data */
                     datas = tracker.updaterecord(params,request,session,sql,defaultfields)
-                    datas = tracker.getdatas(datas['id'])
+                    datas = tracker.getdatas(datas['id'],sql)
                     def postoutput = null
                     /* end of create or update data */
                     if(ctrans && datas) {

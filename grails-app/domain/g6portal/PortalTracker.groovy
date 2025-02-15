@@ -390,24 +390,33 @@ class PortalTracker {
     }
 
     def transitionallowed(tname,curuser,datas=null) {
+        println "In transition test"
         def dt = PortalTrackerTransition.findAllByTrackerAndName(this,tname)
         def toreturn = false
         if(dt) {
+            println "Transition to test :" + dt
             PortalTrackerData.withSession { sessiondata ->
                 def datasource = sessiondata.connection()
                 def uroles = this.user_roles(curuser,datas)
                 def dtroles = dt.roles*.name
-                uroles.each { urole->
-                    if(urole.name in dtroles) {
-                        toreturn = true
-                    }
-                    if(!toreturn && dtroles instanceof Collection){
-                      dtroles.each { cdt->
-                        if(urole.name in cdt) {
+                println "Dtroles:" + dtroles
+                println "Size:" + dtroles[0].size()
+                if(dtroles instanceof Collection && dtroles[0].size()>0) {
+                    uroles.each { urole->
+                        if(urole.name in dtroles) {
                             toreturn = true
                         }
-                      }
+                        if(!toreturn && dtroles instanceof Collection){
+                          dtroles.each { cdt->
+                            if(urole.name in cdt) {
+                                toreturn = true
+                            }
+                          }
+                        }
                     }
+                }
+                else {
+                    toreturn = true
                 }
             }
         }
@@ -1253,8 +1262,8 @@ class PortalTracker {
                 if(config.dataSource.url.contains("jdbc:postgresql")) {
                     def ddq = "insert into " + data_table() + " (record_status) values ('sys_draft') returning id"
                     maxid = sql.firstRow(ddq);
-                }
-                if(config.dataSource.url.contains("jdbc:h2")){
+                } 
+                else if(config.dataSource.url.contains("jdbc:h2")){
                     def ddq = "insert into " + data_table() + " (record_status) values ('sys_draft')"
                     maxid = ['id':sql.executeInsert(ddq)[0][0]]
                 }
@@ -1521,6 +1530,8 @@ class PortalTracker {
                     qparams['id'] = params.id
                     try {
                         query = "update " + data_table() + " set " + updatefields.join(' , ') + " where id=:id"
+                        println "Updaterecord query:" + query
+                        println "Updaterecord qparams:" + qparams
                         sql.execute(query,qparams)
                     }
                     catch(Exception e){

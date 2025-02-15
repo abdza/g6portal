@@ -7,8 +7,13 @@
     </head>
     <body>
     <div id="content" role="main">
-	<h1>Welcome to G6 Portal</h1>
-	<p>Please enjoy!</p>
+<g:if test="${content}">
+	${raw(content)}
+</g:if>
+<g:else>
+	<h1>Welcome to IKRAM Serdang Portal</h1>
+	<p>Ukhuwwah Teras Kegemilangan</p>
+</g:else>
     </div>
     </body>
 </html>

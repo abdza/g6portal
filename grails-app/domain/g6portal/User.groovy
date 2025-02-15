@@ -44,6 +44,7 @@ class User {
         password(nullable:true,password:true)
         password5(nullable:true,password:true)
         state(nullable:true)
+        profile_id(nullable:true)
     }
 
     String userID
@@ -75,6 +76,7 @@ class User {
     Date lastInfoUpdate
     Date lastReminder
     String password5
+    Integer profile_id
 
     String toString(){
         name
@@ -98,19 +100,15 @@ class User {
     }
 
     def load_profile() {
-        if(config.server?.user_profile){
+        if(this.profile_id && config.server?.user_profile){
             def tokens = config.server?.user_profile?.tokenize('.')
             def profile_module = tokens[0]
             def profile_slug = 'user'
-            def profile_column = 'user_id'
             if(tokens.size()>1) {
                 profile_slug = tokens[1]
-                if(tokens.size()>2) {
-                    profile_column = tokens[2]
-                }
             }
             def rowquery = [:]
-            rowquery[profile_column] = this.id
+            rowquery['id'] = this.profile_id
             def profile = PortalTracker.load_datas(profile_module,profile_slug,rowquery)
             return profile
         }
