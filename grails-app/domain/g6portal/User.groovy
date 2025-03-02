@@ -34,6 +34,7 @@ class User {
         emergency_contact(nullable:true)
         emergency_name(nullable:true)
         address(nullable:true,widget:'textarea')
+        state(nullable:true)
         date_joined(nullable:true)
         lanid(nullable:true)
         treesdate(nullable:true)
@@ -43,7 +44,6 @@ class User {
         lanidexception(nullable:true)
         password(nullable:true,password:true)
         password5(nullable:true,password:true)
-        state(nullable:true)
         profile_id(nullable:true)
     }
 

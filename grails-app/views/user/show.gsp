@@ -30,9 +30,12 @@
                     <g:if test="${flash.message}">
                     <div class="message" role="status">${flash.message}</div>
                     </g:if>
-                    <f:display except='nodes,profilepic,roletargetid,resetexception,lanid,treesdate,lanidexception,resetPassword,lastReminder,password,password5,emergency_contact,lastInfoUpdate,directline,handphone,company_handphone,address,secretquestion,secretanswer,emergency_name,isAdmin,profile_id' bean="user" />
+                    <f:display except='nodes,profilepic,roletargetid,resetexception,lanid,treesdate,lanidexception,resetPassword,lastReminder,state,password,password5,emergency_contact,lastInfoUpdate,directline,handphone,company_handphone,address,secretquestion,secretanswer,emergency_name,isAdmin,profile_id' bean="user" />
                     <g:if test='${curuser?.isAdmin || curuser.id==this.user.id}'>
                       <f:display except='profile_id,userID,name,email,role,roletargetid,resetexception,date_joined,treesdate,lanidexception,isActive,resetPassword,lastlogin,nodes,profilepic,lastUpdated,lastInfoUpdate,lastReminder,password,password5,secretquestion,secretanswer,isAdmin' bean="user" />
+                        <g:if test='${curuser?.isAdmin}'>
+                            <f:display except='directline,handphone,company_handphone,emergency_contact,emergency_name,state,address,lanid,userID,name,email,role,roletargetid,resetexception,date_joined,treesdate,lanidexception,isActive,resetPassword,lastlogin,nodes,profilepic,lastUpdated,lastInfoUpdate,lastReminder,password,password5,secretquestion,secretanswer,isAdmin' bean="user" />
+                        </g:if>
                     </g:if>
                     <g:if test='${curuser.switchable() && !session.realuser}'>
                     <h3>Tree Roles</h3>
