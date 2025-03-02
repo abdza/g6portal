@@ -28,11 +28,8 @@ class SecurityInterceptor {
         if(session.curuser) {
             curuser = session.curuser
             realuser = session.realuser
-            if(config.server?.user_profile){
+            if(config.server?.user_profile && !session['profile']){
                 session['profile'] = curuser.load_profile()
-            }
-            else {
-                session['profile'] = null
             }
         }
         else if(session.userid) {
