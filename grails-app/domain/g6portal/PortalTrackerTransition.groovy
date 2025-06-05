@@ -100,7 +100,7 @@ class PortalTrackerTransition {
             }
             catch(Exception e){
                 println 'Error with sending email ' + email?.body?.title + ' : ' + e.toString()
-                def emailpagerror = Settings.findByName("emailpagerror")
+                def emailpagerror = PortalSetting.findByName("emailpagerror")
                 if(emailpagerror){
                     try {
                         mailService.sendMail {

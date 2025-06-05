@@ -124,7 +124,7 @@ class PortalTrackerDataController {
                             }
                             def currow = 1
                             def curuser = null
-                            if(params.user_id && params.user_id in Settings.namedefault(target_tracker.slug + "_anon_excel",[])){
+                            if(params.user_id && params.user_id in PortalSetting.namedefault(target_tracker.slug + "_anon_excel",[])){
                                 curuser = User.findByUserID(params.user_id)
                             }
                             def query = target_tracker.listquery(sessionFactory.currentSession.connection(),params,curuser,"select " + (fields*.name).join(',') + " ")
@@ -160,8 +160,8 @@ class PortalTrackerDataController {
                                         }
                                     }
                                     else if(field.field_type=='Checkbox'){
-                                        def chck = Settings.namedefault('rename_checkboxname',[])
-                                        def slugsexcel = Settings.findByName("changebooleannameinexcel").text.tokenize(',')
+                                        def chck = PortalSetting.namedefault('rename_checkboxname',[])
+                                        def slugsexcel = PortalSetting.findByName("changebooleannameinexcel").text.tokenize(',')
 
                                         slugsexcel.any { slug->
                                             if(slug==target_tracker.slug)
@@ -557,7 +557,7 @@ class PortalTrackerDataController {
             cell.setCellValue("Audit Trail")
         }
         def currow = 1
-        if(params.user_id && params.user_id in PortalSettings.namedefault(params.slug + "_anon_excel",[])){
+        if(params.user_id && params.user_id in PortalSetting.namedefault(params.slug + "_anon_excel",[])){
             curuser = User.findByUserID(params.user_id)
         }
         if('max' in params) {
