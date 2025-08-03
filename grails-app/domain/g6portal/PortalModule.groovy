@@ -429,6 +429,7 @@ class PortalModule {
                             curtransition.enabledcondition=textconvert(itransition.enabledcondition)
                             curtransition.updatetrails=itransition.updatetrails
                             curtransition.submitbuttontext=itransition.submitbuttontext
+                            curtransition.cancelbuttontext=itransition.cancelbuttontext
                             curtransition.gotoprevstatuslist=itransition.gotoprevstatuslist
                             curtransition.same_status=itransition.same_status
                             curtransition.cancelbutton=itransition.cancelbutton
@@ -495,6 +496,16 @@ class PortalModule {
                             curflow.fields=iflow.fields
                             curflow.transitions=iflow.transitions
                             curflow.save(flush:true)
+                        }
+                        itracker.indexes.each { iindex->
+                            def curindex = PortalTrackerIndex.findByTrackerAndName(curtracker,iindex.name)
+                            if(!curindex) {
+                                curindex = new PortalTrackerIndex()
+                            }
+                            curindex.tracker = curtracker
+                            curindex.name = iindex.name
+                            curindex.fields = iindex.fields
+                            curindex.save(flush:true)
                         }
 
                         if(itracker.initial_status){
@@ -658,7 +669,7 @@ class PortalModule {
             def trackerarray = []
             trackers.each { tracker->
                 def fieldsarray = []
-                tracker.fields.each { field->
+                tracker.fields.sort{ it.name }.each { field->
                     def errorarray = []
                     field.error_checks.each { ec->
                         errorarray << [
@@ -750,6 +761,7 @@ class PortalModule {
                         enabledcondition: transition.enabledcondition,
                         updatetrails: transition.updatetrails,
                         submitbuttontext: transition.submitbuttontext,
+                        cancelbuttontext: transition.cancelbuttontext,
                         gotoprevstatuslist: transition.gotoprevstatuslist,
                         same_status: transition.same_status,
                         cancelbutton: transition.cancelbutton,
@@ -766,6 +778,13 @@ class PortalModule {
                         name: flow.name,
                         fields: flow.fields,
                         transitions: flow.transitions,
+                    ]
+                }
+                def indexarray = []
+                tracker.indexes.each { ind->
+                    indexarray << [
+                        name: ind.name,
+                        fields: ind.fields
                     ]
                 }
                 trackerarray << [
@@ -802,7 +821,8 @@ class PortalModule {
                     statuses: statusesarray,
                     roles: rolesarray,
                     transitions: transitionsarray,
-                    flows: flowsarray
+                    flows: flowsarray,
+                    indexes: indexarray
                 ]
             }
             trackerfile.write(JsonOutput.toJson(trackerarray))

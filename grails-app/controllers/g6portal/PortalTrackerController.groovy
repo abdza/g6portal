@@ -707,10 +707,24 @@ class PortalTrackerController {
     def create_data() {
         PortalTracker.decodeparams(params) 
         def tracker = PortalTracker.findByModuleAndSlug(params.module,params.slug)
-        def new_transition = PortalTrackerTransition.findByName('New')
+        def new_transition = PortalTrackerTransition.findByTrackerAndName(tracker,'New')
         if(!new_transition) {
             if(tracker.initial_status) {
-                new_transition = PortalTrackerTransition.findByNext_status(tracker.initial_status)
+                new_transition = PortalTrackerTransition.findAllByNext_status(tracker.initial_status)
+                if(new_transition) {
+                    if(new_transition.size()>1) {
+                        def opt = new_transition[0]
+                        new_transition.each { nt->
+                            if(nt.prev_status.size()==0) {
+                                opt = nt
+                            }
+                        }
+                        new_transition = opt
+                    }
+                    else {
+                        new_transition = new_transition[0]
+                    }
+                }
             }
         }
         if(new_transition) {
@@ -840,7 +854,8 @@ class PortalTrackerController {
             curuser = session.curuser
         }
         def tname = params.transition.replace("_"," ").capitalize()
-        def ctrans = PortalTrackerTransition.findByTrackerAndNameIlike(tracker,tname)
+        def ctransall = PortalTrackerTransition.findAllByTrackerAndNameIlike(tracker,tname)
+        def ctrans = null
         def abandon = false
         if(params.id) {
             datas = tracker.getdatas(params.id)
@@ -856,7 +871,14 @@ class PortalTrackerController {
             }
             abandon = true
         }
-        if(ctrans && !ctrans.testenabled(session,datas)) {
+        if(ctransall) {
+            ctransall.each { cc->
+                 if(cc.testenabled(session,datas)) {
+                    ctrans = cc
+                 }
+            }
+        }
+        if(!ctrans) { 
             // make sure the transition can be done by the user
             flash.message = "You are not authorized to do that"
             redirect(controller:'portalPage',action:'index')
@@ -1154,12 +1176,20 @@ class PortalTrackerController {
       }
       def tracker = PortalTracker.findByModuleAndSlug(params.module,params.slug)
       def tname = params.transition?.replace("_"," ")?.capitalize()
-      def ctrans = PortalTrackerTransition.findByTrackerAndNameIlike(tracker,tname)
+      def ctransall = PortalTrackerTransition.findAllByTrackerAndNameIlike(tracker,tname)
+      def ctrans = null
       def datas = null
       if(params.id) {
           datas = tracker.getdatas(params.id)
       }
-      if(ctrans && !ctrans.testenabled(session,datas)) {
+      if(ctransall) {
+          ctransall.each { cc->
+               if(cc.testenabled(session,datas)) {
+                  ctrans = cc
+               }
+          }
+      }
+      if(!ctrans) { 
           // make sure the transition can be done by the user
           flash.message = "You are not authorized to do that"
           redirect(controller:'portalPage',action:'index')
@@ -1324,10 +1354,13 @@ class PortalTrackerController {
             def othertracker = trackerfield.othertracker()
             if(othertracker) {
                 defaultfield = trackerfield.field_format
-                if(params.q) {
+                if(params.q && params.q.size()>1) {
                     def dparam = [:]
                     dparam[defaultfield]='%' + params.q + '%'
                     lobjects = othertracker.rows(dparam)
+                }
+                else {
+                    lobjects = othertracker.rows(null,null,0,100)
                 }
                 lobjects = lobjects.unique()
             }

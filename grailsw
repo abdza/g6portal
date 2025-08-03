@@ -60,7 +60,7 @@ cd "$SAVED" >/dev/null
 
 JAR_PATH=$APP_HOME/grails-wrapper.jar
 
-JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
+JAVA_HOME="/usr/lib/jvm/java-17-openjdk"
 # Determine the Java command to use to start the JVM.
 if [ -n "$JAVA_HOME" ] ; then
     if [ -x "$JAVA_HOME/jre/sh/java" ] ; then

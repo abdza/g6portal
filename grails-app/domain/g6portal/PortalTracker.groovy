@@ -102,10 +102,33 @@ class PortalTracker {
     def static load_tracker(slug,module='portal') {
         def tokens = slug.tokenize(':')
         slug = tokens[0]
-        if(tokens.size()==2) {
-            module = tokens[1]
+        if(tokens.size()>1) {
+            module = tokens[0]
+            slug = tokens[1]
         }
         return PortalTracker.findByModuleAndSlug(module,slug)
+    }
+
+    def static get_value(slug,id,field=null) {
+        def dtracker = load_tracker(slug)
+        if(dtracker) {
+            def datas = dtracker.getdatas(id)
+            if(datas) {
+                def tokens = slug.tokenize(':')
+                if(tokens.size()>2) {
+                    field = tokens[2]
+                }
+                if(field) {
+                    try {
+                        return datas[field]
+                    }
+                    catch(Exception e){
+                        println "Not able to find field " + field + " in datas:" + datas
+                    }
+                }
+            }
+        }
+        return null
     }
 
     def static array2sql(arrayval) {
@@ -712,33 +735,50 @@ class PortalTracker {
     }
 
     def updatetrail(params,session,request,curuser,datasource) {
-        def sql = new Sql(datasource)
-        def attachment = null
-        if(params.uploadfile){
-            def uploadedfile = request?.getFile('uploadfile');
-            if(uploadedfile && PortalSetting.findByName(slug + '_attachment_path')){
-                if(uploadedfile.originalFilename.size()>0){
-                    def settingname = slug + '_attachment_path'
-                    def defaultfolder = System.getProperty("user.dir").toString() + '/uploads/' + slug
-                    def folderbasepath = PortalSetting.namedefault(settingname,defaultfolder) + '/' + params.id
-                    def folderbase = new File(folderbasepath)
-                    if(folderbase){
-                        if(!folderbase.exists()){
-                            folderbase.mkdirs()
-                        }
-                        def copytarget = folderbasepath+'/'+uploadedfile.originalFilename
-                        uploadedfile.transferTo(new File(copytarget))
-                        if(new File(copytarget).exists()){
-                            def curdate = new java.text.SimpleDateFormat("yyyyMMddHHmm").format(new Date())
-                            attachment = new FileLink(name:uploadedfile.originalFilename,path:copytarget,module:module,slug:slug+'_'+params.id+'_'+curdate,tracker_data_id:params?.id,tracker_id:this.id)
-                            attachment.save()
+        def curstatus = row_status(datasource,params.id)
+        def maxid = null
+        if(tracker_type=='Tracker') {
+            def sql = new Sql(datasource)
+            def attachment = null
+            if(params.uploadfile){
+                def uploadedfile = request?.getFile('uploadfile');
+            def apath = PortalSetting.findByName(module + "_" + slug + '_attachment_path')
+            if(!apath) {
+                apath = PortalSetting.findByName(slug + '_attachment_path')
+            }
+            if(uploadedfile){
+                    if(uploadedfile.originalFilename.size()>0){
+                        def settingname = slug + '_attachment_path'
+                        def defaultfolder = System.getProperty("user.dir").toString() + '/uploads/' + slug
+                        def folderbasepath = PortalSetting.namedefault(settingname,defaultfolder) + '/' + params.id
+                    if(apath) {
+                        folderbasepath = apath.value() + '/' + params.id
+                    }
+                        def folderbase = new File(folderbasepath)
+                        if(folderbase){
+                            if(!folderbase.exists()){
+                                folderbase.mkdirs()
+                            }
+                            def copytarget = folderbasepath+'/'+uploadedfile.originalFilename
+                            uploadedfile.transferTo(new File(copytarget))
+                            if(new File(copytarget).exists()){
+                                attachment = new FileLink(
+                                    name: uploadedfile.originalFilename,
+                                    path: copytarget,
+                                    module: module,
+                                    slug: slug+'_'+params.id+'_'+(new Date()).format('yyyyMMddHHmm'),
+                                    tracker_data_id: params?.id,
+                                    tracker_id: this.id,
+                                    size: (int) uploadedfile.size  // ADD THIS LINE
+                                )
+                                attachment.save()
+                            }
                         }
                     }
                 }
             }
         }
         def userroles = user_roles(curuser,['id':params.id])
-        def curstatus = row_status(datasource,params.id)
         def gotrules = []
         def updateallowedroles = ''
         if(curstatus?.updateallowedroles){
@@ -766,7 +806,6 @@ class PortalTracker {
         qparams['allowedroles'] = updateallowedroles
         def curdate = new Date()
         qparams['update_date'] = curdate
-        def maxid = null
         if(config.dataSource.url.contains("jdbc:postgresql")) {
             if(attachment){
                 qparams['attachment_id'] = attachment?.id
@@ -1152,7 +1191,7 @@ class PortalTracker {
         }
     }
 
-    def rows(qparams=null,order=null){
+    def rows(qparams=null,order=null,offset=null,limit=null){
         PortalTracker.withSession { sqlsession ->
             def sql = new Sql(sqlsession.connection())
             def query = "select * from " + this.data_table()
@@ -1165,6 +1204,15 @@ class PortalTracker {
                 }
                 if(order) {
                     query += " order by " + order
+                }
+                if(limit) {
+                    if(!offset) {
+                        offset = 0
+                    }
+                    if(!order) {
+                        query += " order by id "
+                    }
+                    query += " OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY"
                 }
                 if(qparams && qparams.size()>0){
                     return sql.rows(query.toString(),qparams)
@@ -1418,6 +1466,20 @@ class PortalTracker {
                                     }
                                 }
                             }
+                            else if(pfield.field_type=='MultiSelect'){
+                                println "Multiselect value:" + pfield + " values:" + value
+                                if(pfield.field_options){
+                                    if(value.size()>1) {
+                                        value = [value].flatten().join(',')
+                                        if(value.replaceAll(',','').trim() == '') {
+                                            value = ""
+                                        }
+                                    }
+                                    else {
+                                        value = value[0]
+                                    }
+                                }
+                            }
                             else if(pfield.field_type in ['User','Branch','File','Event']){
                                 if(!value){
                                     validfield = false
@@ -1469,8 +1531,15 @@ class PortalTracker {
                                                     }
                                                     uploadedfile.transferTo(thetarget)
                                                     if(thetarget.exists()){
-                                                        def curdate = new java.text.SimpleDateFormat("yyyyMMddHHmm").format(new Date())
-                                                        attachment = new FileLink(name:uploadedfile.originalFilename,path:thetarget,module:module,slug:key+'_'+curdatas['id']+'_'+curdate,tracker_data_id:params.id,tracker_id:this.id)
+                                                        attachment = new FileLink(
+                                                            name: uploadedfile.originalFilename,
+                                                            path: thetarget,
+                                                            module: module,
+                                                            slug: key+'_'+curdatas['id']+'_'+(new Date()).format('yyyyMMddHHmm'),
+                                                            tracker_data_id: params.id,
+                                                            tracker_id: this.id,
+                                                            size: (int) uploadedfile.size  // ADD THIS LINE
+                                                        )
                                                         if(attachment.save()){
                                                             validfield = true
                                                             value = attachment.id

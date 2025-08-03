@@ -14,7 +14,7 @@ class PortalTrackerField {
         tracker()
         name(nullable:true)
         label(nullable:true)
-        field_type(inList:["Text","Text Area","Integer","Number","Date","DateTime","Checkbox","Drop Down","User","File","Branch","BelongsTo","HasMany","TreeNode","Hidden"])
+        field_type(inList:["Text","Text Area","Integer","Number","Date","DateTime","Checkbox","Drop Down","MultiSelect","User","File","Branch","BelongsTo","HasMany","TreeNode","Hidden","FieldGroup"])
         field_options(nullable:true,widget:'textarea')
         field_format(nullable:true,widget:'textarea')
         field_default(nullable:true,widget:'textarea')
@@ -87,53 +87,57 @@ class PortalTrackerField {
     }
 
     def updatedb(datasource){
-        println "Updating db field " + this
-        def createindex = false
-        def sql = new Sql(datasource)
-        def sqltype = 'varchar(256)'
-        if(this.field_type=='Text'){
-            sqltype = 'varchar(256)'
-        }
-        else if(this.field_type=='Text Area'){
-            sqltype = 'text'
-        }
-        else if(this.field_type=='Date'){
-            sqltype = 'date'
-        }
-        else if(this.field_type=='DateTime'){
-            if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
-                sqltype = 'timestamp'
+        if(this.field_type!='FieldGroup'){
+            def createindex = false
+            def sqltype = 'varchar(256)'
+            def sql = new Sql(datasource)
+            if(this.field_type=='Text'){
+                sqltype = 'varchar(256)'
             }
-            else {
-                sqltype = 'datetime'
+            else if(this.field_type=='Text Area'){
+                sqltype = 'text'
             }
-        }
-        else if(this.field_type=='Checkbox'){
-            if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
-                sqltype = 'boolean'
+            else if(this.field_type=='Date'){
+                sqltype = 'date'
             }
-            else{
-                sqltype = 'bit'
+            else if(this.field_type=='DateTime'){
+                if(config.dataSource.url.contains("jdbc:postgresql")){
+                    sqltype = 'timestamp'
+                }
+                else {
+                    sqltype = 'datetime'
+                }
             }
-        }
-        else if(this.field_type=='Integer'){
-            sqltype = 'numeric(24,0)'
-        }
-        else if(this.field_type=='Number'){
-            sqltype = 'decimal(24,6)'
-        }      
-        else if(this.field_type in ['User','File','BelongsTo','TreeNode']){
-            sqltype = 'numeric(19,0)'
-            createindex = true
-        }
-        if(this.field_type!='HasMany') {
-            try{
-                def testq = "select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.tracker.data_table() + "' and COLUMN_NAME = '" + this.name + "'"
-                if(!sql.firstRow(testq)){
-                    println "Did not find:" + this.name
-                    def query = ''
-                    if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
-                        query = 'alter table "' + this.tracker.data_table() + '" add "' + this.name + '" ' + sqltype + ' NULL' 
+            else if(this.field_type=='Checkbox'){
+                if(config.dataSource.url.contains("jdbc:postgresql")){
+                    sqltype = 'boolean'
+                }
+                else{
+                    sqltype = 'bit'
+                }
+            }
+            else if(this.field_type=='Integer'){
+                sqltype = 'numeric(24,0)'
+            }
+            else if(this.field_type=='Number'){
+                sqltype = 'decimal(24,6)'
+            }      
+            else if(this.field_type in ['Branch','User','File','BelongsTo','TreeNode']){
+                sqltype = 'numeric(19,0)'
+                createindex = true
+            }
+            if(this.field_type!='HasMany') {
+                try{
+                    if(!sql.firstRow("select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.tracker.data_table() + "' and COLUMN_NAME = '" + this.name.trim() + "'")){
+                        def query = ''
+                        if(config.dataSource.url.contains("jdbc:postgresql")){
+                            query = 'alter table "' + this.tracker.data_table() + '" add "' + this.name.trim() + '" ' + sqltype + ' NULL' 
+                        }
+                        else {
+                            query = "alter table " + this.tracker.data_table() + " add [" + this.name.trim() + "] " + sqltype + " NULL" 
+                        }
+                        println "Updatedb query:" + query
+                        sql.execute(query)
                     }
                     else {
                         query = "alter table " + this.tracker.data_table() + " add [" + this.name + "] " + sqltype + " NULL" 
@@ -151,11 +155,11 @@ class PortalTrackerField {
                         sql.execute(inquery)
                     }
                 }
-            }
-            catch(Exception e){
-                println 'There was an error in field updatedb:' + e
-                PortalErrorLog.record(null,null,'field','updatedb',e.toString(),this.tracker.slug,this.tracker.module)
-                return ''
+                catch(Exception e){
+                    println 'There was an error in field updatedb:' + e
+                    PortalErrorLog.record(null,null,'field','updatedb',e.toString(),this.tracker.slug,this.tracker.module)
+                    return ''
+                }
             }
         }
     }
@@ -466,10 +470,8 @@ class PortalTrackerField {
             }
             else if(mp.size()>1) {
                 othertracker = PortalTracker.findByModuleAndSlug(mp[0],mp[1])
-                if(mp.size()>2) {
-                    if(othertracker) {
-                        field_format = mp[2]
-                    }
+                if(mp.size()>2 && othertracker && (!field_format || field_format.size()==0)) {
+                    field_format = mp[2]
                 }
             }
         }

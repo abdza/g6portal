@@ -375,14 +375,20 @@ class PortalTrackerDataController {
 
     def cleardb() {
         def tracker = PortalTracker.get(params.tracker_id)
-        PortalTrackerData.withTransaction { transaction -> 
-            tracker.datas.each { tdata->
-                tdata.tracker.discard()
-                tdata.delete(flush:true)
+        def curuser = session.curuser
+        if(curuser && tracker && 'Admin' in curuser.modulerole(tracker.module)) {
+            PortalTrackerData.withTransaction { transaction -> 
+                tracker.datas.each { tdata->
+                    tdata.tracker.discard()
+                    tdata.delete(flush:true)
+                }
             }
+            tracker.cleardb()
+            flash.message = 'Clearing database ' + tracker + ' has been done'
         }
-        tracker.cleardb()
-        flash.message = 'Clearing database ' + tracker + ' has been done'
+        else {
+            flash.message = 'You do not have the clearance to clear database for ' + tracker
+        }
         redirect tracker
     }
 
@@ -413,16 +419,42 @@ class PortalTrackerDataController {
 
     def cleandb() {
         def tracker = PortalTracker.get(params.tracker_id)
-        if(tracker.tracker_type!='DataStore') {
+        def curuser = session.curuser
+        if(curuser && tracker && 'Admin' in curuser.modulerole(tracker.module)) {
+            if(tracker.tracker_type!='DataStore') {
+                def sessiondata = sessionFactory.currentSession.connection()
+                def sql = new Sql(sessiondata)
+                PortalTrackerData.withTransaction { transaction -> 
+                    sql.execute("delete from " + tracker.data_table() + " where record_status='sys_draft'")
+                }
+                flash.message = 'Cleaning database ' + tracker + ' has been done'
+            }
+            else {
+                flash.message = 'Cleaning database ' + tracker + ' not done on a datastore'
+            }
+        }
+        else {
+            flash.message = 'You do not have the clearance to cleaning the database for ' + tracker
+        }
+        redirect tracker
+    }
+
+    def resetdb() {
+        def tracker = PortalTracker.get(params.tracker_id)
+        def curuser = session.curuser
+        if(curuser && tracker && 'Admin' in curuser.modulerole(tracker.module)) {
             def sessiondata = sessionFactory.currentSession.connection()
             def sql = new Sql(sessiondata)
             PortalTrackerData.withTransaction { transaction -> 
-                sql.execute("delete from " + tracker.data_table() + " where record_status='sys_draft'")
+                sql.execute("drop table " + tracker.data_table())
+                if(tracker.tracker_type!='DataStore') {
+                    sql.execute("drop table " + tracker.trail_table())
+                }
             }
-            flash.message = 'Cleaning database ' + tracker + ' has been done'
+            flash.message = 'Reset database ' + tracker + ' has been done'
         }
-        else {
-            flash.message = 'Cleaning database ' + tracker + ' not done on a datastore'
+        else{
+            flash.message = 'You do not have the clearance to reset database for ' + tracker
         }
         redirect tracker
     }

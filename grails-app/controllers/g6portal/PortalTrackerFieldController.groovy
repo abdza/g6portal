@@ -18,6 +18,12 @@ class PortalTrackerFieldController {
         def sessiondata = sessionFactory.currentSession.connection()
         def sql = new Sql(sessiondata)
         def curfield = portalTrackerFieldService.get(params['hx_field_id'])
+        if(curfield.field_type=='File' && params['id']) {
+            def datas = PortalTracker.getdatas(curfield.tracker.module,curfield.tracker.slug,params['id'])
+            if(!params[curfield.name]) {
+                params[curfield.name] = datas[curfield.name]
+            }
+        }
         def content = portalService.field_error_js(curfield,params,session)
         return render(text: content, contentType: "text/html")
     }
@@ -175,15 +181,61 @@ class PortalTrackerFieldController {
         def fields = []
 
         if(copytarget) {
-
-            PoiExcel poiExcel = new PoiExcel()
-            poiExcel.headerstart = params.header_start?params.header_start.toInteger():0
-            poiExcel.headerend = params.header_end?params.header_end.toInteger():0
-            fields = poiExcel.getHeaders(copytarget)
-
+            // Check file extension to determine file type
+            def fileExtension = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase()
+            
+            if (fileExtension in ['xls', 'xlsx']) {
+                // Handle Excel file
+                PoiExcel poiExcel = new PoiExcel()
+                poiExcel.headerstart = params.header_start?params.header_start.toInteger():0
+                poiExcel.headerend = params.header_end?params.header_end.toInteger():0
+                fields = poiExcel.getHeaders(copytarget)
+            } else if (fileExtension in ['json','txt']) {
+                // Handle JSON file
+                try {
+                    def jsonSlurper = new groovy.json.JsonSlurper()
+                    def jsonData = jsonSlurper.parse(new File(copytarget))
+                    
+                    // Expecting JSON structure as an array of field objects with name, label, type properties
+                    if (jsonData instanceof List) {
+                        fields = jsonData.collect { fieldDef ->
+                            [
+                                name: fieldDef.name ?: fieldDef.field_name ?: '',
+                                text: fieldDef.label ?: fieldDef.field_label ?: fieldDef.name ?:  fieldDef.field_name ?: '',
+                                type: fieldDef.type ?: fieldDef.field_type ?: 'Text',
+                                options: fieldDef.options ? "['" + fieldDef.options.join("','") + "']" : '',
+                                col: fieldDef.name ?: fieldDef.field_name // Using name as col for compatibility with existing template
+                            ]
+                        }
+                    } else if (jsonData.fields && jsonData.fields instanceof List) {
+                        // Alternative structure: {"fields": [...]}
+                        fields = jsonData.fields.collect { fieldDef ->
+                            [
+                                name: fieldDef.name ?: fieldDef.field_name ?: '',
+                                text: fieldDef.label ?: fieldDef.field_label ?: fieldDef.name ?:  fieldDef.field_name ?: '',
+                                type: fieldDef.type ?: fieldDef.field_type ?: 'Text',
+                                options: fieldDef.options ? "['" + fieldDef.options.join("','") + "']" : '',
+                                col: fieldDef.name ?: fieldDef.field_name // Using name as col for compatibility with existing template
+                            ]
+                        }
+                    } else {
+                        flash.message = 'JSON file must contain an array of field definitions or an object with a "fields" array property'
+                        render(view: 'create')
+                        return
+                    }
+                } catch (Exception e) {
+                    flash.message = "Error parsing JSON file: ${e.message}"
+                    render(view: 'create')
+                    return
+                }
+            } else {
+                flash.message = 'Unsupported file type. Please upload an Excel (.xls, .xlsx) or JSON (.json) file.'
+                render(view: 'create')
+                return
+            }
         }
 
-        def fieldtypes = ["Ignore","Text","Text Area","Integer","Number","Date","DateTime","Checkbox","Drop Down","User","File","Branch","BelongsTo","HasMany","Hidden"] 
+        def fieldtypes = ["Ignore","Text","Text Area","Integer","Number","Date","DateTime","Checkbox","Drop Down","MultiSelect","User","File","Branch","BelongsTo","HasMany","Hidden"] 
 
         return [tracker:currentTracker,excelfields:fields,fieldtypes:fieldtypes]
     }

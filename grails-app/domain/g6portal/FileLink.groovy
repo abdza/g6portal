@@ -12,6 +12,7 @@ class FileLink {
         path(nullable:true)
         tracker_data_id(nullable:true)
         tracker_id(nullable:true)
+        size(nullable:true)
     }
 
     String name
@@ -23,6 +24,7 @@ class FileLink {
     Integer sortnum
     Integer tracker_data_id
     Integer tracker_id
+    Integer size
 
     static mapping = {
         sort 'sortnum'
@@ -62,5 +64,22 @@ class FileLink {
             return binaryContent.encodeBase64().toString()
         }
         return ""
+    }
+
+    def beforeInsert = {
+        updateFileSize()
+    }
+
+    def beforeUpdate = {
+        updateFileSize()
+    }
+
+    private void updateFileSize() {
+        if (path && !size) {
+            def thefile = new File(path)
+            if (thefile.exists()) {
+                size = (int) thefile.length()
+            }
+        }
     }
 }
