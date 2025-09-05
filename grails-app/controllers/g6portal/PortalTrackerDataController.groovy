@@ -57,14 +57,34 @@ class PortalTrackerDataController {
     }
 
     def create() {
+        def tracker = null
         def trackers = []
+        def customdata = []
         if(session.enablesuperuser) {
             trackers = PortalTracker.findAll()
         }
         else {
             trackers = PortalTracker.findAllByModuleInList(session.adminmodules)
         }
-        respond new PortalTrackerData(params), model:[trackers:trackers]
+        if(params.tracker_id) {
+            tracker = PortalTracker.get(params.tracker_id)
+            if(tracker) {
+                tracker.fields.each { field ->
+                    if (params[field.name]) {
+                        customdata << ['name':field.name,'value':params[field.name]]
+                    }
+                    else {
+                        if(field.name in ['created_by']) {
+                            customdata << ['name':'created_by','value':session.curuser?.id]
+                        }
+                        else if(field.name in ['created_date']) {
+                            customdata << ['name':'created_date','value':new Date().format('yyyy-MM-dd HH:mm') ]
+                        }
+                    }
+                }
+            }
+        }
+        respond new PortalTrackerData(params), model:[trackers:trackers,tracker:tracker,customdata:customdata]
     }
 
 
@@ -368,6 +388,14 @@ class PortalTrackerDataController {
                 setfields[foundfield.id] = field.col
             }
             excelfields << ['id':field.col,'name':field.text]
+        }
+
+        // Set customdata from URL parameters for fields with defaults
+        portalTrackerData.tracker.fields.each { field ->
+            if (params[field.name]) {
+                customdata[field.id] = params[field.name]
+                setfields[field.id] = 'custom'
+            }
         }
 
         [portalTrackerData:portalTrackerData,excelfields:excelfields,setfields:setfields,customdata:customdata]

@@ -5,11 +5,42 @@ import org.springframework.transaction.annotation.Transactional
 import grails.plugins.mail.MailService
 import static grails.util.Holders.config
 
+/**
+ * PortalTracker is the core domain class for managing dynamic data tracking systems.
+ * It provides a flexible framework for creating database-backed forms, workflows,
+ * and data management systems without hardcoding database schemas.
+ * 
+ * Key features:
+ * - Dynamic table creation and field management
+ * - Three tracker types: Tracker (full workflow), Statement (role-based), DataStore (simple data)
+ * - Built-in audit trails and status transitions
+ * - Role-based access control and data filtering
+ * - Excel import/export capabilities
+ * - Email notifications on status changes
+ * - Search and filtering with security validation
+ * - SQL injection protection with parameterized queries
+ * 
+ * Database Structure:
+ * - Creates data tables: trak_{module}_{slug}_data
+ * - Creates audit tables: trak_{module}_{slug}_updates (for Tracker type)
+ * - Dynamically manages columns based on PortalTrackerField definitions
+ */
 class PortalTracker {
 
-    transient MailService mailService
+    // Injected services
+    transient MailService mailService  // For sending email notifications
 
-    static hasMany=[emails:PortalTrackerEmail,datas:PortalTrackerData,fields:PortalTrackerField,statuses:PortalTrackerStatus,roles:PortalTrackerRole,transitions:PortalTrackerTransition,flows:PortalTrackerFlow,indexes:PortalTrackerIndex]
+    // Relationships - tracker has many related components for full functionality
+    static hasMany=[
+        emails:PortalTrackerEmail,           // Email templates for notifications
+        datas:PortalTrackerData,            // Data upload/import instances
+        fields:PortalTrackerField,          // Field definitions (form schema)
+        statuses:PortalTrackerStatus,       // Workflow status definitions
+        roles:PortalTrackerRole,            // Role-based access control
+        transitions:PortalTrackerTransition, // Status transition rules
+        flows:PortalTrackerFlow,            // Workflow flow definitions
+        indexes:PortalTrackerIndex          // Database index configurations
+    ]
 
     static constraints = {
         name()
@@ -45,55 +76,61 @@ class PortalTracker {
 
     static transients = ['sqlfieldnames','sqlvalues','curdatas']
 
+    // Database mapping configuration
     static mapping = {
-        listfields type: 'text'
-        excelfields type: 'text'
-        filterfields type: 'text'
-        searchfields type: 'text'
-        hiddenlistfields type: 'text'
-        cache true
+        listfields type: 'text'         // Store as TEXT for large field lists
+        excelfields type: 'text'        // Store as TEXT for large field lists
+        filterfields type: 'text'       // Store as TEXT for large field lists
+        searchfields type: 'text'       // Store as TEXT for large field lists
+        hiddenlistfields type: 'text'   // Store as TEXT for large field lists
+        cache true                      // Enable second-level caching
     }
 
-    String name
-    String slug
-    String tracker_type
-    String module
-    String allowedroles
-    String side_menu
-    String listfields
-    String hiddenlistfields
-    String excelfields
-    String filterfields
-    String searchfields
-    PortalPage postprocess
-    PortalTrackerStatus initial_status
-    PortalTrackerField defaultfield
-
-    String sqlfieldnames
-    String sqlvalues
-
-    String datatable
-    String trailtable
-    String defaultsort
-    Integer defaultlimit
-    String rolesort
+    // Core tracker identification
+    String name                         // Human-readable name for the tracker
+    String slug                         // URL-friendly unique identifier
+    String tracker_type                 // Type: 'Tracker', 'Statement', or 'DataStore'
+    String module                       // Module/application this tracker belongs to
+    String side_menu                    // Side menu category for navigation
     
-
-    Boolean allowadd
-    Boolean downloadexcel
-    Boolean anonymous_list
-    Boolean anonymous_view
-    Boolean require_login
-    Boolean excel_audit
-
-    String tickactions
-    String actionbuttons
-
-    String condition_q
-
-    String rowclassval
-
-    def curdatas=[:]
+    // Access control and permissions
+    String allowedroles                 // Comma-separated list of allowed roles
+    Boolean allowadd                    // Whether users can add new records
+    Boolean downloadexcel               // Whether Excel download is enabled
+    Boolean anonymous_list              // Allow anonymous users to view list
+    Boolean anonymous_view              // Allow anonymous users to view details
+    Boolean require_login               // Require authentication to access
+    Boolean excel_audit                 // Enable audit trail for Excel operations
+    
+    // List and display configuration
+    String listfields                   // Comma-separated fields to show in list view
+    String hiddenlistfields             // Fields to hide in list view
+    String excelfields                  // Fields to include in Excel export
+    String filterfields                 // Fields available for filtering
+    String searchfields                 // Fields searchable via search box
+    String defaultsort                  // Default sorting column
+    Integer defaultlimit                // Default number of records to show
+    String rolesort                     // Role-based sorting configuration
+    
+    // UI and interaction
+    String tickactions                  // Actions available via checkboxes
+    String actionbuttons                // Custom action buttons configuration
+    String condition_q                  // Additional WHERE condition (validated for security)
+    
+    // Database and processing
+    String datatable                    // Custom data table name (optional)
+    String trailtable                   // Custom audit trail table name (optional)
+    PortalPage postprocess              // Post-processing page to run after operations
+    
+    // Workflow configuration
+    PortalTrackerStatus initial_status  // Default status for new records
+    PortalTrackerField defaultfield     // Default field for display purposes
+    
+    // Transient properties (not persisted)
+    String sqlfieldnames               // Runtime field names for SQL generation
+    String sqlvalues                   // Runtime field values for SQL generation
+    String rowclassval                 // Groovy expression for row CSS classes
+    def curdatas=[:]                   // Current data context for operations
 
     String toString() {
         return name

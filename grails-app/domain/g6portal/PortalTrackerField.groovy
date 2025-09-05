@@ -3,6 +3,20 @@ package g6portal
 import groovy.sql.Sql
 import static grails.util.Holders.config
 
+/**
+ * PortalTrackerField defines individual form fields within a tracker system.
+ * Provides dynamic field types, validation, and database schema management.
+ * 
+ * Key features:
+ * - 16 different field types (Text, Integer, Date, User, File, etc.)
+ * - Dynamic database column creation and type mapping
+ * - Field validation and data type conversion
+ * - Complex field relationships (BelongsTo, HasMany)
+ * - Role-based field access control
+ * - Custom field options and formatting
+ * - Encryption support for sensitive fields
+ * - Integration with external objects via tracker_objects setting
+ */
 class PortalTrackerField {
 
     transient PortalService portalService

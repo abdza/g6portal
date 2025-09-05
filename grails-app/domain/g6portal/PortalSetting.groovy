@@ -1,5 +1,17 @@
 package g6portal
 
+/**
+ * PortalSetting domain class manages system-wide and module-specific configuration.
+ * Provides flexible storage for different data types with automatic parsing.
+ * 
+ * Features:
+ * - Multiple data types: Text, Array, Hashmap, Date, Number, XML
+ * - Type-safe value parsing with automatic conversions
+ * - Module-based configuration scoping
+ * - Static convenience methods for easy access
+ * - Support for default values when settings don't exist
+ * - Hierarchical lookups (module.setting fallback to global setting)
+ */
 class PortalSetting {
 
    static constraints = {

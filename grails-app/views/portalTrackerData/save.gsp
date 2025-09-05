@@ -26,6 +26,11 @@
                 <th style="width:20px;">Key Update</th>
               </tr>
               <g:each in="${portalTrackerData.tracker.fields.sort { it.name }}" var="field">
+              <g:if test="${setfields[field.id]=='custom' && customdata[field.id]}">
+                  <g:hiddenField name="datasource_${field.id}" value="custom"/>
+                  <g:hiddenField name="custom_${field.id}" value="${customdata[field.id]}"/>
+              </g:if>
+              <g:else>
                 <tr>
                   <td>
                     ${field.name}
@@ -50,6 +55,7 @@
                     <g:checkBox style="width: auto;" name="update_${field.id}"/>                  
                   </td>
                 </tr>
+              </g:else>
               </g:each>
             </table>
               <g:submitButton name="Upload"/>
