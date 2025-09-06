@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PortalTracker Quick Reference</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.5;
+            color: #333;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #17a2b8, #138496);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 25px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 2.2em;
+        }
+        
+        .header p {
+            margin: 8px 0 0 0;
+            font-size: 1.1em;
+            opacity: 0.95;
+        }
+        
+        .quick-nav {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 25px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+        }
+        
+        .nav-item {
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 4px solid #17a2b8;
+            text-decoration: none;
+            color: #495057;
+            transition: all 0.3s ease;
+        }
+        
+        .nav-item:hover {
+            background: #e9ecef;
+            transform: translateX(5px);
+            text-decoration: none;
+            color: #17a2b8;
+        }
+        
+        .nav-item h4 {
+            margin: 0 0 8px 0;
+            color: #17a2b8;
+            font-size: 1.1em;
+        }
+        
+        .nav-item p {
+            margin: 0;
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+        
+        .section {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 25px;
+        }
+        
+        .section h2 {
+            color: #17a2b8;
+            margin-top: 0;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e9ecef;
+            font-size: 1.6em;
+        }
+        
+        .section h3 {
+            color: #495057;
+            margin-top: 25px;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 6px;
+            border-left: 4px solid #28a745;
+        }
+        
+        .card.warning {
+            border-left-color: #ffc107;
+            background: #fff3cd;
+        }
+        
+        .card.info {
+            border-left-color: #17a2b8;
+            background: #d1ecf1;
+        }
+        
+        .card.danger {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+        }
+        
+        .card h4 {
+            margin: 0 0 12px 0;
+            color: #495057;
+            font-size: 1.1em;
+        }
+        
+        .code-snippet {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 14px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        
+        .api-method {
+            background: #e3f2fd;
+            padding: 12px;
+            border-radius: 4px;
+            margin: 10px 0;
+            border-left: 4px solid #2196f3;
+        }
+        
+        .api-method .method-name {
+            font-weight: bold;
+            color: #1976d2;
+            font-family: monospace;
+            font-size: 1.1em;
+        }
+        
+        .api-method .method-desc {
+            margin: 8px 0 0 0;
+            color: #555;
+        }
+        
+        .tracker-types {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .tracker-type {
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            border: 2px solid #e9ecef;
+        }
+        
+        .tracker-type.full-workflow {
+            border-color: #28a745;
+            background: #d4edda;
+        }
+        
+        .tracker-type.role-based {
+            border-color: #ffc107;
+            background: #fff3cd;
+        }
+        
+        .tracker-type.simple-data {
+            border-color: #17a2b8;
+            background: #d1ecf1;
+        }
+        
+        .tracker-type h4 {
+            margin: 0 0 12px 0;
+            font-size: 1.2em;
+        }
+        
+        .field-types {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 12px;
+            margin: 15px 0;
+        }
+        
+        .field-type {
+            background: white;
+            padding: 12px;
+            border-radius: 4px;
+            border: 1px solid #e9ecef;
+            font-size: 0.9em;
+        }
+        
+        .field-type .name {
+            font-weight: bold;
+            color: #17a2b8;
+            margin-bottom: 4px;
+        }
+        
+        .field-type .db-type {
+            color: #6c757d;
+            font-style: italic;
+            font-size: 0.85em;
+        }
+        
+        .workflow-steps {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin: 20px 0;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .workflow-step {
+            background: #17a2b8;
+            color: white;
+            padding: 12px 18px;
+            border-radius: 20px;
+            font-weight: bold;
+            flex: 1;
+            text-align: center;
+            min-width: 140px;
+        }
+        
+        .workflow-arrow {
+            font-size: 1.5em;
+            color: #17a2b8;
+            flex: 0;
+        }
+        
+        .import-export-flow {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border: 2px dashed #17a2b8;
+            margin: 20px 0;
+        }
+        
+        .import-export-flow h4 {
+            margin: 0 0 15px 0;
+            color: #17a2b8;
+            text-align: center;
+        }
+        
+        @media (max-width: 768px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+            
+            .workflow-steps {
+                flex-direction: column;
+            }
+            
+            .workflow-arrow {
+                transform: rotate(90deg);
+            }
+        }
+        
+        .highlight {
+            background: #fff3cd;
+            padding: 2px 6px;
+            border-radius: 3px;
+            border: 1px solid #ffeaa7;
+        }
+        
+        ul.feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        ul.feature-list li {
+            padding: 6px 0;
+            padding-left: 24px;
+            position: relative;
+        }
+        
+        ul.feature-list li:before {
+            content: "✓";
+            color: #28a745;
+            font-weight: bold;
+            position: absolute;
+            left: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>PortalTracker Quick Reference</h1>
+        <p>Essential guide for developers working with the PortalTracker system</p>
+    </div>
+
+    <div class="quick-nav">
+        <a href="#overview" class="nav-item">
+            <h4>🏗️ System Overview</h4>
+            <p>Core concepts and architecture</p>
+        </a>
+        <a href="#tracker-types" class="nav-item">
+            <h4>📊 Tracker Types</h4>
+            <p>Tracker, Statement, DataStore</p>
+        </a>
+        <a href="#fields" class="nav-item">
+            <h4>📝 Field Types</h4>
+            <p>17 field types and validation</p>
+        </a>
+        <a href="#workflow" class="nav-item">
+            <h4>🔄 Workflows</h4>
+            <p>Status transitions and roles</p>
+        </a>
+        <a href="#import-export" class="nav-item">
+            <h4>📥 Import/Export</h4>
+            <p>Excel and module migration</p>
+        </a>
+        <a href="#api" class="nav-item">
+            <h4>🔌 API Reference</h4>
+            <p>Key methods and endpoints</p>
+        </a>
+        <a href="#security" class="nav-item">
+            <h4>🔐 Security</h4>
+            <p>Role-based access control</p>
+        </a>
+        <a href="#troubleshooting" class="nav-item">
+            <h4>🔧 Troubleshooting</h4>
+            <p>Common issues and solutions</p>
+        </a>
+    </div>
+
+    <div class="section" id="overview">
+        <h2>🏗️ System Overview</h2>
+        
+        <p><strong>PortalTracker</strong> is a dynamic form and workflow management system that creates database tables and user interfaces on-the-fly based on configuration.</p>
+        
+        <div class="grid-2">
+            <div class="card info">
+                <h4>Key Components</h4>
+                <ul class="feature-list">
+                    <li><strong>PortalTracker</strong> - Main configuration</li>
+                    <li><strong>PortalTrackerField</strong> - Field definitions</li>
+                    <li><strong>PortalTrackerStatus</strong> - Workflow states</li>
+                    <li><strong>PortalTrackerTransition</strong> - State changes</li>
+                    <li><strong>PortalTrackerData</strong> - Excel import/export</li>
+                </ul>
+            </div>
+            
+            <div class="card">
+                <h4>Database Tables Created</h4>
+                <ul class="feature-list">
+                    <li><code>trak_{module}_{slug}_data</code> - Main data</li>
+                    <li><code>trak_{module}_{slug}_updates</code> - Audit trail</li>
+                    <li>Dynamic columns per field definition</li>
+                    <li>Automatic indexing for search/filter fields</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="workflow-steps">
+            <div class="workflow-step">Create Tracker</div>
+            <div class="workflow-arrow">→</div>
+            <div class="workflow-step">Define Fields</div>
+            <div class="workflow-arrow">→</div>
+            <div class="workflow-step">Setup Workflow</div>
+            <div class="workflow-arrow">→</div>
+            <div class="workflow-step">Data Entry</div>
+        </div>
+    </div>
+
+    <div class="section" id="tracker-types">
+        <h2>📊 Tracker Types</h2>
+        
+        <div class="tracker-types">
+            <div class="tracker-type full-workflow">
+                <h4>Tracker</h4>
+                <p><strong>Full Workflow System</strong></p>
+                <ul class="feature-list">
+                    <li>Status transitions</li>
+                    <li>Complete audit trail</li>
+                    <li>Role-based permissions</li>
+                    <li>Email notifications</li>
+                    <li>File attachments</li>
+                </ul>
+            </div>
+            
+            <div class="tracker-type role-based">
+                <h4>Statement</h4>
+                <p><strong>Role-Based Data</strong></p>
+                <ul class="feature-list">
+                    <li>Role-based access control</li>
+                    <li>Basic record status</li>
+                    <li>No audit trail</li>
+                    <li>Simpler permissions</li>
+                </ul>
+            </div>
+            
+            <div class="tracker-type simple-data">
+                <h4>DataStore</h4>
+                <p><strong>Simple Storage</strong></p>
+                <ul class="feature-list">
+                    <li>Pure data storage</li>
+                    <li>No roles or workflows</li>
+                    <li>Direct data access</li>
+                    <li>High performance</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="card warning">
+            <h4>⚠️ Choosing the Right Type</h4>
+            <p>Use <strong>DataStore</strong> for simple data, <strong>Statement</strong> for role-based access, and <strong>Tracker</strong> for full workflow requirements. Choose the minimal type needed for better performance.</p>
+        </div>
+    </div>
+
+    <div class="section" id="fields">
+        <h2>📝 Field Types & Database Mapping</h2>
+        
+        <div class="field-types">
+            <div class="field-type">
+                <div class="name">Text</div>
+                <div class="db-type">varchar(256)</div>
+            </div>
+            <div class="field-type">
+                <div class="name">Text Area</div>
+                <div class="db-type">text</div>
+            </div>
+            <div class="field-type">
+                <div class="name">Integer</div>
+                <div class="db-type">numeric(24,0)</div>
+            </div>
+            <div class="field-type">
+                <div class="name">Number</div>
+                <div class="db-type">decimal(24,6)</div>
+            </div>
+            <div class="field-type">
+                <div class="name">Date</div>
+                <div class="db-type">date</div>
+            </div>
+            <div class="field-type">
+                <div class="name">DateTime</div>
+                <div class="db-type">timestamp</div>
+            </div>
+            <div class="field-type">
+                <div class="name">Checkbox</div>
+                <div class="db-type">boolean</div>
+            </div>
+            <div class="field-type">
+                <div class="name">Drop Down</div>
+                <div class="db-type">varchar(256)</div>
+            </div>
+            <div class="field-type">
+                <div class="name">MultiSelect</div>
+                <div class="db-type">varchar(256)</div>
+            </div>
+            <div class="field-type">
+                <div class="name">User</div>
+                <div class="db-type">numeric(19,0) + index</div>
+            </div>
+            <div class="field-type">
+                <div class="name">File</div>
+                <div class="db-type">numeric(19,0) + index</div>
+            </div>
+            <div class="field-type">
+                <div class="name">BelongsTo</div>
+                <div class="db-type">numeric(19,0) + index</div>
+            </div>
+            <div class="field-type">
+                <div class="name">HasMany</div>
+                <div class="db-type">No column (display only)</div>
+            </div>
+            <div class="field-type">
+                <div class="name">TreeNode</div>
+                <div class="db-type">numeric(19,0) + index</div>
+            </div>
+            <div class="field-type">
+                <div class="name">Hidden</div>
+                <div class="db-type">varchar(256)</div>
+            </div>
+            <div class="field-type">
+                <div class="name">FieldGroup</div>
+                <div class="db-type">No column (UI only)</div>
+            </div>
+        </div>
+
+        <h3>Field Configuration Options</h3>
+        <div class="grid-2">
+            <div class="api-method">
+                <div class="method-name">field_options</div>
+                <div class="method-desc">Groovy script returning options (dropdown values, user lists, etc.)</div>
+            </div>
+            <div class="api-method">
+                <div class="method-name">field_default</div>
+                <div class="method-desc">Groovy script for default values (has access to session, curuser, sql)</div>
+            </div>
+            <div class="api-method">
+                <div class="method-name">field_format</div>
+                <div class="method-desc">Display formatting for BelongsTo relationships</div>
+            </div>
+            <div class="api-method">
+                <div class="method-name">hyperscript</div>
+                <div class="method-desc">Client-side scripting for dynamic UI behavior</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section" id="workflow">
+        <h2>🔄 Workflow & State Management</h2>
+        
+        <div class="grid-2">
+            <div class="card">
+                <h4>Status Properties</h4>
+                <ul class="feature-list">
+                    <li><span class="highlight">updateable</span> - Can modify records</li>
+                    <li><span class="highlight">attachable</span> - Can attach files</li>
+                    <li><span class="highlight">displayfields</span> - Fields to show</li>
+                    <li><span class="highlight">editfields</span> - Fields to edit</li>
+                    <li><span class="highlight">emailonupdate</span> - Email on status change</li>
+                </ul>
+            </div>
+            
+            <div class="card">
+                <h4>Transition Properties</h4>
+                <ul class="feature-list">
+                    <li><span class="highlight">prev_status</span> - Source status(es)</li>
+                    <li><span class="highlight">next_status</span> - Target status</li>
+                    <li><span class="highlight">roles</span> - Required roles</li>
+                    <li><span class="highlight">enabledcondition</span> - Groovy validation</li>
+                    <li><span class="highlight">postprocess</span> - PortalPage to run</li>
+                </ul>
+            </div>
+        </div>
+        
+        <h3>Role Types</h3>
+        <div class="grid-2">
+            <div class="api-method">
+                <div class="method-name">User Role</div>
+                <div class="method-desc">Traditional role matching via UserRole table or currentrole()</div>
+            </div>
+            <div class="api-method">
+                <div class="method-name">Data Compare</div>
+                <div class="method-desc">Dynamic role calculation using Groovy templates with data context</div>
+            </div>
+        </div>
+
+        <div class="code-snippet">// Example Data Compare role
+${curuser.id == datas.owner_id ? 'true' : 'false'}
+
+// Department-based access
+${curuser.department == datas.department ? 'true' : 'false'}</div>
+    </div>
+
+    <div class="section" id="import-export">
+        <h2>📥 Import/Export System</h2>
+        
+        <h3>Module Import/Export</h3>
+        <div class="import-export-flow">
+            <h4>Module Export Process</h4>
+            <div class="workflow-steps">
+                <div class="workflow-step">Select Module</div>
+                <div class="workflow-arrow">→</div>
+                <div class="workflow-step">Export JSON + Files</div>
+                <div class="workflow-arrow">→</div>
+                <div class="workflow-step">Create ZIP Archive</div>
+                <div class="workflow-arrow">→</div>
+                <div class="workflow-step">Download</div>
+            </div>
+        </div>
+
+        <div class="import-export-flow">
+            <h4>Module Import Process</h4>
+            <div class="workflow-steps">
+                <div class="workflow-step">Upload ZIP</div>
+                <div class="workflow-arrow">→</div>
+                <div class="workflow-step">Extract Files</div>
+                <div class="workflow-arrow">→</div>
+                <div class="workflow-step">Parse JSON</div>
+                <div class="workflow-arrow">→</div>
+                <div class="workflow-step">Create Objects</div>
+            </div>
+        </div>
+
+        <div class="grid-3">
+            <div class="card">
+                <h4>Module Export Includes</h4>
+                <ul class="feature-list">
+                    <li>PortalTracker definitions</li>
+                    <li>PortalPage content</li>
+                    <li>PortalSetting configurations</li>
+                    <li>FileLink references + files</li>
+                    <li>UserRole assignments (optional)</li>
+                </ul>
+            </div>
+            
+            <div class="card">
+                <h4>JSON Structure</h4>
+                <ul class="feature-list">
+                    <li><code>trackerlist.json</code> - Tracker definitions</li>
+                    <li><code>pagelist.json</code> - Page metadata</li>
+                    <li><code>settinglist.json</code> - Settings</li>
+                    <li><code>filelinkl</code> - File references</li>
+                    <li><code>/pages/</code> - GSP content files</li>
+                </ul>
+            </div>
+            
+            <div class="card">
+                <h4>Text Conversion</h4>
+                <ul class="feature-list">
+                    <li>g5portal → g6portal</li>
+                    <li>Date format conversions</li>
+                    <li>SimpleDateFormat updates</li>
+                    <li>Applied to all Groovy code</li>
+                </ul>
+            </div>
+        </div>
+
+        <h3>Excel Import/Export</h3>
+        
+        <div class="api-method">
+            <div class="method-name">Excel Import Process</div>
+            <div class="method-desc">Uses PortalTrackerData with intelligent header mapping via LongestCommonSubsequence algorithm</div>
+        </div>
+
+        <div class="code-snippet">// Excel Import API
+def dataImport = new PortalTrackerData(
+    tracker: tracker,
+    file_link: uploadedFile,
+    header_start: 1,
+    header_end: 1,
+    data_row: 2
+)
+
+// Auto-map headers to fields
+dataImport.fromFileLink(
+    [name: 'A', email: 'B'],  // manual mappings
+    null,                      // other params
+    ['name', 'email'],         // fields to update
+    ['id'],                    // fields to ignore
+    true                       // enable auto-search
+)
+
+// Process the import
+dataImport.update(mailService)</div>
+
+        <div class="api-method">
+            <div class="method-name">Excel Export Process</div>
+            <div class="method-desc">Uses SXSSFWorkbook for memory-efficient large dataset exports</div>
+        </div>
+
+        <div class="code-snippet">// Excel Export - triggered via controller
+// /portalTracker/list?excel=true
+// Uses excelfields configuration from tracker
+// Downloads as {slug}.xlsx</div>
+    </div>
+
+    <div class="section" id="api">
+        <h2>🔌 API Reference</h2>
+        
+        <h3>Core Static Methods</h3>
+        <div class="grid-2">
+            <div class="api-method">
+                <div class="method-name">PortalTracker.load_tracker(String)</div>
+                <div class="method-desc">Load tracker by 'module:slug' format</div>
+            </div>
+            <div class="api-method">
+                <div class="method-name">PortalTracker.get_value(String, String)</div>
+                <div class="method-desc">Get field value: 'module:slug:id', 'fieldname'</div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="api-method">
+                <div class="method-name">tracker.savedatas(Map)</div>
+                <div class="method-desc">Insert/update data with field validation</div>
+            </div>
+            <div class="api-method">
+                <div class="method-name">tracker.rows(Map)</div>
+                <div class="method-desc">Query data with security filtering</div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="api-method">
+                <div class="method-name">tracker.savetrail(params...)</div>
+                <div class="method-desc">Add audit trail entry (Tracker type only)</div>
+            </div>
+            <div class="api-method">
+                <div class="method-name">tracker.updatedb(dataSource)</div>
+                <div class="method-desc">Create/update database schema</div>
+            </div>
+        </div>
+
+        <h3>Controller Endpoints</h3>
+        <div class="grid-2">
+            <div class="api-method">
+                <div class="method-name">/portalTracker/list</div>
+                <div class="method-desc">List data with filtering, paging, security</div>
+            </div>
+            <div class="api-method">
+                <div class="method-name">/portalTracker/display_data/{id}</div>
+                <div class="method-desc">Show record with status-specific rendering</div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="api-method">
+                <div class="method-name">/portalTracker/create_data</div>
+                <div class="method-desc">Create record with initial status</div>
+            </div>
+            <div class="api-method">
+                <div class="method-name">/portalTracker/transition_submit</div>
+                <div class="method-desc">Process status transitions + notifications</div>
+            </div>
+        </div>
+
+        <h3>Query Parameter Examples</h3>
+        <div class="code-snippet">// Complex queries via rows() method
+def results = tracker.rows([
+    'and': [
+        name: '%john%',                    // LIKE search
+        status: ['active', 'pending'],     // IN clause
+        created_date: '>2023-01-01',      // Comparison
+        department: 'IT'                  // Exact match
+    ]
+], 'name ASC', 0, 50)  // order, offset, limit</div>
+    </div>
+
+    <div class="section" id="security">
+        <h2>🔐 Security & Access Control</h2>
+        
+        <div class="grid-3">
+            <div class="card">
+                <h4>Tracker Level</h4>
+                <ul class="feature-list">
+                    <li><span class="highlight">allowedroles</span> - Basic access</li>
+                    <li><span class="highlight">anonymous_list</span> - Public listing</li>
+                    <li><span class="highlight">require_login</span> - Force auth</li>
+                </ul>
+            </div>
+            
+            <div class="card">
+                <h4>Status Level</h4>
+                <ul class="feature-list">
+                    <li><span class="highlight">editroles</span> - Edit permissions</li>
+                    <li><span class="highlight">updateallowedroles</span> - Trail visibility</li>
+                    <li><span class="highlight">updateable</span> - Modify allowed</li>
+                </ul>
+            </div>
+            
+            <div class="card">
+                <h4>Field Level</h4>
+                <ul class="feature-list">
+                    <li><span class="highlight">is_encrypted</span> - Encryption</li>
+                    <li><span class="highlight">role_query</span> - Visibility rules</li>
+                    <li><span class="highlight">encode_exception</span> - HTML escape</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card danger">
+            <h4>🔒 Security Features</h4>
+            <ul class="feature-list">
+                <li><strong>SQL Injection Protection</strong> - All queries use parameterized statements</li>
+                <li><strong>Automatic Data Filtering</strong> - Role-based row-level security</li>
+                <li><strong>Field Encryption</strong> - CryptoUtilsFile integration</li>
+                <li><strong>Audit Logging</strong> - All operations logged to PortalErrorLog</li>
+            </ul>
+        </div>
+
+        <div class="code-snippet">// Role resolution process
+def user_roles = tracker.user_roles(currentUser, dataRecord)
+// 1. Check Admin status
+// 2. Evaluate User Role assignments  
+// 3. Execute Data Compare Groovy rules
+// 4. Return matching roles for permission checks</div>
+    </div>
+
+    <div class="section" id="troubleshooting">
+        <h2>🔧 Common Issues & Solutions</h2>
+        
+        <div class="grid-2">
+            <div class="card warning">
+                <h4>⚠️ Table Not Created</h4>
+                <p><strong>Symptom:</strong> "Table doesn't exist" errors</p>
+                <p><strong>Solution:</strong> Call <code>tracker.updatedb(dataSource)</code> or save the tracker</p>
+            </div>
+            
+            <div class="card warning">
+                <h4>⚠️ Field Missing from DB</h4>
+                <p><strong>Symptom:</strong> New fields not in queries</p>
+                <p><strong>Solution:</strong> Save the PortalTrackerField to trigger schema update</p>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="card warning">
+                <h4>⚠️ Role Access Denied</h4>
+                <p><strong>Symptom:</strong> Users can't see expected data</p>
+                <p><strong>Solution:</strong> Check UserRole assignments and Data Compare rules</p>
+            </div>
+            
+            <div class="card warning">
+                <h4>⚠️ Excel Import Failing</h4>
+                <p><strong>Symptom:</strong> No data imported or errors</p>
+                <p><strong>Solution:</strong> Check field mappings, data types, header row config</p>
+            </div>
+        </div>
+
+        <h3>Debug Settings</h3>
+        <div class="code-snippet">// Enable in PortalSetting
+debug_dataupdate = 1                 // Data operation debugging
+emailrolepageerror = 'admin@co.com'  // Role error notifications  
+emailpageerror = 'admin@co.com'      // Page error notifications</div>
+
+        <h3>Performance Tips</h3>
+        <div class="card info">
+            <h4>🚀 Optimization Strategies</h4>
+            <ul class="feature-list">
+                <li>Use minimal tracker type (DataStore < Statement < Tracker)</li>
+                <li>Limit searchfields and filterfields to essential fields</li>
+                <li>Create appropriate indexes via PortalTrackerIndex</li>
+                <li>Use pagination for large datasets</li>
+                <li>Monitor query performance with debug settings</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>🔗 Integration with PortalPage</h2>
+        
+        <div class="grid-2">
+            <div class="api-method">
+                <div class="method-name">tracker.postprocess</div>
+                <div class="method-desc">PortalPage executed after data updates</div>
+            </div>
+            <div class="api-method">
+                <div class="method-name">transition.postprocess</div>
+                <div class="method-desc">PortalPage executed after transitions</div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="api-method">
+                <div class="method-name">email.body</div>
+                <div class="method-desc">PortalPage as email template with GSP processing</div>
+            </div>
+            <div class="api-method">
+                <div class="method-name">Auto-generated pages</div>
+                <div class="method-desc">{slug}_list, {slug}_show_{status}, {slug}_edit</div>
+            </div>
+        </div>
+
+        <div class="code-snippet">// Page resolution priority:
+// 1. {slug}_show_{status_name}     (status-specific)
+// 2. {slug}_show_default           (default view)  
+// 3. tracker_default_display       (fallback template)</div>
+    </div>
+
+    <div style="text-align: center; margin-top: 40px; padding: 30px; background: linear-gradient(135deg, #f8f9fa, #e9ecef); border-radius: 8px;">
+        <h3 style="color: #17a2b8; margin-bottom: 15px;">📚 Reference Complete</h3>
+        <p style="color: #495057; margin: 0;">
+            This quick reference covers the essential PortalTracker functionality.<br>
+            For detailed examples and advanced features, refer to the comprehensive documentation.
+        </p>
+    </div>
+
+    <script>
+        // Add smooth scrolling for navigation links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+
+    <function_calls>
+<invoke name="TodoWrite">
+<parameter name="todos">[{"id": "1", "content": "Research PortalTracker import/export functionality", "status": "completed"}, {"id": "2", "content": "Analyze PortalModule integration points", "status": "completed"}, {"id": "3", "content": "Understand data export mechanisms", "status": "completed"}, {"id": "4", "content": "Document import/export workflows", "status": "completed"}, {"id": "5", "content": "Create quick reference documentation", "status": "completed"}]
