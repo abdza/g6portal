@@ -739,7 +739,7 @@ class PortalTracker {
                             query = "select top 1 id from " + data_table() + " where "
                         }
                         if(datas && datas['id'] ){
-                            query += " id= " + datas['id'] + " and " + hasileval
+                            query += " id=:record_id and " + hasileval
                         }
                         else{
                             query += hasileval
@@ -747,7 +747,11 @@ class PortalTracker {
                         if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                             query += " limit 1"
                         }
-                        def data = raw_firstRow(query)
+                        def queryParams = [:]
+                        if(datas && datas['id']) {
+                            queryParams['record_id'] = datas['id']
+                        }
+                        def data = raw_firstRow(query, queryParams)
                         if(data){
                             cuser_roles << role
                         }
@@ -1529,6 +1533,39 @@ class PortalTracker {
                                         def settingname = module + '.' + slug + '_upload_path'
                                         if(uploadedfile){
                                             if(uploadedfile.originalFilename.size()>0){
+                                                // Enhanced file upload security validations
+                                                def filename = uploadedfile.originalFilename.toLowerCase()
+                                                def allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'zip']
+                                                def extension = filename.substring(filename.lastIndexOf('.') + 1)
+                                                
+                                                // Check file extension
+                                                if(!(extension in allowedExtensions)) {
+                                                    PortalErrorLog.record(params, curuser, 'tracker', 'upload_blocked', 
+                                                        "Blocked upload of file with disallowed extension: " + extension, 
+                                                        this.slug, this.module)
+                                                    validfield = false
+                                                    return
+                                                }
+                                                
+                                                // Check file size (10MB default limit)
+                                                def maxFileSize = 10 * 1024 * 1024 // 10MB
+                                                if(uploadedfile.size > maxFileSize) {
+                                                    PortalErrorLog.record(params, curuser, 'tracker', 'upload_blocked', 
+                                                        "Blocked upload of oversized file: " + uploadedfile.size + " bytes", 
+                                                        this.slug, this.module)
+                                                    validfield = false
+                                                    return
+                                                }
+                                                
+                                                // Check for empty files
+                                                if(uploadedfile.size == 0) {
+                                                    PortalErrorLog.record(params, curuser, 'tracker', 'upload_blocked', 
+                                                        "Blocked upload of empty file: " + uploadedfile.originalFilename, 
+                                                        this.slug, this.module)
+                                                    validfield = false
+                                                    return
+                                                }
+                                                
                                                 def defaultfolder = System.getProperty("user.dir").toString() + '/uploads/' + slug
                                                 def folderbasepath = PortalSetting.namedefault(settingname,defaultfolder) + '/' + curdatas['id']
                                                 def fileprepend = ''
@@ -1551,7 +1588,14 @@ class PortalTracker {
                                                     if(!folderbase.exists()){
                                                         folderbase.mkdirs()
                                                     }
-                                                    def copytarget = folderbasepath+'/'+fileprepend+uploadedfile.originalFilename
+                                                    // Sanitize filename to prevent directory traversal and malicious names
+                                                    def sanitizedFilename = uploadedfile.originalFilename
+                                                        .replaceAll(/[\/\\]/, '_')  // Remove path separators  
+                                                        .replaceAll(/[^a-zA-Z0-9.\_-]/, '_')  // Keep only safe characters
+                                                        .replaceAll(/\.+/, '.')  // Remove multiple dots
+                                                        .replaceAll(/^\./, '_')  // Don't start with dot
+                                                    
+                                                    def copytarget = folderbasepath+'/'+fileprepend+sanitizedFilename
                                                     def thetarget = new File(copytarget)
                                                     if(thetarget.exists()){
                                                         def appendfile = 1
@@ -1569,13 +1613,13 @@ class PortalTracker {
                                                     uploadedfile.transferTo(thetarget)
                                                     if(thetarget.exists()){
                                                         attachment = new FileLink(
-                                                            name: uploadedfile.originalFilename,
+                                                            name: sanitizedFilename,
                                                             path: thetarget,
                                                             module: module,
                                                             slug: key+'_'+curdatas['id']+'_'+(new Date()).format('yyyyMMddHHmm'),
                                                             tracker_data_id: params.id,
                                                             tracker_id: this.id,
-                                                            size: (int) uploadedfile.size  // ADD THIS LINE
+                                                            size: (int) uploadedfile.size
                                                         )
                                                         if(attachment.save()){
                                                             validfield = true
@@ -1746,23 +1790,27 @@ class PortalTracker {
                         if(tfield.field_type=='BelongsTo') {
                             def othertracker = tfield.othertracker()
                             if(othertracker){
+                                def searchParamKey = "search_belongsto_" + tfield.name
                                 if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
-                                    likequery << tfield.name + " in (select id from " + othertracker.data_table() + " where " + tfield.field_format + " ilike '%" + params.search + "%')"
+                                    likequery << tfield.name + " in (select id from " + othertracker.data_table() + " where " + tfield.field_format + " ilike :" + searchParamKey + ")"
                                 }
                                 else {
-                                    likequery << tfield.name + " in (select id from " + othertracker.data_table() + " where " + tfield.field_format + " like '%" + params.search + "%')"
+                                    likequery << tfield.name + " in (select id from " + othertracker.data_table() + " where " + tfield.field_format + " like :" + searchParamKey + ")"
 
                                 }
+                                qparams[searchParamKey] = '%' + params.search + '%'
                             }
                         }
                         else if(tfield.field_type=='User'){
+                            def userSearchKey = "search_user_" + tfield.name
                             if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
-                                likequery << tfield.name + " in (select id from portal_user where name ilike '%" + params.search + "%' or StaffId ilike '%" + params.search + "%' or EMAIL ilike '%" + params.search + "%')"
+                                likequery << tfield.name + " in (select id from portal_user where name ilike :" + userSearchKey + " or StaffId ilike :" + userSearchKey + " or EMAIL ilike :" + userSearchKey + ")"
                             }
                             else {
-                                likequery << tfield.name + " in (select id from portal_user where name like '%" + params.search + "%' or StaffId like '%" + params.search + "%' or EMAIL like '%" + params.search + "%')"
+                                likequery << tfield.name + " in (select id from portal_user where name like :" + userSearchKey + " or StaffId like :" + userSearchKey + " or EMAIL like :" + userSearchKey + ")"
 
                             }
+                            qparams[userSearchKey] = '%' + params.search + '%'
                         }
                         else{
                             // likequery << tfield.name + " like '%" + params.search.replace("'","''") + "%'"
@@ -1782,7 +1830,13 @@ class PortalTracker {
                 }
                 else if(curkey=='eventdatequery'){
                     def ddates = curval.tokenize('_')*.trim()
-                    condition << " (start_date between '" + ddates[0] + "' and '" + ddates[1] + "') or (end_date between '" + ddates[0] + "' and '" + ddates[1] + "')"
+                    if(ddates.size() == 2) {
+                        def startDateKey = "eventdate_start_" + Math.abs(curval.hashCode())
+                        def endDateKey = "eventdate_end_" + Math.abs(curval.hashCode())
+                        condition << " (start_date between :" + startDateKey + " and :" + endDateKey + ") or (end_date between :" + startDateKey + " and :" + endDateKey + ")"
+                        qparams[startDateKey] = ddates[0]
+                        qparams[endDateKey] = ddates[1]
+                    }
                 }
                 else if(!(curkey in ['slug','module','action','controller','max','offset'])){
                     def tfield = PortalTrackerField.createCriteria().get(){
@@ -1794,7 +1848,17 @@ class PortalTracker {
                             if(tfield.field_type in ['Date','DateTime']) {
                                 def dparts = curval.tokenize('-')
                                 if(dparts.size()==2){
-                                    condition << "datepart(YEAR," + curkey + ")=" + dparts[0] + " and datepart(MONTH," + curkey + ")=" + dparts[1]  + " "
+                                    def yearKey = curkey + "_year"
+                                    def monthKey = curkey + "_month"
+                                    try {
+                                        def year = Integer.parseInt(dparts[0])
+                                        def month = Integer.parseInt(dparts[1])
+                                        condition << "datepart(YEAR," + curkey + ")=:" + yearKey + " and datepart(MONTH," + curkey + ")=:" + monthKey + " "
+                                        qparams[yearKey] = year
+                                        qparams[monthKey] = month
+                                    } catch(NumberFormatException e) {
+                                        // Invalid date format, skip condition
+                                    }
                                 }
                                 else {
                                     if(curval.size()>8 && curval[0..6]=='between'){
@@ -1817,7 +1881,13 @@ class PortalTracker {
                             }
                             else if(tfield.field_type=='Text' && curval.size()>8 && curval[0..6]=='between'){
                                 def ddates = curval[8..-1].tokenize('_')*.trim()
-                                condition << curkey + " between '" + ddates[0] + "' and '" + ddates[1] + "'"
+                                if(ddates.size() == 2) {
+                                    def betweenStartKey = curkey + "_between_start"
+                                    def betweenEndKey = curkey + "_between_end"
+                                    condition << curkey + " between :" + betweenStartKey + " and :" + betweenEndKey
+                                    qparams[betweenStartKey] = ddates[0]
+                                    qparams[betweenEndKey] = ddates[1]
+                                }
                             }
                             else{
                                 if(tfield.field_type == 'Drop Down'){
@@ -1847,7 +1917,8 @@ class PortalTracker {
                             }
                         }
                         else{
-                            condition << curkey + "=" + curval
+                            condition << curkey + "=:" + curkey
+                            qparams[curkey] = curval
                             if(tfield.field_type=='BelongsTo'){
                                 querylinked = true
                             }

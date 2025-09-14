@@ -163,9 +163,27 @@ class PortalModuleController {
               def f = request.getFile('fileupload')
               if (!f.empty) {
                   def fileName = f.originalFilename
+                  
+                  // Enhanced security validation for file imports
+                  if(!fileName.toLowerCase().endsWith('.zip')) {
+                      flash.error = 'Only ZIP files are allowed for module imports'
+                      return
+                  }
+                  
+                  // Check file size limit (50MB for module imports)
+                  def maxFileSize = 50 * 1024 * 1024 // 50MB
+                  if(f.size > maxFileSize) {
+                      flash.error = 'File too large. Maximum size is 50MB.'
+                      return
+                  }
+                  
+                  // Sanitize filename to prevent directory traversal
+                  def sanitizedFileName = fileName.replaceAll(/[\/\\]/, '_')
+                                                 .replaceAll(/[^a-zA-Z0-9.\_-]/, '_')
+                  
                   def curfolder = System.getProperty("user.dir")
                   def migrationfolder = PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration')
-                  def modulename = fileName[0..-5]
+                  def modulename = sanitizedFileName[0..-5] // Remove .zip extension
                   println "Importing from " + fileName + " for module " + modulename
                   def destfolder = PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration') + '/' + modulename
                   println "Dest folder:" + destfolder

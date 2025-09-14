@@ -206,16 +206,103 @@ class FileLinkController {
             filelink = FileLink.find("from FileLink as fl where fl.slug=:slug",[slug:slugroot[0]],[cache:true])
         }
         if(params.id){
-            filelink = FileLink.get(params.id)
+            // Validate ID is numeric to prevent injection
+            try {
+                Long.parseLong(params.id.toString())
+                filelink = FileLink.get(params.id)
+            } catch (NumberFormatException e) {
+                response.status = 400
+                render(text: "Invalid file ID")
+                return
+            }
         }
-        if(filelink && filelink.path){            
+        
+        if(filelink && filelink.path){
+            // Security check: verify user has permission to access this file
+            def hasAccess = false
+            
+            // Check if user is authenticated
+            if(!session.userid) {
+                response.status = 401
+                render(text: "Authentication required")
+                return
+            }
+            
+            // Check if user is admin or has access to the file's module
+            if(session.enablesuperuser) {
+                hasAccess = true
+            } else if(session.adminmodules && filelink.module) {
+                hasAccess = (filelink.module in session.adminmodules)
+            } else if(filelink.tracker_id) {
+                // Check if user has access to the tracker that owns this file
+                def tracker = PortalTracker.get(filelink.tracker_id)
+                if(tracker && session.curuser) {
+                    def userRoles = tracker.user_roles(session.curuser)
+                    hasAccess = userRoles.size() > 0
+                }
+            }
+            
+            if(!hasAccess) {
+                response.status = 403
+                render(text: "Access denied")
+                return
+            }
+            
             def thefile = new File(filelink.path)
+            
+            // Security: Validate file path to prevent directory traversal
+            def canonicalPath = thefile.getCanonicalPath()
+            def basePath = System.getProperty("user.dir") + "/uploads"
+            def baseCanonical = new File(basePath).getCanonicalPath()
+            
+            if(!canonicalPath.startsWith(baseCanonical)) {
+                response.status = 403  
+                render(text: "Invalid file path")
+                return
+            }
+            
             if(thefile.exists()){
                 try{
+                    // Enhanced file type validation
+                    def allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'zip']
+                    def filename = thefile.getName().toLowerCase()
+                    def extension = filename.substring(filename.lastIndexOf('.') + 1)
+                    
+                    if(!(extension in allowedExtensions)) {
+                        PortalErrorLog.record(params, session.curuser, 'filelink', 'download', 
+                            "Blocked download of file with disallowed extension: " + extension, 
+                            filelink.slug, filelink.module)
+                        response.status = 403
+                        render(text: "File type not allowed")
+                        return
+                    }
+                    
+                    // Check file size limit (10MB default)
+                    def maxFileSize = 10 * 1024 * 1024 // 10MB
+                    if(thefile.size() > maxFileSize) {
+                        PortalErrorLog.record(params, session.curuser, 'filelink', 'download', 
+                            "Blocked download of oversized file: " + thefile.size() + " bytes", 
+                            filelink.slug, filelink.module)
+                        response.status = 413
+                        render(text: "File too large")
+                        return
+                    }
+                    
                     response.setContentType("application/octet-stream")
-                    response.setHeader("Content-disposition", "attachment;filename=${thefile.getName().replace(' ','_')}")
+                    response.setHeader("Content-disposition", "attachment;filename=${thefile.getName().replace(' ','_').replaceAll('[^a-zA-Z0-9._-]', '_')}")
+                    
                     if(params.thumbsize){
-                        resize(thefile.getBytes(),response.outputStream,params.int('thumbsize'),params.int('thumbsize'))
+                        // Validate thumbsize parameter 
+                        def thumbSize = 0
+                        try {
+                            thumbSize = Integer.parseInt(params.thumbsize.toString())
+                            if(thumbSize < 1 || thumbSize > 500) {
+                                thumbSize = 150 // default
+                            }
+                        } catch (NumberFormatException e) {
+                            thumbSize = 150 // default
+                        }
+                        resize(thefile.getBytes(),response.outputStream,thumbSize,thumbSize)
                     }
                     else{
                         def bis = null
@@ -224,19 +311,35 @@ class FileLinkController {
                             response.outputStream << bis
                         }
                         finally {
-                            bis.close()
+                            bis?.close()
                             response.outputStream.flush()
                         }
                     }
+                    
+                    // Log successful download
+                    PortalErrorLog.record(params, session.curuser, 'filelink', 'download_success', 
+                        "Downloaded file: " + thefile.getName(), 
+                        filelink.slug, filelink.module)
                     return
                 }
                 catch(Exception ex){
-                    println "Got error download file " + thefile + ":" + ex
+                    PortalErrorLog.record(params, session.curuser, 'filelink', 'download_error', 
+                        "Error downloading file " + thefile + ": " + ex.toString(), 
+                        filelink.slug, filelink.module)
+                    response.status = 500
+                    render(text: "Error downloading file")
                 }
             }
             else{
-                println "File " + thefile + " does not exist"
+                PortalErrorLog.record(params, session.curuser, 'filelink', 'file_not_found', 
+                    "File does not exist: " + thefile, 
+                    filelink.slug, filelink.module)
+                response.status = 404
+                render(text: "File not found")
             }
+        } else {
+            response.status = 404
+            render(text: "File not found")
         }
     }
 }
