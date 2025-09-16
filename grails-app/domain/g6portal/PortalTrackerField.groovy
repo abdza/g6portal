@@ -101,6 +101,7 @@ class PortalTrackerField {
     }
 
     def updatedb(datasource){
+        println "In field updatedb for :" + this
         if(this.field_type!='FieldGroup'){
             def createindex = false
             def sqltype = 'varchar(256)'
@@ -142,8 +143,10 @@ class PortalTrackerField {
             }
             if(this.field_type!='HasMany') {
                 try{
+                    def query = ''
+                    println "Will create: select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.tracker.data_table() + "' and COLUMN_NAME = '" + this.name.trim() + "'"
                     if(!sql.firstRow("select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.tracker.data_table() + "' and COLUMN_NAME = '" + this.name.trim() + "'")){
-                        def query = ''
+                        println "Field not found"
                         if(config.dataSource.url.contains("jdbc:postgresql")){
                             query = 'alter table "' + this.tracker.data_table() + '" add "' + this.name.trim() + '" ' + sqltype + ' NULL' 
                         }
@@ -153,11 +156,6 @@ class PortalTrackerField {
                         println "Updatedb query:" + query
                         sql.execute(query)
                     }
-                    else {
-                        query = "alter table " + this.tracker.data_table() + " add [" + this.name + "] " + sqltype + " NULL" 
-                    }
-                    println "Updatedb query:" + query
-                    sql.execute(query)
                     if(createindex) {
                         def tablename = this.tracker.data_table()
                         def fname = this.name
