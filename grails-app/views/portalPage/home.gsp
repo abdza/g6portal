@@ -11,8 +11,8 @@
 	${raw(content)}
 </g:if>
 <g:else>
-	<h1>Welcome to IKRAM Serdang Portal</h1>
-	<p>Ukhuwwah Teras Kegemilangan</p>
+	<h1>Welcome to G6Portal</h1>
+	<p>Your easy workflow builder portal</p>
 </g:else>
     </div>
     </body>
