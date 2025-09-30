@@ -775,7 +775,7 @@ class PortalTracker {
         return queries
     }
 
-    def updatetrail(params,session,request,curuser,datasource) {
+    def updatetrail(params,session,request,curuser,datasource,groovyPagesTemplateEngine=null,portalService=null) {
         def curstatus = row_status(datasource,params.id)
         def maxid = null
         if(tracker_type=='Tracker') {
@@ -906,6 +906,7 @@ class PortalTracker {
             updatebinding.setVariable("session",session)
             curdatas['update_desc']=params.statusUpdateDesc
             updatebinding.setVariable("datas",curdatas)
+            updatebinding.setVariable("portalService",portalService)
             def shell = new GroovyShell(this.class.classLoader,updatebinding)
             def email = curstatus.emailonupdate
             def toccs = null
@@ -919,7 +920,7 @@ class PortalTracker {
             catch(Exception e){
                 PortalErrorLog.record(params,curuser,'tracker','updatetrail - tosend and toccs',e.toString(),this.slug)
             }
-            def emailcontent = email.evalbody(curdatas)
+            def emailcontent = email.evalbody(curdatas,groovyPagesTemplateEngine,portalService)
             try {
                 mailService.sendMail {
                     to tosend
@@ -1335,6 +1336,7 @@ class PortalTracker {
                     }
                 }
                 try {
+                    session['datas'] = getdatas(params.id)
                     query = "delete from " + data_table() + " where id=:id"
                     sql.execute(query,['id':params.id])
                 }

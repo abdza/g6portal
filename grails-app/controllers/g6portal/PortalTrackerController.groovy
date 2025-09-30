@@ -915,17 +915,20 @@ class PortalTrackerController {
                     /* this is the part where we actually create or update the data */
                     datas = tracker.updaterecord(params,request,session,sql,defaultfields)
                     datas = tracker.getdatas(datas['id'],sql)
+                    if(!datas && session['datas']) {
+                        datas = session['datas']
+                    }
                     def postoutput = null
                     /* end of create or update data */
                     if(ctrans && datas) {
                         def trail_id = null
                         if(ctrans.updatetrails) {
-                            params.statusUpdateDesc = ctrans.updatetrail(session,datas)
+                            params.statusUpdateDesc = ctrans.updatetrail(session,datas,portalService)
                         }
                         /* then we update the trail */
                         if(tracker.tracker_type!='DataStore') {
                             // println "Updating trail first"
-                            trail_id = tracker.updatetrail(params,session,request,curuser,datasource)
+                            trail_id = tracker.updatetrail(params,session,request,curuser,datasource,groovyPagesTemplateEngine,portalService)
                         }
                         if(ctrans.postprocess){
                             try {
@@ -939,6 +942,7 @@ class PortalTrackerController {
                                 binding.setVariable("tracker",tracker)
                                 binding.setVariable("curuser",curuser)
                                 binding.setVariable("trail_id",trail_id)
+                                binding.setVariable("portalService",portalService)
                                 binding.setVariable("mailService",mailService)
                                 def shell = new GroovyShell(this.class.classLoader,binding)
                                 postoutput = shell.evaluate(ctrans.postprocess.content)
@@ -951,6 +955,9 @@ class PortalTrackerController {
                             }
                         }
                         datas = tracker.getdatas(datas['id'])
+                        if(!datas && session['datas']) {
+                            datas = session['datas']
+                        }
                         Binding updatebinding = new Binding()
                         updatebinding.setVariable("session",session)
                         datas['update_desc']=params.statusUpdateDesc
@@ -982,7 +989,7 @@ class PortalTrackerController {
                                 println "Error processing email to: " + e
                             }
                             if(tosend) {
-                                def emailcontent = email.evalbody(datas,groovyPagesTemplateEngine)
+                                def emailcontent = email.evalbody(datas,groovyPagesTemplateEngine,portalService)
                                 try {
                                     def sendemail = new PortalEmail()
                                     sendemail.emailto = tosend
@@ -1010,6 +1017,9 @@ class PortalTrackerController {
                                 }
                             }
                         }
+                    }
+                    if(session['datas']) {
+                        session['datas'] = null
                     }
 
                     /* then redirect to where we were supposed to go */

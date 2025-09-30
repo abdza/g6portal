@@ -38,16 +38,16 @@ class PortalTrackerEmail {
         return name 
     }
 
-    def evalbody(datas,groovyPagesTemplateEngine){
+    def evalbody(datas,groovyPagesTemplateEngine,portalService=null){
         def toeval = this.body?.content
         def bodyoutput = new StringWriter()
         def titleoutput = new StringWriter()
         def bodyreturn = null
         try{
-            def lastdate = 	new java.text.SimpleDateFormat('yyyyMMddHHmmss').format(this.body?.lastUpdated)  
+            def lastdate = 	new java.text.SimpleDateFormat('yyyyMMddHHmmss').format(this.body?.lastUpdated)
             def location = "page_" + this.id + lastdate
             Template template = groovyPagesTemplateEngine.createTemplate(toeval,location)
-            template.make([datas:datas]).writeTo(bodyoutput)                
+            template.make([datas:datas,portalService:portalService]).writeTo(bodyoutput)
             bodyreturn = bodyoutput.toString()
         }
         catch(Exception e){
@@ -68,10 +68,10 @@ Params: ''' + params
         toeval = this.body?.title
         def titlereturn = null
         try{
-            def lastdate = 	new java.text.SimpleDateFormat('yyyyMMddHHmmss').format(this.body?.lastUpdated)  
+            def lastdate = 	new java.text.SimpleDateFormat('yyyyMMddHHmmss').format(this.body?.lastUpdated)
             def location = "title_" + this.id + lastdate
             Template template = groovyPagesTemplateEngine.createTemplate(toeval,location)
-            template.make([datas:datas]).writeTo(titleoutput)                
+            template.make([datas:datas,portalService:portalService]).writeTo(titleoutput)
             titlereturn = titleoutput.toString()
         }
         catch(Exception e){

@@ -70,7 +70,7 @@ class PortalTrackerTransition {
       return name
     }
 
-    def sendemails(params,session,sql) {
+    def sendemails(params,session,sql,groovyPagesTemplateEngine=null,portalService=null) {
         if(!params.id){
             params.id = sql.firstRow("select top 1 id from " + tracker.data_table() + " order by id desc")[0]
         }
@@ -80,6 +80,7 @@ class PortalTrackerTransition {
         Binding binding = new Binding()
         binding.setVariable("session",session)
         binding.setVariable("datas",curdatas)
+        binding.setVariable("portalService",portalService)
         def shell = new GroovyShell(this.class.classLoader,binding)
         emails.each { email->
             def toccs = null
@@ -87,7 +88,7 @@ class PortalTrackerTransition {
             if(email.emailcc){
                 toccs = shell.evaluate(email.emailcc)
             }
-            def emailcontent = email.evalbody(curdatas)
+            def emailcontent = email.evalbody(curdatas,groovyPagesTemplateEngine,portalService)
             try {
                 mailService.sendMail {
                     to tosend
@@ -158,13 +159,14 @@ class PortalTrackerTransition {
       }
     }
 
-    def updatetrail(session,datas){
+    def updatetrail(session,datas,portalService=null){
         if(!updatetrails){
             return false
         }
         Binding binding = new Binding()
         binding.setVariable("session",session)
         binding.setVariable("datas",datas)
+        binding.setVariable("portalService",portalService)
         try {
             def shell = new GroovyShell(this.class.classLoader,binding)
             return shell.evaluate(updatetrails)

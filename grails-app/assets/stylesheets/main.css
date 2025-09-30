@@ -613,11 +613,11 @@ div.fieldcontain .select2-container--open {
 .navbar .megamenu{ padding: 1rem; }
 /* ============ desktop view ============ */
 @media all and (min-width: 992px) {
-	
+
 	nav .has-megamenu{position:static!important;}
-	nav .megamenu{left:0; right:0; width:100%; margin-top:0;  }
-	
-}	
+	nav .megamenu{left:0; right:0; width:100%; margin-top:0; max-height: 80vh; overflow-y: auto; }
+
+}
 /* ============ desktop view .end// ============ */
 
 
@@ -627,6 +627,10 @@ div.fieldcontain .select2-container--open {
 		overflow-y: auto;
 	    max-height: 90vh;
 	    margin-top:10px;
+	}
+	.megamenu {
+		max-height: 70vh;
+		overflow-y: auto;
 	}
 }
 /* ============ mobile view .end// ============ */

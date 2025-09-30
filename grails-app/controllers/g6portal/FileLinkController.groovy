@@ -72,6 +72,14 @@ class FileLinkController {
                     render(view: 'create')
                     return
                 }
+                // Validate file security before processing
+                def filemanagermax = PortalSetting.namedefault('filemanager_max_' + session.curuser?.staffID,50000)
+                def validationResult = FileSecurityValidator.validateFile(f,null,filemanagermax)
+                if (!validationResult.valid) {
+                    flash.message = "File upload failed: ${validationResult.errors.join(', ')}"
+                    respond fileLink.errors, view:'create'
+                    return
+                }
                 def fileName = f.originalFilename
                 def curfolder = System.getProperty("user.dir")
                 def folderbase = PortalSetting.namedefault('uploadfolder',curfolder + '/uploads')
@@ -127,6 +135,14 @@ class FileLinkController {
             try {
                 def f = request.getFile('fileupload')
                 if (!f.empty) {
+                    // Validate file security before processing
+                    def filemanagermax = PortalSetting.namedefault('filemanager_max_' + session.curuser?.staffID,50000)
+                    def validationResult = FileSecurityValidator.validateFile(f,null,filemanagermax)
+                    if (!validationResult.valid) {
+                        flash.message = "File upload failed: ${validationResult.errors.join(', ')}"
+                        respond fileLink.errors, view:'edit'
+                        return
+                    }
                     def fileName = f.originalFilename
                     def curfolder = System.getProperty("user.dir")
                     def folderbase = PortalSetting.namedefault('uploadfolder',curfolder + '/uploads')

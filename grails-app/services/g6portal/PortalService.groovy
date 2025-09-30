@@ -23,6 +23,20 @@ class PortalService {
     def sessionFactory
     LinkGenerator grailsLinkGenerator
 
+    public yesno(yndata,defaultdata='No') {
+        if(yndata.size()) {
+            if(yndata.toLowerCase()[0]=='n') {
+                return 'No'
+            }
+            else if(yndata.toLowerCase()[0]=='y') {
+                return 'Yes'
+            }
+        }
+        else {
+            return defaultdata
+        }
+    }
+
     public field_error_messages(curfield,val,params,curuser) {
         def errormsg = []
         def goterror = false

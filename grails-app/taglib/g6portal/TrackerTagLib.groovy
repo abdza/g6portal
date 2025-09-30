@@ -1067,7 +1067,10 @@ content: event.description
             def totalcount = 0
             println "Countquery:" + countquery
             if(countquery['query'].indexOf(':')) {
-                totalcount = sql.firstRow(countquery['query'],countquery['qparams'])[0]
+                def typedParams = countquery['qparams'].collectEntries { key, value ->
+                    [key, value?.toString()]
+                }
+                totalcount = sql.firstRow(countquery['query'], typedParams)[0]
             }
             else {
                 totalcount = sql.firstRow(countquery['query'])[0]
@@ -1147,7 +1150,10 @@ content: event.description
             // println "Query:" + query
             if(query['query'].indexOf(':')>0) {
                 try {
-                    rows = sql.rows(query['query'],query['qparams'])
+                    def typedParams = query['qparams'].collectEntries { key, value ->
+                        [key, value?.toString()]
+                    }
+                    rows = sql.rows(query['query'], typedParams)
                 }
                 catch(Exception e){
                     println "Got error with query: " + query['query']

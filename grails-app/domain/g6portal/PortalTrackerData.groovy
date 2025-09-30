@@ -26,6 +26,8 @@ class PortalTrackerData {
         file_link(nullable:true)
         date_created(nullable:true)
         isTrackerDeleting(nullable:true)
+        uploader(nullable:true)
+        excel_password(nullable:true)
     }
 
 
@@ -49,6 +51,8 @@ class PortalTrackerData {
     Boolean send_email
     Date sent_email_date
     String messages
+    String excel_password
+    User uploader
     String savedparams
     Integer uploadStatus
     FileLink file_link

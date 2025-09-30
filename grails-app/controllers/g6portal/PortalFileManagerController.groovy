@@ -182,6 +182,16 @@ class PortalFileManagerController {
                                 render(view: 'explore')
                                 return
                             }
+                            // Validate file security before processing
+                            def filemanagermax = PortalSetting.namedefault('filemanager_max_' + session.curuser?.staffID,50000)
+                            def validationResult = FileSecurityValidator.validateFile(f,null,filemanagermax)
+                            if (!validationResult.valid) {
+                                println "FileManager upload error:" + validationResult.errors.join(', ')
+                                PortalErrorLog.record(params,session.curuser,controllerName,actionName,validationResult.errors.join(', '),filemanager?.name,filemanager?.module)
+                                flash.message = "File upload failed: ${validationResult.errors.join(', ')}"
+                                render(view: 'explore')
+                                return
+                            }
                             def fileName = f?.originalFilename
                             if(!(new File(folderbase).exists())){
                                 new File(folderbase).mkdirs()
