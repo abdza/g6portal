@@ -321,6 +321,9 @@ class PortalPageController {
                         }
                     }
                 }
+                else if('redirect_url' in content) {
+                    redirect(url:content['redirect_url'])
+                }
                 else{
                     def finalcontent = content
                     if('content' in content){

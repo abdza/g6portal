@@ -147,11 +147,11 @@ class PortalTrackerField {
                     println "Will create: select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.tracker.data_table() + "' and COLUMN_NAME = '" + this.name.trim() + "'"
                     if(!sql.firstRow("select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.tracker.data_table() + "' and COLUMN_NAME = '" + this.name.trim() + "'")){
                         println "Field not found"
-                        if(config.dataSource.url.contains("jdbc:postgresql")){
-                            query = 'alter table "' + this.tracker.data_table() + '" add "' + this.name.trim() + '" ' + sqltype + ' NULL' 
+                        if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
+                            query = 'alter table "' + this.tracker.data_table() + '" add "' + this.name.trim() + '" ' + sqltype + ' NULL'
                         }
                         else {
-                            query = "alter table " + this.tracker.data_table() + " add [" + this.name.trim() + "] " + sqltype + " NULL" 
+                            query = "alter table " + this.tracker.data_table() + " add [" + this.name.trim() + "] " + sqltype + " NULL"
                         }
                         println "Updatedb query:" + query
                         sql.execute(query)
