@@ -102,7 +102,7 @@ class PortalModule {
         if(userrolefile.exists()){
             def userrolearray = jsonSlurper.parseText(userrolefile.text)
             userrolearray.each { iuserrole->
-                def cuser = User.findByNewStaffID(iuserrole.user)
+                def cuser = User.findByUserID(iuserrole.user)
                 if(cuser){
                     def curuserrole = UserRole.findByUserAndModuleAndRole(cuser,iuserrole.module,iuserrole.role)
                     if(!curuserrole){

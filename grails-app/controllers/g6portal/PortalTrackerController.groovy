@@ -788,6 +788,7 @@ class PortalTrackerController {
             datas = defaultdata
             Binding binding = new Binding()
             binding.setVariable('params',params)
+            binding.setVariable('tracker',tracker)
             binding.setVariable('curuser',curuser)
             if(page.datasources.size()){
               page.datasources.each { datasource->
