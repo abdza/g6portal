@@ -68,6 +68,21 @@ class FileLinkController {
             try {
                 def f = request.getFile('fileupload')
                 if (f.empty) {
+                    if(fileLink.path) {
+                        def existingFile = new File(fileLink.path)
+                        if(existingFile.exists()) {
+                            fileLink.size = (int) existingFile.length()
+                            fileLinkService.save(fileLink)
+                            request.withFormat {
+                                form multipartForm {
+                                    flash.message = message(code: 'default.created.message', args: [message(code: 'fileLink.label', default: 'FileLink'), fileLink.id])
+                                    redirect fileLink
+                                }
+                                '*' { respond fileLink, [status: CREATED] }
+                            }
+                            return
+                        }
+                    }
                     flash.message = 'file cannot be empty'
                     render(view: 'create')
                     return

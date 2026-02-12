@@ -783,11 +783,11 @@ class PortalTracker {
             def attachment = null
             if(params.uploadfile){
                 def uploadedfile = request?.getFile('uploadfile');
-            def apath = PortalSetting.findByName(module + "_" + slug + '_attachment_path')
-            if(!apath) {
-                apath = PortalSetting.findByName(slug + '_attachment_path')
-            }
-            if(uploadedfile){
+                def apath = PortalSetting.findByName(module + "_" + slug + '_attachment_path')
+                if(!apath) {
+                    apath = PortalSetting.findByName(slug + '_attachment_path')
+                }
+                if(uploadedfile){
                     if(uploadedfile.originalFilename.size()>0){
                         def settingname = slug + '_attachment_path'
                         def defaultfolder = System.getProperty("user.dir").toString() + '/uploads/' + slug
@@ -901,50 +901,6 @@ class PortalTracker {
             }
         }
 
-        if(curstatus && curstatus.emailonupdate){
-            Binding updatebinding = new Binding()
-            updatebinding.setVariable("session",session)
-            curdatas['update_desc']=params.statusUpdateDesc
-            updatebinding.setVariable("datas",curdatas)
-            updatebinding.setVariable("portalService",portalService)
-            def shell = new GroovyShell(this.class.classLoader,updatebinding)
-            def email = curstatus.emailonupdate
-            def toccs = null
-            def tosend = null
-            try{
-                tosend = shell.evaluate(email.emailto)
-                if(email.emailcc){
-                    toccs = shell.evaluate(email.emailcc)
-                }
-            }
-            catch(Exception e){
-                PortalErrorLog.record(params,curuser,'tracker','updatetrail - tosend and toccs',e.toString(),this.slug)
-            }
-            def emailcontent = email.evalbody(curdatas,groovyPagesTemplateEngine,portalService)
-            try {
-                mailService.sendMail {
-                    to tosend
-                    if(toccs){
-                        cc toccs
-                    }
-                    subject emailcontent['title']
-                    html emailcontent['body']
-                }
-            }
-            catch(Exception e){
-                println 'Error with sending email ' + email.body.title + ' : ' + e.toString()
-                def emailpagerror = PortalSetting.findByName("emailpagerror")
-                if(emailpagerror && mailService){
-                    mailService.sendMail {
-                        to emailpagerror.value().trim()
-                        subject "Page Error"
-                        body 'Error with sending email ' + email.body.title + ' : ' + e.toString() + '''
-                        Params: ''' + params
-                    }
-                }
-                PortalErrorLog.record(params,curuser,'tracker','updatetrail',e.toString(),this.slug)
-            }
-        }
         return maxid
     }
 
@@ -1288,6 +1244,7 @@ class PortalTracker {
         }
         if(params.id){
             curdatas = getdatas(params['id'],sql)
+            session['prevdata'] = curdatas
             def next_status = PortalTrackerStatus.get(params['next_status'])
             if(next_status?.name?.toLowerCase()=='delete'){
                 query = "select * from " + data_table() + " where id=:id"
@@ -1654,8 +1611,11 @@ class PortalTracker {
                     binding.setVariable("curuser",curuser)
                     binding.setVariable("sql",sql)
                     def shell = new GroovyShell(this.class.classLoader,binding)
-                    fieldnames << pfield.name
-                    fieldvalues << shell.evaluate(pfield.field_default)
+                    def defaultval = shell.evaluate(pfield.field_default)
+                    if(defaultval != null) {
+                        fieldnames << pfield.name
+                        fieldvalues << defaultval
+                    }
                 }
                 catch(Exception e){
                     println("Error with default value of " + pfield + " :" + e)

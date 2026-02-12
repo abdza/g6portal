@@ -99,10 +99,10 @@ G6 Portal
 
           <a class="nav-link nav-profile d-flex align-items-center pe-0" href="#" data-bs-toggle="dropdown">
 	  <g:if test="${curuser}">
-            <g:file_exists module='user' slug='${curuser?.profilepic?.slug}'>
-            <img src="<g:download_file module='user' slug='${curuser?.profilepic?.slug}'/>" alt="Profile" class="rounded-circle">
+            <g:file_exists module='profile_pic' slug='${curuser?.profilepic?.slug}'>
+            <img src="<g:download_file module='profile_pic' slug='${curuser?.profilepic?.slug}'/>" alt="Profile" class="rounded-circle">
             </g:file_exists>
-            <g:file_not_exists module='user' slug='${curuser?.profilepic?.slug}'>
+            <g:file_not_exists module='profile_pic' slug='${curuser?.profilepic?.slug}'>
             <img src="${resource(dir:'images',file:'profile.png')}" alt="Profile" class="rounded-circle">
             </g:file_not_exists>
             <span class="d-none d-md-block dropdown-toggle ps-2">${curuser.name}</span>
@@ -369,7 +369,12 @@ G6 Portal
 
   </aside><!-- End Sidebar-->
 
-  <main id="main" class="main">
+  <%
+    def pageslug = ''
+    if(params.module) { pageslug += params.module }
+    if(params.slug) { pageslug += '_' + params.slug }
+  %>
+  <main id="main" class="main ${pageslug}">
 
     <section class="section">
       <div class="row">

@@ -145,7 +145,7 @@ class SecurityInterceptor {
         println "Error with audit trail:" + e
     }
 
-    def whitelist = PortalSetting.namedefault('portal.whitelist',['portalPage.setup','portalTracker.data_dump','portalTrackerField.onchange','portalPage.home','user.register','user.save','user.connexion','portalScheduler.run','portalEmail.run','portalSearch.index'])
+    def whitelist = PortalSetting.namedefault('portal.whitelist',['portalPage.setup','portalTracker.data_dump','portalTrackerField.onchange','portalPage.home','user.register','user.save','user.connexion','portalScheduler.run','portalEmail.run','portalSearch.index','portalTrackerData.customfield','portalTrackerData.create','portalTrackerData.save','portalTrackerData.doupload'])
     def modtest = module + '.' + slug
     def contest = controllerName + '.' + actionName
     if(modtest in whitelist || contest in whitelist) {

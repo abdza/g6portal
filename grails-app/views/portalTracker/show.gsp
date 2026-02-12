@@ -58,6 +58,9 @@
 			  <button class="nav-link w-100" id="pages-tab" data-bs-toggle="tab" data-bs-target="#pages" type="button" role="tab" aria-controls="pages" aria-selected="false">Pages</button>
 			</li>
 			<li class="nav-item flex-fill" role="presentation">
+			  <button class="nav-link w-100" id="emails-tab" data-bs-toggle="tab" data-bs-target="#emails" type="button" role="tab" aria-controls="emails" aria-selected="false">Emails</button>
+			</li>
+			<li class="nav-item flex-fill" role="presentation">
 			  <button class="nav-link w-100" id="pages-tab" data-bs-toggle="tab" data-bs-target="#tools" type="button" role="tab" aria-controls="tools" aria-selected="false">Tools</button>
 			</li>
 		      </ul>
@@ -94,6 +97,9 @@
 			</div>
 			<div class="tab-pane fade" id="pages" role="tabpanel" aria-labelledby="pages-tab">
 				<g:render template="pagesList" model="[portalTracker:this.portalTracker]"/>
+			</div>
+			<div class="tab-pane fade" id="emails" role="tabpanel" aria-labelledby="emails-tab">
+				<g:render template="emailList" model="[portalTracker:this.portalTracker]"/>
 			</div>
 			<div class="tab-pane fade" id="tools" role="tabpanel" aria-labelledby="tools-tab">
         <g:each in="${portalTracker.fields.sort{ it.name }*.name}" var='fieldname'>

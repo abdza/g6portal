@@ -1,0 +1,59 @@
+<ehcache xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="ehcache.xsd"
+         updateCheck="false">
+
+    <diskStore path="java.io.tmpdir/g6portal-ehcache"/>
+
+    <defaultCache
+        maxEntriesLocalHeap="10000"
+        eternal="false"
+        timeToIdleSeconds="1800"
+        timeToLiveSeconds="3600"
+        overflowToDisk="false"
+        memoryStoreEvictionPolicy="LRU"/>
+
+    <cache name="org.hibernate.cache.internal.StandardQueryCache"
+        maxEntriesLocalHeap="5000"
+        eternal="false"
+        timeToLiveSeconds="3600"/>
+
+    <cache name="org.hibernate.cache.spi.UpdateTimestampsCache"
+        maxEntriesLocalHeap="5000"
+        eternal="true"/>
+
+    <cache name="g6portal.PortalTracker"
+        maxEntriesLocalHeap="10000"
+        eternal="false"
+        timeToLiveSeconds="3600"/>
+
+    <cache name="g6portal.PortalTrackerField"
+        maxEntriesLocalHeap="10000"
+        eternal="false"
+        timeToLiveSeconds="3600"/>
+
+    <cache name="g6portal.PortalTrackerStatus"
+        maxEntriesLocalHeap="10000"
+        eternal="false"
+        timeToLiveSeconds="3600"/>
+
+    <cache name="g6portal.PortalTrackerTransition"
+        maxEntriesLocalHeap="10000"
+        eternal="false"
+        timeToLiveSeconds="3600"/>
+
+    <cache name="g6portal.PortalPage"
+        maxEntriesLocalHeap="10000"
+        eternal="false"
+        timeToLiveSeconds="3600"/>
+
+    <cache name="g6portal.PortalSetting"
+        maxEntriesLocalHeap="10000"
+        eternal="false"
+        timeToLiveSeconds="3600"/>
+
+    <cache name="g6portal.PortalTrackerEmail"
+        maxEntriesLocalHeap="10000"
+        eternal="false"
+        timeToLiveSeconds="3600"/>
+
+</ehcache>

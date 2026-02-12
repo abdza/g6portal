@@ -90,6 +90,7 @@ class TrackerTagLib {
                 else{
                     def failed = false
                     if(attrs.field.field_type == 'User'){
+                      if('id' in params) { params['xdata_id'] = params['id'] }
                       def users = attrs.field.userlist(session,params)
                       if(!users) {
                           failed = true
@@ -252,6 +253,7 @@ class TrackerTagLib {
                                 }
                             }
                             if(attrs.field.field_type=='User'){
+                                if('id' in params) { params['xdata_id'] = params['id'] }
                                 def users = attrs.field.userlist(session,params)
                                 if(users) {
                                     if(users.size()>5){
@@ -262,8 +264,8 @@ class TrackerTagLib {
                                         else {
                                             out << "<select name='${attrs.field.name?.trim()}' id='${attrs.field.name?.trim()}' style='width: 40%;'></select>"
                                         }
-                                        out << asset.script() { user_selector(controller:"PortalTracker",action:"userlist",id:attrs.field.id,property:attrs.field.name?.trim(),value:value,parent:'#' + attrs.field.name?.trim() + '_div') }
-                                        out << asset.script() { 
+                                        out << asset.script() { user_selector(controller:"PortalTracker",action:"userlist",id:attrs.field.id,property:attrs.field.name?.trim(),value:value,parent:'#' + attrs.field.name?.trim() + '_div',params:params) }
+                                        out << asset.script() {
     """\$('#${attrs.field.name}').on('select2:select', function(e) { htmx.trigger(this,'change'); });"""
     }
                                     }

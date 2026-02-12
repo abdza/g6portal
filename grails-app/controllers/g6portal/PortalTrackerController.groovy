@@ -931,6 +931,75 @@ class PortalTrackerController {
                             // println "Updating trail first"
                             trail_id = tracker.updatetrail(params,session,request,curuser,datasource,groovyPagesTemplateEngine,portalService)
                         }
+                        /* runonupdate and emailonupdate for current status */
+                        def curdatas = tracker.getdatas(datas['id'])
+                        def curstatus = null
+                        if(curdatas && curdatas['record_status']) {
+                            curstatus = PortalTrackerStatus.findByTrackerAndName(tracker,curdatas['record_status'])
+                        }
+                        if(curstatus && curstatus.runonupdate) {
+                            try {
+                                Binding runbinding = new Binding()
+                                runbinding.setVariable("session",session)
+                                runbinding.setVariable("params",params)
+                                runbinding.setVariable("datas",curdatas)
+                                runbinding.setVariable("tracker",tracker)
+                                runbinding.setVariable("curuser",curuser)
+                                runbinding.setVariable("portalService",portalService)
+                                runbinding.setVariable("mailService",mailService)
+                                def runshell = new GroovyShell(this.class.classLoader,runbinding)
+                                runshell.evaluate(curstatus.runonupdate.content)
+                            }
+                            catch(Exception e) {
+                                println "Error running runonupdate for status " + curstatus + " : " + e
+                                PortalErrorLog.record(params,curuser,'tracker','runonupdate',e.toString(),tracker.slug,tracker.module)
+                            }
+                        }
+                        if(curstatus && curstatus.emailonupdate) {
+                            Binding updatebinding = new Binding()
+                            updatebinding.setVariable("session",session)
+                            curdatas['update_desc'] = params.statusUpdateDesc
+                            updatebinding.setVariable("datas",curdatas)
+                            updatebinding.setVariable("portalService",portalService)
+                            def shell = new GroovyShell(PortalTracker.class.classLoader,updatebinding)
+                            def email = curstatus.emailonupdate
+                            def toccs = null
+                            def tosend = null
+                            try {
+                                tosend = shell.evaluate(email.emailto)
+                                if(tosend && (tosend.getClass().isArray() || tosend instanceof List || tosend instanceof Set)) {
+                                    tosend = tosend.join(',')
+                                }
+                                if(email.emailcc) {
+                                    toccs = shell.evaluate(email.emailcc)
+                                    if(toccs && (toccs.getClass().isArray() || toccs instanceof List || toccs instanceof Set)) {
+                                        toccs = toccs.join(',')
+                                    }
+                                }
+                            }
+                            catch(Exception e) {
+                                PortalErrorLog.record(params,curuser,'tracker','emailonupdate - tosend and toccs',e.toString(),tracker.slug,tracker.module)
+                            }
+                            if(tosend) {
+                                def emailcontent = email.evalbody(curdatas,groovyPagesTemplateEngine,portalService)
+                                try {
+                                    def sendemail = new PortalEmail()
+                                    sendemail.emailto = tosend
+                                    if(toccs) {
+                                        sendemail.emailcc = toccs
+                                    }
+                                    sendemail.title = emailcontent['title']
+                                    sendemail.module = tracker.module
+                                    sendemail.body = emailcontent['body']
+                                    sendemail.deliveryTime = new Date()
+                                    sendemail.send(mailService)
+                                }
+                                catch(Exception e) {
+                                    println 'Error with sending emailonupdate ' + email.body?.title + ' : ' + e.toString()
+                                    PortalErrorLog.record(params,curuser,'tracker','emailonupdate',e.toString(),tracker.slug,tracker.module)
+                                }
+                            }
+                        }
                         if(ctrans.postprocess){
                             try {
                                 // println "Running postprocess"
@@ -938,6 +1007,7 @@ class PortalTrackerController {
                                 binding.setVariable("datasource",datasource)
                                 binding.setVariable("sql",datasource)
                                 binding.setVariable("session",session)
+                                binding.setVariable("params",params)
                                 binding.setVariable("datas",datas)
                                 binding.setVariable("ctrans",ctrans)
                                 binding.setVariable("tracker",tracker)

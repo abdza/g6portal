@@ -163,6 +163,37 @@
         if($('#unzip').prop('checked')) {
             formData.append("unzip",1);
         }
+        xhr.onload = function() {
+            if(xhr.status == 200) {
+                var uploadform = document.getElementById("uploadform");
+                uploadform.style.borderColor = "green";
+                try {
+                    var response = JSON.parse(xhr.responseText);
+                    if(response.error) {
+                        uploadform.style.borderColor = "red";
+                        uploadform.innerHTML = "<span style='color:red'>" + response.error + "</span>";
+                    }
+                }
+                catch(e) {
+                    // Response is not JSON, likely HTML redirect - that's fine
+                }
+                // Refresh the file list
+                htmx.ajax('GET', window.curpath.replace("upload","explorepage"), '#explorepage');
+            }
+            else {
+                var uploadform = document.getElementById("uploadform");
+                uploadform.style.borderColor = "red";
+                uploadform.innerHTML = "<span style='color:red'>Upload failed: " + xhr.statusText + "</span>";
+            }
+        };
+        xhr.onerror = function() {
+            var uploadform = document.getElementById("uploadform");
+            uploadform.style.borderColor = "red";
+            uploadform.innerHTML = "<span style='color:red'>Upload error occurred</span>";
+        };
+        var uploadform = document.getElementById("uploadform");
+        uploadform.style.borderColor = "orange";
+        uploadform.innerHTML = "<span style='color:orange'>Uploading...</span>";
         var sent = xhr.send(formData);
         event.detail.path = window.curpath;
       }

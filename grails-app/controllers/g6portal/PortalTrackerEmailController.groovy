@@ -35,6 +35,9 @@ class PortalTrackerEmailController {
                 tracker = status.tracker
             }
         }
+        else if(params.tracker) {
+            tracker = PortalTracker.get(params.tracker)
+        }
         if(tracker) {
             pages = PortalPage.findAllByModule(tracker.module)
         }
@@ -100,12 +103,19 @@ class PortalTrackerEmailController {
             return
         }
 
+        def email = PortalTrackerEmail.get(id)
+        def tracker = email?.tracker
         portalTrackerEmailService.delete(id)
 
         request.withFormat {
             form multipartForm {
                 flash.message = message(code: 'default.deleted.message', args: [message(code: 'portalTrackerEmail.label', default: 'PortalTrackerEmail'), id])
-                redirect action:"index", method:"GET"
+                if(tracker) {
+                    redirect controller:"portalTracker", action:"show", id:tracker.id
+                }
+                else {
+                    redirect action:"index", method:"GET"
+                }
             }
             '*'{ render status: NO_CONTENT }
         }

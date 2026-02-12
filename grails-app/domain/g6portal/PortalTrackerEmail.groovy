@@ -11,10 +11,10 @@ class PortalTrackerEmail {
     static belongsTo = [tracker:PortalTracker,transition:PortalTrackerTransition,status:PortalTrackerStatus]
 
     static constraints = {
+        name()
         transition(nullable:true)
         status(nullable:true)
         tracker(nullable:true)
-        name()
         emailto(widget:'textarea')
         emailcc(nullable:true,widget:'textarea')
         body(nullable:true)

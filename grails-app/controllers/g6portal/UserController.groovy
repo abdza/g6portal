@@ -623,12 +623,14 @@ class UserController {
         def fromtokens = params.frompage.tokenize('/')
         if(session.userid){
             User.withTransaction { ctrans->
-                // def duser = User.get(session.userid)
-                def duser = session.curuser
-                duser.role = session['role'][chosenrole]
-                duser.roletargetid = session['roletargetid'][chosenrole]
-                duser.save(flush:true)
-                session['chosenrole'] = chosenrole
+                def duser = User.get(session.userid)
+                if(duser) {
+                    duser.role = session['role'][chosenrole]
+                    duser.roletargetid = session['roletargetid'][chosenrole]
+                    duser.save(flush:true)
+                    session.curuser = duser
+                    session['chosenrole'] = chosenrole
+                }
             }
             /* if(fromtokens[1] in ['statement']){
                 def optiontokens = fromtokens[2].tokenize('?')[1].tokenize('&')

@@ -174,7 +174,7 @@ class PortalTagLib {
                     output += "value:" + attrs.value.id + " , "
                 }
                 else {
-                    output += "value:" + attrs.value + " , "
+                    output += "value:'" + attrs.value + "' , "
                 }
             }
         }
@@ -202,6 +202,7 @@ class PortalTagLib {
           }
         }
       });
+      \$('#${attrs.property}').on('select2:select', function(e) { htmx.trigger(this,'change'); });
         """
         out << output
     }

@@ -13,6 +13,7 @@ class PortalTrackerStatus {
     updateable(nullable:true)
     attachable(nullable:true)
     emailonupdate(nullable:true)
+    runonupdate(nullable:true)
     updateallowedroles(nullable:true)
     suppressupdatebutton(nullable:true)
     flow(nullable:true)
@@ -38,6 +39,7 @@ class PortalTrackerStatus {
   Boolean suppressupdatebutton
   Boolean actiontransitions
   PortalTrackerEmail emailonupdate
+  PortalPage runonupdate
 
   String toString() {
     return name

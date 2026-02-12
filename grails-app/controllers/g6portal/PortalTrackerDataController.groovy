@@ -383,6 +383,9 @@ class PortalTrackerDataController {
         }
         
         fields.sort{ it.name }.each { field->
+            if(field.name && field.name.endsWith('_')) {
+                field.name = field.name[0..-2]
+            }
             def foundfield = PortalTrackerField.findByTrackerAndName(portalTrackerData.tracker,field.name)
             if(foundfield){
                 setfields[foundfield.id] = field.col

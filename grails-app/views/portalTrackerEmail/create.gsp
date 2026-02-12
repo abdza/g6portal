@@ -36,11 +36,13 @@
                             <g:hiddenField name='tracker' value='${tracker.id}' />
                         </g:if>
                         <g:if test='${transition}'>
+                            <g:hiddenField name='tracker' value='${transition.tracker.id}' />
                             <g:hiddenField name='transition' value='${transition.id}' />
                             <f:all bean="portalTrackerEmail" except="transition,status,tracker"/>
                         </g:if>
                         <g:else>
                             <g:if test='${status}'>
+                                <g:hiddenField name='tracker' value='${status.tracker.id}' />
                                 <g:hiddenField name='status' value='${status.id}' />
                                 <f:all bean="portalTrackerEmail" except="transition,status,tracker"/>
                             </g:if>

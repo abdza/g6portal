@@ -163,8 +163,9 @@ class PortalFileManagerController {
     }
 
     def upload = {
-        //PortalTracker.decodeparams(params) 
+        //PortalTracker.decodeparams(params)
         def filemanager = PortalFileManager.get(params.id)
+        def hasError = false
         if(filemanager){
             def folderbase = filemanager.path
             if(params.fname){
@@ -179,7 +180,7 @@ class PortalFileManagerController {
                         if(f) {
                             if (f?.empty) {
                                 flash.message = 'file cannot be empty'
-                                render(view: 'explore')
+                                hasError = true
                                 return
                             }
                             // Validate file security before processing
@@ -189,7 +190,7 @@ class PortalFileManagerController {
                                 println "FileManager upload error:" + validationResult.errors.join(', ')
                                 PortalErrorLog.record(params,session.curuser,controllerName,actionName,validationResult.errors.join(', '),filemanager?.name,filemanager?.module)
                                 flash.message = "File upload failed: ${validationResult.errors.join(', ')}"
-                                render(view: 'explore')
+                                hasError = true
                                 return
                             }
                             def fileName = f?.originalFilename
@@ -242,7 +243,12 @@ class PortalFileManagerController {
                 }
             }
         }
-        redirect(action:'explorepage',id:params.id,params:PortalTracker.encodeparams(params))
+        if(hasError) {
+            redirect(action:'explore',id:params.id,params:PortalTracker.encodeparams(params))
+        }
+        else {
+            redirect(action:'explorepage',id:params.id,params:PortalTracker.encodeparams(params))
+        }
     }
 
     def download = {

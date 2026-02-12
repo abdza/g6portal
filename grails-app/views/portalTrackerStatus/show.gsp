@@ -16,6 +16,7 @@
                         <li><g:link class="list" action="index"><g:message code="default.list.label" args="[entityName]" /></g:link></li>
                         <li><g:link class="create" action="create"><g:message code="default.new.label" args="[entityName]" /></g:link></li>
                         <li><g:link class="create" controller="portalTracker" action="create_default_pages" params="[id:params.id,category:'display',status_id:params.id]">Create Default Display Page</g:link></li>
+                        <li><g:link class="create" controller="portalTrackerEmail" action="create" params="[status_id:params.id]">Create Email</g:link></li>
                     </ul>
                 </div>
             </section>

@@ -61,12 +61,24 @@ class FileSecurityValidator {
         ],
         'csv': [
             // CSV files don't have magic numbers, validate by content
+        ],
+        'css': [
+            // CSS files don't have magic numbers, validate by content
+        ],
+        'js': [
+            // JS files don't have magic numbers, validate by content
+        ],
+        'ppt': [
+            [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1] as byte[]  // OLE2
+        ],
+        'pptx': [
+            [0x50, 0x4B, 0x03, 0x04] as byte[]   // ZIP-based (Office 2007+)
         ]
     ]
 
     // Dangerous file extensions to always block
     static final Set<String> BLOCKED_EXTENSIONS = [
-        'exe', 'bat', 'cmd', 'com', 'pif', 'scr', 'vbs', 'vbe', 'js', 'jar',
+        'exe', 'bat', 'cmd', 'com', 'pif', 'scr', 'vbs', 'vbe', 'jar',
         'sh', 'bash', 'csh', 'ksh', 'fish', 'pl', 'py', 'rb', 'php', 'asp',
         'aspx', 'jsp', 'war', 'ear', 'class', 'dex', 'so', 'dll', 'sys',
         'msi', 'dmg', 'pkg', 'deb', 'rpm', 'app', 'ipa', 'apk'
@@ -214,7 +226,7 @@ class FileSecurityValidator {
             }
 
             // Special handling for text files
-            if (extension in ['txt', 'csv']) {
+            if (extension in ['txt', 'csv', 'css', 'js']) {
                 return isTextFile(fileHeader)
             }
 
