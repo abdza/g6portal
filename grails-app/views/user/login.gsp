@@ -46,9 +46,6 @@
                     </div>
 
                     <div class="col-12">
-                      <g:if test="${session['post_login']}">
-                          <g:hiddenField name='post_login' value="${session['post_login']}"/>
-                      </g:if>
                       <button class="btn btn-primary w-100" type="submit">Login</button>
                     </div>
                     <g:if test="${grailsApplication.config.getProperty('server.allow_registration')=='true'}">

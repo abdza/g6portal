@@ -29,6 +29,7 @@
               <g:if test="${setfields[field.id]=='custom' && customdata[field.id]}">
                   <g:hiddenField name="datasource_${field.id}" value="custom"/>
                   <g:hiddenField name="custom_${field.id}" value="${customdata[field.id]}"/>
+                  <g:hiddenField name="update_${field.id}" value="on"/>
               </g:if>
               <g:else>
                 <tr>

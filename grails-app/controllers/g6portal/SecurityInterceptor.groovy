@@ -189,7 +189,7 @@ class SecurityInterceptor {
                         }
                     }
                     else {
-                        session['post_login'] = params
+                        session['redirectAfterLogin'] = [ controller: controllerName, action: actionName, params: params ]
                         flash.message = "You need to login to view that page"
                         redirect(controller: "user", action: "login")
                         return false
@@ -291,7 +291,7 @@ class SecurityInterceptor {
                     else if(object.user_roles(curuser).size()){
                         return true
                     }
-                    session['post_login'] = params
+                    session['redirectAfterLogin'] = [ controller: controllerName, action: actionName, params: params ]
                     flash.message = "Sorry but you do not have the credentials to view the system" 
                     redirect(controller: "portalPage", action: "home")
                     return false
@@ -304,7 +304,7 @@ class SecurityInterceptor {
                         return true
                     }
                 }
-                session['post_login'] = params
+                session['redirectAfterLogin'] = [ controller: controllerName, action: actionName, params: params ]
                 flash.message = "Sorry but you need to login to view the system" 
                 redirect(controller: "user", action: "login")
                 return false
@@ -344,7 +344,7 @@ class SecurityInterceptor {
             }
         }
         else {
-            session['post_login'] = params
+            session['redirectAfterLogin'] = [ controller: controllerName, action: actionName, params: params ]
             flash.message = "You need to login to access that functionality"
             redirect(controller: "user", action: "login")
             return false

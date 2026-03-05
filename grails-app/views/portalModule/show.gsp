@@ -129,9 +129,28 @@
                         <ul>
                         <g:if test="${this.portalModule.name in session['developermodules']}">
                             <li><g:link controller='userRole' class="create" action="create" params="['module':this.portalModule.name]">Add User Role</g:link></li>
+                            <li><g:link class="list" action="exportUserRoles" id="${this.portalModule.id}">Export User Roles</g:link></li>
                         </g:if>
                         </ul>
                     </div>
+                    <g:if test="${this.portalModule.name in session['developermodules']}">
+                        <div style="margin: 10px 0; padding: 10px; border: 1px solid #ccc; border-radius: 4px;">
+                            <g:uploadForm action="importUserRoles" id="${this.portalModule.id}">
+                                <label>Import User Roles (Excel): </label>
+                                <input type="file" name="userRoleFile" accept=".xlsx" required />
+                                <input type="submit" class="save" value="Import" />
+                            </g:uploadForm>
+                        </div>
+                    </g:if>
+                    <g:if test="${flash.errors}">
+                        <div class="errors" role="status">
+                            <ul>
+                                <g:each in="${flash.errors}" var="error">
+                                    <li>${error}</li>
+                                </g:each>
+                            </ul>
+                        </div>
+                    </g:if>
                     <table class='table'>
                     <tr><th>#</th><th>Name</th><th>User ID</th><th>Role</th><th>Action</th></tr>
                     <g:each in='${roles}' var='role' status='i'>

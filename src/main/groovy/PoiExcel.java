@@ -242,7 +242,7 @@ public class PoiExcel {
 				}
 				// v => contents of a cell
 				// Output after we've seen the string contents
-				if(name.equals("v")) {
+				if(name.equals("v") || (name.equals("t") && nextDataType == xssfDataType.INLINESTR)) {
 					if(cellAddress.getRow()+1>=headerstart && cellAddress.getRow()+1<=headerend) {
 						String curname = lastContents.toLowerCase().replaceAll(" ","_").replaceAll("[^a-zA-Z0-9_]","").replaceAll("__","_");
 						String curtext = lastContents;
@@ -339,6 +339,7 @@ public class PoiExcel {
 	private class SheetHandler extends DefaultHandler {
 		private String lastContents;
 		private boolean nextIsString;
+		private boolean nextIsInlineStr;
 		private String dquery="";
 		private boolean firstRow = true;
 		private boolean gotBatch = false;
@@ -377,6 +378,7 @@ public class PoiExcel {
 				} else {
 					nextIsString = false;
 				}
+				nextIsInlineStr = "inlineStr".equals(cellType);
 			}
 			if(name.equals("row")) {
 				currow = new HashMap<Integer, Object>();
@@ -396,7 +398,7 @@ public class PoiExcel {
 				}
 				// v => contents of a cell
 				// Output after we've seen the string contents
-				if(name.equals("v")) {
+				if(name.equals("v") || (name.equals("t") && nextIsInlineStr)) {
 					if(cellAddress.getRow()+1>=datastart && (dataend<0 || cellAddress.getRow()+1<=dataend)){
 						currow.put(cellAddress.getColumn(),lastContents);
 					}
@@ -672,7 +674,7 @@ public class PoiExcel {
 				}
 				// v => contents of a cell
 				// Output after we've seen the string contents
-				if(name.equals("v")) {
+				if(name.equals("v") || (name.equals("t") && nextDataType == xssfDataType.INLINESTR)) {
 					String sep = "(";
 					String[] cutresult = lastContents.split(Pattern.quote(sep)); 
 					String curname = cutresult[0].trim().toLowerCase().replaceAll(" ","_").replaceAll("[^a-zA-Z0-9_]","").replaceAll("__","_");

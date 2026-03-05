@@ -4,12 +4,117 @@ import grails.validation.ValidationException
 import static org.springframework.http.HttpStatus.*
 import java.util.zip.*
 
+import org.apache.poi.ss.usermodel.*
+import org.apache.poi.xssf.usermodel.*
+import org.apache.poi.xssf.streaming.SXSSFWorkbook
+import org.apache.poi.xssf.streaming.SXSSFSheet
+
 class PortalModuleController {
 
   PortalModuleService portalModuleService
   PortalService portalService
 
-  static allowedMethods = [save: "POST", update: "PUT", delete: "DELETE"]
+  static allowedMethods = [save: "POST", update: "PUT", delete: "DELETE", importUserRoles: "POST"]
+
+  def exportUserRoles(Long id) {
+      def module = portalModuleService.get(id)
+      if (!module) {
+          notFound()
+          return
+      }
+
+      def roles = UserRole.findAllByModule(module.name)
+
+      response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+      response.setHeader("Content-disposition", "attachment;filename=user_roles_${module.name}.xlsx")
+
+      def wb = new SXSSFWorkbook(100)
+      def sheet = wb.createSheet("User Roles")
+
+      def headerRow = sheet.createRow(0)
+      headerRow.createCell(0).setCellValue("Staff ID")
+      headerRow.createCell(1).setCellValue("Name")
+      headerRow.createCell(2).setCellValue("Role")
+
+      roles.eachWithIndex { ur, i ->
+          def row = sheet.createRow(i + 1)
+          row.createCell(0).setCellValue(ur.user.staffID)
+          row.createCell(1).setCellValue(ur.user.name)
+          row.createCell(2).setCellValue(ur.role)
+      }
+
+      wb.write(response.outputStream)
+      wb.dispose()
+      response.outputStream.flush()
+      return
+  }
+
+  def importUserRoles(Long id) {
+      def module = portalModuleService.get(id)
+      if (!module) {
+          notFound()
+          return
+      }
+
+      def f = request.getFile('userRoleFile')
+      if (f.empty) {
+          flash.message = "Please select a file to import"
+          redirect action: "show", id: id
+          return
+      }
+
+      int successCount = 0
+      int errorCount = 0
+      List<String> errors = []
+
+      try {
+          def workbook = new XSSFWorkbook(f.inputStream)
+          def sheet = workbook.getSheetAt(0)
+          def dataFormatter = new DataFormatter()
+
+          UserRole.withTransaction { status ->
+              sheet.eachWithIndex { row, i ->
+                  if (i == 0) return // Skip header
+
+                  def staffID = dataFormatter.formatCellValue(row.getCell(0))?.trim()
+                  def roleName = dataFormatter.formatCellValue(row.getCell(2))?.trim()
+
+                  if (staffID && roleName) {
+                      def user = User.findByStaffID(staffID)
+                      if (user) {
+                          def userRole = UserRole.findByUserAndModuleAndRole(user, module.name, roleName)
+                          if (!userRole) {
+                              userRole = new UserRole(user: user, module: module.name, role: roleName)
+                              if (userRole.save(flush: true)) {
+                                  successCount++
+                              } else {
+                                  errorCount++
+                                  errors << "Row ${i+1}: Failed to save role ${roleName} for ${staffID}"
+                              }
+                          } else {
+                              successCount++
+                          }
+                      } else {
+                          errorCount++
+                          errors << "Row ${i+1}: User with Staff ID ${staffID} not found"
+                      }
+                  }
+              }
+          }
+          workbook.close()
+      } catch (Exception e) {
+          log.error("Error importing user roles", e)
+          flash.message = "Error parsing Excel file: ${e.message}"
+          redirect action: "show", id: id
+          return
+      }
+
+      flash.message = "Import completed. Success: ${successCount}, Errors: ${errorCount}"
+      if (errors) {
+          flash.errors = errors
+      }
+      redirect action: "show", id: id
+  }
 
   def updatelist() {
     def curuser = null
@@ -59,12 +164,16 @@ class PortalModuleController {
         curuser = session.curuser
     }
     def module = portalModuleService.get(id)
-    def admins = UserRole.findAllByModuleAndRole(module.name,'Admin')
-    def developers = UserRole.findAllByModuleAndRole(module.name,'Developer')
+
+    // Sort roles by user name
+    def roles = UserRole.executeQuery("select ur from UserRole ur join ur.user u where ur.module = :moduleName order by u.name asc", [moduleName: module.name])
+    def admins = roles.findAll { it.role == 'Admin' }
+    def developers = roles.findAll { it.role == 'Developer' }
+
     def pages = PortalPage.findAllByModule(module.name,[sort:'slug'])
     def trackers = PortalTracker.findAllByModule(module.name,[sort:'slug'])
     def settings = PortalSetting.findAllByModule(module.name,[sort:'name'])
-    def roles = UserRole.findAllByModule(module.name)
+
     respond module,model:[curuser:curuser,admins:admins,developers:developers,pages:pages,trackers:trackers,settings:settings,roles:roles]
   }
 

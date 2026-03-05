@@ -142,11 +142,17 @@ class PortalFileManagerController {
                 def thefile = new File(curfull)
                 if(thefile.exists()){
                     try{
+                      def canonicalPath = thefile.canonicalPath
                       if(thefile.isFile()) {
                         thefile.delete()
+                        def fl = FileLink.findByPath(canonicalPath)
+                        if(fl) { FileLink.withTransaction { fl.delete(flush:true) } }
                       }
                       else {
                         thefile.deleteDir()
+                        def dirPrefix = canonicalPath + '/'
+                        def fls = FileLink.findAllByPathLike(dirPrefix + '%')
+                        if(fls) { FileLink.withTransaction { fls.each { it.delete() } } }
                       }
                     }
                     catch(Exception exp) {
@@ -160,6 +166,35 @@ class PortalFileManagerController {
         params.fname = "/" + tokens.take(tokens.size()-1).join("/")
         def tparams = PortalTracker.encodeparams(params)
         redirect(action:'explorepage',id:params.id,params:tparams)
+    }
+
+    private String filenameToSlug(String filename) {
+        // Replace all dots with underscores to produce a slug (e.g. style.css -> style_css)
+        return filename.replaceAll('\\.', '_')
+    }
+
+    private void createFileLinkForFile(String filePath, String module) {
+        try {
+            def theFile = new File(filePath)
+            def canonicalPath = theFile.canonicalPath
+            def slug = filenameToSlug(theFile.name)
+            // Skip if a FileLink with this slug already exists
+            def existing = FileLink.findBySlug(slug)
+            if (!existing) {
+                FileLink.withTransaction {
+                    def fl = new FileLink(
+                        name: theFile.name,
+                        module: module,
+                        slug: slug,
+                        path: canonicalPath,
+                        size: (int) theFile.length()
+                    )
+                    fl.save(flush: true)
+                }
+            }
+        } catch (Exception e) {
+            println "Error creating FileLink for ${filePath}: ${e}"
+        }
     }
 
     def upload = {
@@ -200,42 +235,48 @@ class PortalFileManagerController {
                             if(new File(folderbase).exists()){
                                 def copytarget = folderbase+'/'+fileName
                                 f.transferTo(new File(copytarget))
-                                if(copytarget[-4..-1]=='.zip') {
-                                   if(params.unzip) {
-                                      byte[] buffer = new byte[1024];
-                                      ZipInputStream zis = new ZipInputStream(new FileInputStream(copytarget));
-                                      ZipEntry zipEntry = zis.getNextEntry();
-                                      def destfolder = ''
-                                      while (zipEntry != null) {
-                                          def zipstr = zipEntry.toString().replace('\\','/')
-                                          if(zipEntry.toString()[0] != '/' && zipEntry.toString()[0] != '\\') {
-                                              destfolder = folderbase + '/'
-                                          }
-                                          File newFile = new File(destfolder + zipstr);
-                                          if (zipEntry.isDirectory()) {
-                                              if (!newFile.isDirectory() && !newFile.mkdirs()) {
-                                                  throw new IOException("Failed to create directory " + newFile);
-                                              }
-                                          } else {
-                                              // fix for Windows-created archives
-                                              File parent = newFile.getParentFile();
-                                              if (!parent.isDirectory() && !parent.mkdirs()) {
-                                                  throw new IOException("Failed to create directory " + parent);
-                                              }
+                                def isZip = copytarget.toLowerCase().endsWith('.zip')
+                                if(isZip && params.unzip) {
+                                   byte[] buffer = new byte[1024];
+                                   ZipInputStream zis = new ZipInputStream(new FileInputStream(copytarget));
+                                   ZipEntry zipEntry = zis.getNextEntry();
+                                   def destfolder = ''
+                                   while (zipEntry != null) {
+                                       def zipstr = zipEntry.toString().replace('\\','/')
+                                       if(zipEntry.toString()[0] != '/' && zipEntry.toString()[0] != '\\') {
+                                           destfolder = folderbase + '/'
+                                       }
+                                       File newFile = new File(destfolder + zipstr);
+                                       if (zipEntry.isDirectory()) {
+                                           if (!newFile.isDirectory() && !newFile.mkdirs()) {
+                                               throw new IOException("Failed to create directory " + newFile);
+                                           }
+                                       } else {
+                                           // fix for Windows-created archives
+                                           File parent = newFile.getParentFile();
+                                           if (!parent.isDirectory() && !parent.mkdirs()) {
+                                               throw new IOException("Failed to create directory " + parent);
+                                           }
 
-                                              // write file content
-                                              FileOutputStream fos = new FileOutputStream(newFile);
-                                              int len;
-                                              while ((len = zis.read(buffer)) > 0) {
-                                                  fos.write(buffer, 0, len);
-                                              }
-                                              fos.close();
-                                          }
-                                          zipEntry = zis.getNextEntry();
-                                      }
-                                      zis.closeEntry();
-                                      zis.close();
+                                           // write file content
+                                           FileOutputStream fos = new FileOutputStream(newFile);
+                                           int len;
+                                           while ((len = zis.read(buffer)) > 0) {
+                                               fos.write(buffer, 0, len);
+                                           }
+                                           fos.close();
+
+                                           if(params.createfilelink) {
+                                               createFileLinkForFile(newFile.absolutePath, filemanager.module)
+                                           }
+                                       }
+                                       zipEntry = zis.getNextEntry();
                                    }
+                                   zis.closeEntry();
+                                   zis.close();
+                                } else if(params.createfilelink) {
+                                   // non-zip file, or zip without unzip: create filelink for the uploaded file itself
+                                   createFileLinkForFile(copytarget, filemanager.module)
                                 }
                             } 
                         }

@@ -579,12 +579,9 @@ class PortalTracker {
                 if(k!='id'){
                     def dfield = PortalTrackerField.findByTrackerAndName(this,k)
                     if(dfield){
-                        updatefields << k + "=:" + k
-                        if(v) {
+                        if(v!=null) {
+                            updatefields << k + "=:" + k
                             qparams[k] = dfield.safeval(v)
-                        }
-                        else {
-                            qparams[k] = v
                         }
                     }
                     else if(k=='record_status'){
@@ -840,64 +837,66 @@ class PortalTracker {
         }
         def query=''
         def qparams=[:]
-        qparams['description'] = params?.statusUpdateDesc
-        qparams['record_id'] = params?.id
-        qparams['updater_id'] = curuser?.id
-        qparams['status'] = params?.record_status
-        qparams['allowedroles'] = updateallowedroles
-        def curdate = new Date()
-        qparams['update_date'] = curdate
-        if(config.dataSource.url.contains("jdbc:postgresql")) {
-            if(attachment){
-                qparams['attachment_id'] = attachment?.id
-                query = "insert into " + trail_table() + " (attachment_id,description,record_id,update_date,updater_id,status,allowedroles) values (:attachment_id , :description , :record_id , :update_date , :updater_id , :status , :allowedroles) returning id"
+        if(params?.statusUpdateDesc || attachment) {
+            qparams['description'] = params?.statusUpdateDesc
+            qparams['record_id'] = params?.id
+            qparams['updater_id'] = curuser?.id
+            qparams['status'] = params?.record_status
+            qparams['allowedroles'] = updateallowedroles
+            def curdate = new Date()
+            qparams['update_date'] = curdate
+            if(config.dataSource.url.contains("jdbc:postgresql")) {
+                if(attachment){
+                    qparams['attachment_id'] = attachment?.id
+                    query = "insert into " + trail_table() + " (attachment_id,description,record_id,update_date,updater_id,status,allowedroles) values (:attachment_id , :description , :record_id , :update_date , :updater_id , :status , :allowedroles) returning id"
+                }
+                else{
+                    query = "insert into " + trail_table() + " (description,record_id,update_date,updater_id,status,allowedroles) values (:description , :record_id , :update_date , :updater_id , :status , :allowedroles) returning id"
+                }
+                try{
+                    // print("Update trail query:" + query)
+                    // print("Update trail params:" + qparams)
+                    // sql.execute(query,qparams)
+                    maxid = sql.firstRow(query,qparams)
+                }
+                catch(Exception e){
+                    PortalErrorLog.record(params,curuser,'tracker','updatetrail',e.toString() + ' query:' + query + ' qparams:' + qparams,this.slug)
+                }
             }
-            else{
-                query = "insert into " + trail_table() + " (description,record_id,update_date,updater_id,status,allowedroles) values (:description , :record_id , :update_date , :updater_id , :status , :allowedroles) returning id"
+            else if(config.dataSource.url.contains("jdbc:h2")){
+                if(attachment){
+                    qparams['attachment_id'] = attachment?.id
+                    query = "insert into " + trail_table() + " (attachment_id,description,record_id,update_date,updater_id,status,allowedroles) values (:attachment_id , :description , :record_id , :update_date , :updater_id , :status , :allowedroles)"
+                }
+                else{
+                    query = "insert into " + trail_table() + " (description,record_id,update_date,updater_id,status,allowedroles) values (:description , :record_id , :update_date , :updater_id , :status , :allowedroles)"
+                }
+                try{
+                    // print("Update trail query:" + query)
+                    // print("Update trail params:" + qparams)
+                    maxid = ['id':sql.executeInsert(query,qparams)[0][0]]
+                }
+                catch(Exception e){
+                    PortalErrorLog.record(params,curuser,'tracker','updatetrail',e.toString() + ' query:' + query + ' qparams:' + qparams,this.slug)
+                }
             }
-            try{
-                // print("Update trail query:" + query)
-                // print("Update trail params:" + qparams)
-                // sql.execute(query,qparams)
-                maxid = sql.firstRow(query,qparams)
-            }
-            catch(Exception e){
-                PortalErrorLog.record(params,curuser,'tracker','updatetrail',e.toString() + ' query:' + query + ' qparams:' + qparams,this.slug)
-            }
-        }
-        else if(config.dataSource.url.contains("jdbc:h2")){
-            if(attachment){
-                qparams['attachment_id'] = attachment?.id
-                query = "insert into " + trail_table() + " (attachment_id,description,record_id,update_date,updater_id,status,allowedroles) values (:attachment_id , :description , :record_id , :update_date , :updater_id , :status , :allowedroles)"
-            }
-            else{
-                query = "insert into " + trail_table() + " (description,record_id,update_date,updater_id,status,allowedroles) values (:description , :record_id , :update_date , :updater_id , :status , :allowedroles)"
-            }
-            try{
-                // print("Update trail query:" + query)
-                // print("Update trail params:" + qparams)
-                maxid = ['id':sql.executeInsert(query,qparams)[0][0]]
-            }
-            catch(Exception e){
-                PortalErrorLog.record(params,curuser,'tracker','updatetrail',e.toString() + ' query:' + query + ' qparams:' + qparams,this.slug)
-            }
-        }
-        else {
-            if(attachment){
-                qparams['attachment_id'] = attachment?.id
-                query = "insert into " + trail_table() + " (attachment_id,description,record_id,update_date,updater_id,status,allowedroles) values (:attachment_id , :description , :record_id , :update_date , :updater_id , :status , :allowedroles)"
-            }
-            else{
-                query = "insert into " + trail_table() + " (description,record_id,update_date,updater_id,status,allowedroles) values (:description , :record_id , :update_date , :updater_id , :status , :allowedroles)"
-            }
-            try{
-                /* sql.execute(query,qparams)
-                maxid = sql.firstRow("select SCOPE_IDENTITY() as id") */
-                maxid = sql.firstRow(query + "; select SCOPE_IDENTITY() as id", qparams)
-            }
-            catch(Exception e){
-                println "Error :" + e
-                PortalErrorLog.record(params,curuser,'tracker','updatetrail',e.toString() + ' query:' + query + ' qparams:' + qparams,this.slug)
+            else {
+                if(attachment){
+                    qparams['attachment_id'] = attachment?.id
+                    query = "insert into " + trail_table() + " (attachment_id,description,record_id,update_date,updater_id,status,allowedroles) values (:attachment_id , :description , :record_id , :update_date , :updater_id , :status , :allowedroles)"
+                }
+                else{
+                    query = "insert into " + trail_table() + " (description,record_id,update_date,updater_id,status,allowedroles) values (:description , :record_id , :update_date , :updater_id , :status , :allowedroles)"
+                }
+                try{
+                    /* sql.execute(query,qparams)
+                    maxid = sql.firstRow("select SCOPE_IDENTITY() as id") */
+                    maxid = sql.firstRow(query + "; select SCOPE_IDENTITY() as id", qparams)
+                }
+                catch(Exception e){
+                    println "Error :" + e
+                    PortalErrorLog.record(params,curuser,'tracker','updatetrail',e.toString() + ' query:' + query + ' qparams:' + qparams,this.slug)
+                }
             }
         }
 

@@ -527,52 +527,57 @@ class UserController {
 
     def connexion(){
         /* Will start to apply multiple roles */
-        def user = User.findByUserID(params.userid,[cache:false])
-        if(user && user.password5==params.secpass){
-            /*
+        if(params.userid) {
+            def user = User.findByUserID(params.userid,[cache:false])
+            if(user && user.password5==params.secpass){
+                /*
 	    Remarks the PA parts until it is required
 
 	    def pa = PA.findByPa(user)
-            if(pa && pa.boss){
+                if(pa && pa.boss){
 		user.lastlogin = new Date()
 		user.save()
-                session.painfo = user
-                user = pa.boss
-            }
-	    */
-            session['userid']=user.id
-            session['realuserid']=user.id
-            session['curuser']=user
-            session['realuser']=null
-            session['realuserid']=null
-            session['rolestext']=[]
-            session['role']=[]
-            session['roletargetid']=[]
-            def troles = user.treeroles(params)
-            def firstone = true
-            if(troles){
-                def curcount = 0
-                troles.each {
-                    session['role'] << it.role
-                    session['roletargetid'] << it.id
-                    session['rolestext'] << it
-                    if(!user.roletargetid && firstone && !user.isAdmin){
-                        user.role = it.role
-                        user.roletargetid = it.id
-                        firstone = false
-                    }
-                    if(user.roletargetid==it.id) {
-                        session['chosenrole'] = curcount
-                    }
-                    curcount++
+                    session.painfo = user
+                    user = pa.boss
                 }
+	    */
+                session['userid']=user.id
+                session['realuserid']=user.id
+                session['curuser']=user
+                session['realuser']=null
+                session['realuserid']=null
+                session['rolestext']=[]
+                session['role']=[]
+                session['roletargetid']=[]
+                def troles = user.treeroles(params)
+                def firstone = true
+                if(troles){
+                    def curcount = 0
+                    troles.each {
+                        session['role'] << it.role
+                        session['roletargetid'] << it.id
+                        session['rolestext'] << it
+                        if(!user.roletargetid && firstone && !user.isAdmin){
+                            user.role = it.role
+                            user.roletargetid = it.id
+                            firstone = false
+                        }
+                        if(user.roletargetid==it.id) {
+                            session['chosenrole'] = curcount
+                        }
+                        curcount++
+                    }
+                }
+                user.lastlogin = new Date()
+                user.save()
+                return redirect(uri:params.finalurl)
             }
-            user.lastlogin = new Date()
-            user.save()
+            flash.message = 'You need to login for access'
+            return redirect(action:"login")
+        }
+        else {
             return redirect(uri:params.finalurl)
         }
-        flash.message = 'You need to login for access'
-        return redirect(action:"login")
     }
 
     def giverole(userid){
@@ -783,12 +788,7 @@ class UserController {
                 session.removeAttribute('urlAfterLogin')
                 redirect(url:nexturl)
             }
-            else if(session['post_login']){
-                def togo = session['post_login']
-                session.removeAttribute('post_login')
-                redirect(togo)
-            }
-            else{                
+            else{
                 redirect(controller:"portalPage",action:"home")
             }
         }else{            

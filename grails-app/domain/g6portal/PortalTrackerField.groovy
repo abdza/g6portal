@@ -95,7 +95,8 @@ class PortalTrackerField {
             }
         }
         else{
-            toreturn = value
+            // Convert GString to String to avoid SQL Server JDBC type inference failure
+            toreturn = (value instanceof GString) ? value.toString() : value
         }
         return toreturn
     }

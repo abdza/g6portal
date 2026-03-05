@@ -52,19 +52,30 @@ class PortalModule {
             filelinkarray.each { ifilelink->
                 try {
                     def exportpath = migrationfolder + '/files/fl_' + ifilelink.id + '_' + ifilelink.name.replace(" ","_")
+                    // Detect Windows absolute paths (backslash or drive letter like d:\...)
+                    def finalpath = ifilelink.path
+                    if(finalpath && (finalpath.contains('\\') || finalpath ==~ /^[A-Za-z]:.*/)){
+                        println "Windows path detected, using exportpath instead: " + exportpath
+                        finalpath = exportpath
+                    }
                     if((new File(exportpath)).exists() ){
                         println "Import file exists at:" + exportpath
-                        def outfile = new File(ifilelink.path)
-                        if(!(new File(outfile.getParent()).exists())){
-                            new File(outfile.getParent()).mkdirs()
+                        if(finalpath != exportpath) {
+                            def outfile = new File(finalpath)
+                            if(!(new File(outfile.getParent()).exists())){
+                                new File(outfile.getParent()).mkdirs()
+                            }
+                            println "Writing out to:" + outfile
+                            def srcStream = new File(exportpath).newDataInputStream()
+                            def dstStream = new File(finalpath).newDataOutputStream()
+                            dstStream << srcStream
+                            srcStream.close()
+                            dstStream.close()
+                            println "Done writing file"
                         }
-                        println "Writing out to:" + outfile
-                        def srcStream = new File(exportpath).newDataInputStream()
-                        def dstStream = new File(ifilelink.path).newDataOutputStream()
-                        dstStream << srcStream
-                        srcStream.close()
-                        dstStream.close()
-                        println "Done writing file"
+                        else {
+                            println "File already at final path (exportpath), no copy needed"
+                        }
                     }
                     else{
                         println "No import file found at:" + exportpath
@@ -78,7 +89,7 @@ class PortalModule {
                     curfilelink.module=ifilelink.module
                     curfilelink.slug=ifilelink.slug
                     curfilelink.name=ifilelink.name
-                    curfilelink.path=ifilelink.path
+                    curfilelink.path=finalpath
                     curfilelink.allowedroles=ifilelink.allowedroles
                     curfilelink.filegroup=ifilelink.filegroup
                     curfilelink.sortnum=ifilelink.sortnum
@@ -360,6 +371,14 @@ class PortalModule {
                                 emailonupdate.save(flush:true)
                                 curstatus.emailonupdate = emailonupdate
                                 curstatus.save(flush:true)
+                            }
+
+                            if(istatus.runonupdate){
+                                def runonupdatepage = PortalPage.findByModuleAndSlug(curtracker.module,istatus.runonupdate)
+                                if(runonupdatepage){
+                                    curstatus.runonupdate = runonupdatepage
+                                    curstatus.save(flush:true)
+                                }
                             }
                         }
 
@@ -723,7 +742,8 @@ class PortalModule {
                         updateable: status.updateable,
                         attachable: status.attachable,
                         suppressupdatebutton: status.suppressupdatebutton,
-                        emailonupdate: emailonupdate
+                        emailonupdate: emailonupdate,
+                        runonupdate: status.runonupdate?.slug
                     ]
                 }
                 def rolesarray = []

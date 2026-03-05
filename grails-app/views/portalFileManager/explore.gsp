@@ -41,6 +41,9 @@
 
                     <label for='unzip'>Unzip zip files:</label>
                     <input type='checkbox' name='unzip' id='unzip'/>
+                    &nbsp;
+                    <label for='createfilelink'>Create FileLink:</label>
+                    <input type='checkbox' name='createfilelink' id='createfilelink'/>
 
                     <!-- Modal -->
                     <div class="modal fade" id="createfolder" tabindex="-1" aria-labelledby="createfolder" aria-hidden="true">
@@ -162,6 +165,9 @@
         }
         if($('#unzip').prop('checked')) {
             formData.append("unzip",1);
+        }
+        if($('#createfilelink').prop('checked')) {
+            formData.append("createfilelink",1);
         }
         xhr.onload = function() {
             if(xhr.status == 200) {

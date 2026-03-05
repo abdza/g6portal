@@ -319,11 +319,38 @@ class FileLinkController {
                         return
                     }
                     
-                    response.setContentType("application/octet-stream")
-                    response.setHeader("Content-disposition", "attachment;filename=${thefile.getName().replace(' ','_').replaceAll('[^a-zA-Z0-9._-]', '_')}")
-                    
-                    if(params.thumbsize){
-                        // Validate thumbsize parameter 
+                    // Detect MIME type from slug suffix to serve CSS/JS/fonts inline with correct type
+                    def slugLower = (filelink.slug ?: '').toLowerCase()
+                    def mimeType = "application/octet-stream"
+                    def isAttachment = false
+                    if (slugLower.endsWith('_css')) {
+                        mimeType = "text/css"
+                    } else if (slugLower.endsWith('_js')) {
+                        mimeType = "application/javascript"
+                    } else if (slugLower.endsWith('_woff2')) {
+                        mimeType = "font/woff2"
+                    } else if (slugLower.endsWith('_woff')) {
+                        mimeType = "font/woff"
+                    } else if (slugLower.endsWith('_ttf')) {
+                        mimeType = "font/ttf"
+                    } else if (slugLower.endsWith('_eot')) {
+                        mimeType = "application/vnd.ms-fontobject"
+                    } else if (slugLower.endsWith('_svg')) {
+                        mimeType = "image/svg+xml"
+                    } else {
+                        def bis = new java.io.BufferedInputStream(thefile.newInputStream())
+                        def guessed = URLConnection.guessContentTypeFromStream(bis)
+                        bis.close()
+                        mimeType = guessed ?: "application/octet-stream"
+                        if (mimeType == "application/octet-stream") { isAttachment = true }
+                    }
+                    response.setContentType(mimeType)
+                    if (isAttachment) {
+                        response.setHeader("Content-disposition", "attachment;filename=${thefile.getName().replace(' ','_').replaceAll('[^a-zA-Z0-9._-]', '_')}")
+                    }
+
+                    if(params.thumbsize && mimeType.startsWith('image/')){
+                        // Validate thumbsize parameter
                         def thumbSize = 0
                         try {
                             thumbSize = Integer.parseInt(params.thumbsize.toString())

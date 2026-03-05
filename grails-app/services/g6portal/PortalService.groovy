@@ -22,6 +22,31 @@ class PortalService {
 
     def sessionFactory
     LinkGenerator grailsLinkGenerator
+    def groovyPagesTemplateEngine
+    private static final ThreadLocal<Set<String>> includeStack = ThreadLocal.withInitial { [] as Set }
+
+    String includePage(String module, String slug, Map binding = [:]) {
+        def stack = includeStack.get()
+        def pageKey = "${module}:${slug}"
+        if (pageKey in stack) {
+            return "<!-- Circular include prevented: ${pageKey} -->"
+        }
+        def page = PortalPage.findByModuleAndSlug(module, slug)
+        if (!page || !page.published) return ''
+        stack.add(pageKey)
+        try {
+            def output = new StringWriter()
+            def pagename = 'page' + page.id + page.lastUpdated.toString()
+            Template template = groovyPagesTemplateEngine.createTemplate(page.content, pagename)
+            template.make(binding ?: [:]).writeTo(output)
+            return output.toString()
+        } catch (Exception e) {
+            println "Error including page ${module}:${slug}: ${e}"
+            return "<!-- Error including ${module}:${slug} -->"
+        } finally {
+            stack.remove(pageKey)
+        }
+    }
 
     public yesno(yndata,defaultdata='No') {
         if(yndata.size()) {
