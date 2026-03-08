@@ -219,7 +219,7 @@ class PortalFileManagerController {
                                 return
                             }
                             // Validate file security before processing
-                            def filemanagermax = PortalSetting.namedefault('filemanager_max_' + session.curuser?.staffID,50000)
+                            def filemanagermax = PortalSetting.namedefault('filemanager_max_' + session.curuser?.userID,5242880)
                             def validationResult = FileSecurityValidator.validateFile(f,null,filemanagermax)
                             if (!validationResult.valid) {
                                 println "FileManager upload error:" + validationResult.errors.join(', ')
