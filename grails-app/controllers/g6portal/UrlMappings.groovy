@@ -19,6 +19,14 @@ class UrlMappings {
         action = "login"
     }
 
+	"/user/switchuser/$id" {
+        controller = "user"
+        action = "switchuser"
+        constraints {
+            id(matches:/[a-zA-Z0-9._\-]+$/)
+        }
+    }
+
 	"/setup" {
         controller = "portalPage"
         action = "setup"
