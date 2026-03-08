@@ -775,8 +775,10 @@ class PortalTrackerController {
             redirect action:"list", method:"GET", params:['module':tracker.module,'slug':tracker.slug]
             return
         }
-        if(tracker.tracker_type=='Tracker' && datas['record_status']){
-            page = PortalPage.findByModuleAndSlug(tracker.module,tracker.slug + "_show_" + datas['record_status'].replaceAll(' ','_').toLowerCase())
+        def datasRecordStatus = null
+        try { datasRecordStatus = datas ? datas['record_status'] : null } catch(e) {}
+        if(tracker.tracker_type in ['Tracker','Statement'] && datasRecordStatus){
+            page = PortalPage.findByModuleAndSlug(tracker.module,tracker.slug + "_show_" + datasRecordStatus.replaceAll(' ','_').toLowerCase())
         }
         if(!page){
             page = PortalPage.findByModuleAndSlug(tracker.module,tracker.slug + "_show_default")
@@ -934,8 +936,10 @@ class PortalTrackerController {
                         /* runonupdate and emailonupdate for current status */
                         def curdatas = tracker.getdatas(datas['id'])
                         def curstatus = null
-                        if(curdatas && curdatas['record_status']) {
-                            curstatus = PortalTrackerStatus.findByTrackerAndName(tracker,curdatas['record_status'])
+                        def curRecordStatus = null
+                        try { curRecordStatus = curdatas ? curdatas['record_status'] : null } catch(e) {}
+                        if(curRecordStatus) {
+                            curstatus = PortalTrackerStatus.findByTrackerAndName(tracker,curRecordStatus)
                         }
                         if(curstatus && curstatus.runonupdate) {
                             try {
