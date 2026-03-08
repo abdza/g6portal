@@ -88,7 +88,7 @@ class FileLinkController {
                     return
                 }
                 // Validate file security before processing
-                def filemanagermax = PortalSetting.namedefault('filemanager_max_' + session.curuser?.staffID,50000)
+                def filemanagermax = PortalSetting.namedefault('filemanager_max_' + session.curuser?.userID,5242880)
                 def validationResult = FileSecurityValidator.validateFile(f,null,filemanagermax)
                 if (!validationResult.valid) {
                     flash.message = "File upload failed: ${validationResult.errors.join(', ')}"
@@ -151,7 +151,7 @@ class FileLinkController {
                 def f = request.getFile('fileupload')
                 if (!f.empty) {
                     // Validate file security before processing
-                    def filemanagermax = PortalSetting.namedefault('filemanager_max_' + session.curuser?.staffID,50000)
+                    def filemanagermax = PortalSetting.namedefault('filemanager_max_' + session.curuser?.userID,5242880)
                     def validationResult = FileSecurityValidator.validateFile(f,null,filemanagermax)
                     if (!validationResult.valid) {
                         flash.message = "File upload failed: ${validationResult.errors.join(', ')}"
@@ -251,31 +251,41 @@ class FileLinkController {
         if(filelink && filelink.path){
             // Security check: verify user has permission to access this file
             def hasAccess = false
-            
-            // Check if user is authenticated
-            if(!session.userid) {
-                response.status = 401
-                render(text: "Authentication required")
-                return
-            }
-            
-            // Check if user is admin or has access to the file's module
-            if(session.enablesuperuser) {
+
+            def whitelist_modules = PortalSetting.namedefault('download_module_whitelist',['portal'])
+            if(filelink.module in whitelist_modules && !filelink.allowedroles) {
                 hasAccess = true
-            } else if(session.adminmodules && filelink.module) {
-                hasAccess = (filelink.module in session.adminmodules)
-            } else if(filelink.tracker_id) {
-                // Check if user has access to the tracker that owns this file
-                def tracker = PortalTracker.get(filelink.tracker_id)
-                if(tracker && session.curuser) {
-                    def userRoles = tracker.user_roles(session.curuser)
-                    hasAccess = userRoles.size() > 0
+            } else if(filelink.allowedroles) {
+                def testroles = filelink.allowedroles.tokenize(',')*.trim()
+                if('All' in testroles) {
+                    hasAccess = true
+                } else if(session.userid) {
+                    def curuser = session.curuser
+                    if('Authenticated' in testroles) {
+                        hasAccess = true
+                    } else if(curuser && testroles.any { tr -> tr in curuser.modulerole(filelink.module) }) {
+                        hasAccess = true
+                    } else if(curuser && curuser.currentrole()?.role in testroles) {
+                        hasAccess = true
+                    }
+                }
+            } else if(session.userid) {
+                // Check if user is admin or has access to the file's module
+                if(session.enablesuperuser) {
+                    hasAccess = true
+                } else if(session.adminmodules && filelink.module) {
+                    hasAccess = (filelink.module in session.adminmodules)
+                } else if(filelink.tracker_id) {
+                    def tracker = PortalTracker.get(filelink.tracker_id)
+                    if(tracker && session.curuser) {
+                        hasAccess = tracker.user_roles(session.curuser).size() > 0
+                    }
                 }
             }
-            
+
             if(!hasAccess) {
-                response.status = 403
-                render(text: "Access denied")
+                response.status = 401
+                render(text: "Authentication required")
                 return
             }
             
