@@ -46,18 +46,23 @@ class PortalEmail {
         def ccto = this.emailcc?.tokenize(',')
         try {
             PortalEmail.withTransaction { sqltrans->
-                mailService.sendMail {
-                    to sendto
-                    if(ccto?.size()) {
-                      cc ccto
+                try {
+                    mailService.sendMail {
+                        to sendto
+                        if(ccto?.size()) {
+                          cc ccto
+                        }
+                        from emailfrom
+                        subject this.title
+                        html this.body
                     }
-                    from emailfrom
-                    subject this.title
-                    html this.body
+                    this.timeSent = new Date()
+                    // this.timeSent = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date())
+                    this.emailSent = true
+                } catch(Exception mailEx) {
+                    println "PortalEmail.send failed: " + mailEx.toString()
+                    this.emailSent = false
                 }
-                this.timeSent = new Date()
-                // this.timeSent = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date())
-                this.emailSent = true
                 this.save(flush:true)
             }
         } catch (ValidationException e) {

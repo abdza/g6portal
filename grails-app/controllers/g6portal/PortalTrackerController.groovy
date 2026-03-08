@@ -1081,11 +1081,15 @@ class PortalTrackerController {
                                     println 'Error with sending email ' + email.body?.title + ' : ' + e.toString()
                                     def emailpagerror = PortalSetting.findByName("emailpagerror")
                                     if(emailpagerror && mailService){
-                                        mailService.sendMail {
-                                            to emailpagerror.value().trim()
-                                            subject "Page Error"
-                                            body 'Error with sending email ' + email.body?.title + ' : ' + e.toString() + '''
-                                            Params: ''' + params
+                                        try {
+                                            mailService.sendMail {
+                                                to emailpagerror.value().trim()
+                                                subject "Page Error"
+                                                body 'Error with sending email ' + email.body?.title + ' : ' + e.toString() + '''
+                                                Params: ''' + params
+                                            }
+                                        } catch(Exception e2) {
+                                            println 'Error sending error notification email: ' + e2.toString()
                                         }
                                     }
                                     PortalErrorLog.record(params,curuser,'tracker','updatetrail - sending email',e.toString(),tracker.slug,tracker.module)

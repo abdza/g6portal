@@ -775,9 +775,9 @@ class PortalTracker {
     def updatetrail(params,session,request,curuser,datasource,groovyPagesTemplateEngine=null,portalService=null) {
         def curstatus = row_status(datasource,params.id)
         def maxid = null
+        def attachment = null
         if(tracker_type=='Tracker') {
             def sql = new Sql(datasource)
-            def attachment = null
             if(params.uploadfile){
                 def uploadedfile = request?.getFile('uploadfile');
                 def apath = PortalSetting.findByName(module + "_" + slug + '_attachment_path')
