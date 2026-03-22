@@ -733,6 +733,9 @@ class PortalTracker {
                 if(role.name=='Admin' && checkAdmin(curuser)){
                     cuser_roles << role
                 }
+                else if(role.name=='Authenticated'){
+                    cuser_roles << role
+                }
                 else if(role.role_type=='User Role'){
                     if(role.name in userRoleNames || currentRoleName == role.name?.trim()) {
                         cuser_roles << role
