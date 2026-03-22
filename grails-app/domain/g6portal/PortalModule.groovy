@@ -311,6 +311,8 @@ class PortalModule {
                             curfield.role_query=ifield.role_query
                             curfield.encode_exception=ifield.encode_exception
                             curfield.suppress_follow_link=ifield.suppress_follow_link
+                            curfield.field_description=ifield.field_description
+                            curfield.field_tooltip=ifield.field_tooltip
                             if(!curfield.validate()){
                                 curfield.errors.allErrors.each {
                                     println 't error:' + it
@@ -546,10 +548,58 @@ class PortalModule {
         }
     }
 
+    def ensureColumnSizes() {
+        def columnsToExpand = [
+            [table: 'portal_tracker_field',     column: 'label'],
+            [table: 'portal_tracker_field',     column: 'field_description'],
+            [table: 'portal_tracker_field',     column: 'field_tooltip'],
+            [table: 'portal_tracker_transition', column: 'enabledcondition'],
+        ]
+        println "ensureColumnSizes: checking ${columnsToExpand.size()} column(s)"
+        PortalModule.withSession { sqlsession ->
+            def conn = sqlsession.connection()
+            def sql = new Sql(conn)
+            def isPostgres = conn.metaData.databaseProductName.toLowerCase().contains('postgresql')
+            try {
+                columnsToExpand.each { check ->
+                    def info = sql.firstRow("""
+                        SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH
+                        FROM INFORMATION_SCHEMA.COLUMNS
+                        WHERE TABLE_NAME = :table AND COLUMN_NAME = :column
+                    """, [table: check.table, column: check.column])
+                    def alreadyUnbounded = isPostgres
+                        ? info?.DATA_TYPE == 'text'
+                        : info?.CHARACTER_MAXIMUM_LENGTH == -1
+                    if (!info) {
+                        if (isPostgres) {
+                            sql.execute("ALTER TABLE ${check.table} ADD COLUMN ${check.column} TEXT" as String)
+                        } else {
+                            sql.execute("ALTER TABLE ${check.table} ADD ${check.column} NVARCHAR(MAX) NULL" as String)
+                        }
+                        println "ensureColumnSizes: [CREATED] ${check.table}.${check.column}"
+                    } else if (alreadyUnbounded) {
+                        println "ensureColumnSizes: [OK]      ${check.table}.${check.column} already unbounded"
+                    } else {
+                        if (isPostgres) {
+                            sql.execute("ALTER TABLE ${check.table} ALTER COLUMN ${check.column} TYPE TEXT" as String)
+                        } else {
+                            sql.execute("ALTER TABLE ${check.table} ALTER COLUMN ${check.column} NVARCHAR(MAX)" as String)
+                        }
+                        println "ensureColumnSizes: [DONE]    ${check.table}.${check.column} expanded to unbounded"
+                    }
+                }
+            } catch (Exception e) {
+                println "ensureColumnSizes error: ${e.message}"
+            }
+        }
+    }
+
     def importmodule(file_on,staff_on) {
         def curfolder = System.getProperty("user.dir")
         def migrationfolder = PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration') + '/' + this.name
         def jsonSlurper = new JsonSlurper()
+
+        ensureColumnSizes()
 
         PortalModule.withTransaction { curt ->
             if(file_on) {
@@ -718,6 +768,8 @@ class PortalModule {
                         role_query: field.role_query,
                         encode_exception: field.encode_exception,
                         suppress_follow_link: field.suppress_follow_link,
+                        field_description: field.field_description,
+                        field_tooltip: field.field_tooltip,
                         error_checks: errorarray
                     ]
                 }

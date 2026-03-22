@@ -584,6 +584,7 @@ class UserController {
         /* Will start to apply multiple roles */
         def user = User.findByUserID(userid,[cache:false])
         if(user){
+            user.clearModuleroleCache()
             /*
 	    Remarks the PA parts until it is required
 
@@ -630,6 +631,7 @@ class UserController {
             User.withTransaction { ctrans->
                 def duser = User.get(session.userid)
                 if(duser) {
+                    duser.clearModuleroleCache()
                     duser.role = session['role'][chosenrole]
                     duser.roletargetid = session['roletargetid'][chosenrole]
                     duser.save(flush:true)

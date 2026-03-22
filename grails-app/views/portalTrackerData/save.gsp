@@ -52,8 +52,13 @@
                        <g:textField id="custom_${field.id}" name="custom_${field.id}" />
                     </g:else>
                   </td>
-                  <td style="width:20px;">                    
-                    <g:checkBox style="width: auto;" name="update_${field.id}"/>                  
+                  <td style="width:20px;">
+                    <g:if test="${keydata && keydata[field.id]}">
+                        <g:hiddenField name="update_${field.id}" value="on"/>
+                    </g:if>
+                    <g:else>
+                    <g:checkBox style="width: auto;" name="update_${field.id}"/>
+                    </g:else>
                   </td>
                 </tr>
               </g:else>

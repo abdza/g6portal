@@ -43,6 +43,8 @@ class PortalTrackerField {
         role_query(nullable:true)
         encode_exception(nullable:true)
         suppress_follow_link(nullable:true)
+        field_description(nullable:true)    // Descriptive text shown below the field label
+        field_tooltip(nullable:true)        // Tooltip text shown on hover over the label
     }
 
     static mapping = {
@@ -50,6 +52,7 @@ class PortalTrackerField {
         field_default type: 'text'
         field_query type: 'text'
         hyperscript type: 'text'
+        field_description type: 'text'  // Store as TEXT for long descriptions
         cache true
     }
 
@@ -71,6 +74,8 @@ class PortalTrackerField {
     Boolean role_query
     Boolean encode_exception
     Boolean suppress_follow_link
+    String field_description        // Descriptive text displayed below the field label
+    String field_tooltip            // Tooltip text shown on hover over the label
 
     String toString() {
         return name

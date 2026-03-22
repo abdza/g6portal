@@ -29,7 +29,11 @@ class TrackerTagLib {
         if(attrs.field){
             if(attrs.field.field_type=='FieldGroup'){
                 out << "<fieldset>"
-                out << "<legend>${attrs.field.label}</legend>"
+                def tooltipAttr = attrs.field.field_tooltip ? " title='${attrs.field.field_tooltip}'" : ""
+                out << "<legend${tooltipAttr}>${attrs.field.label}</legend>"
+                if(attrs.field.field_description){
+                    out << "<small class='field-description text-muted d-block mb-2'>${attrs.field.field_description}</small>"
+                }
                 def fields = [] 
                 def ftags = attrs.field.field_options?.tokenize(',')*.trim()
                 ftags.each { ftag->
@@ -849,7 +853,7 @@ class TrackerTagLib {
 
                           out << "<select class='filterdropdown' name='" + field.name?.trim() + "' id='" + field.name?.trim() + "'>"
                           out << "<option value=''></option>"
-                          def query = "select distinct " + field.name?.trim() + " from " + attrs.tracker.data_table() + " order by " + field.name?.trim()
+                          def query = "select distinct \"" + field.name?.trim() + "\" from " + attrs.tracker.data_table() + " order by \"" + field.name?.trim() + "\""
                           if(field.name?.trim()=='record_status'){
                               attrs.tracker.statuses.sort { it.name }.each {
                                   if(it.name != 'Delete') {
@@ -1410,8 +1414,7 @@ content: event.description
                     out << asset.script() { """\$(window).on('load',function() { \$('#${attrs.transition.tracker.slug}_form').find('input[type="submit"]').click();});"""}
                 }
             }
-            out << """
-            <script>
+            out << asset.script() { """
 
             function checkboxArray(field_name) {
                 return \$("[name='" + field_name + "']:checked").map(function() { return this.value }).get();
@@ -1531,8 +1534,7 @@ content: event.description
                     inputelement.prop('readonly',true);
                 }
             }
-            </script>
-            """
+            """ }
         }
     }
 
@@ -1679,8 +1681,7 @@ content: event.description
             attrs.datas = datas
             out << transitionButtons(record_id:attrs.record_id,userroles:userroles,tracker:attrs.tracker,datas:attrs.datas)
             out << "&nbsp;"
-            out << """
-            <script>
+            out << asset.script() { """
 
             function toggleAll(field_name,value=null) {
                 var dispelement = \$("#" + field_name + "_tr");
@@ -1703,7 +1704,7 @@ content: event.description
                     }
                 }
             }
-            </script>"""
+            """ }
         }
     }
 

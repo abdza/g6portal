@@ -39,11 +39,13 @@
 			</fieldset>
                         <fieldset class="form">
 			    <g:if test='${params.tracker_id}'>
-				<f:all except='isTrackerDeleting,tracker,module,path,date_created,uploaded,send_email,sent_email_date,messages,savedparams,file_link,uploadStatus' bean='portalTrackerData'/>
+				<f:all except='isTrackerDeleting,tracker,module,path,date_created,uploaded,send_email,sent_email_date,messages,savedparams,file_link,uploadStatus,uploader' bean='portalTrackerData'/>
 				<input type='hidden' name='tracker' id='tracker' value='${params.tracker_id}'/>
                 <g:each in='${customdata}' var='custom'>
 				<input type='hidden' name='${custom.name}' id='${custom.name}' value='${custom.value}'/>
                 </g:each>
+                <input type='hidden' name='customkeyfields' value='${customdata.findAll{it.iskey}.collect{it.name}.join(",")}'/>
+
 			    </g:if>
 			    <g:else>
           <div class="fieldcontain">

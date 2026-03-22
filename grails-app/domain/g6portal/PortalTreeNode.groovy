@@ -95,6 +95,7 @@ class PortalTreeNode {
     }
 
     def getdomain(sql=null) {
+        return _reqCache("_ptn_gd_${id}") {
         // println "\nIn getdomain of portaltreenode\n"
         if(domain && domainid){
             try {
@@ -142,6 +143,7 @@ class PortalTreeNode {
             }
         }
         return null
+        }
     }
 
     def getwhole = {
@@ -155,7 +157,8 @@ class PortalTreeNode {
         }
     }
 
-    def mainuser = {
+    def mainuser() {
+        return _reqCache("_ptn_mu_${id}") {
         if(mainrole){
             def drole = mainrole.tokenize(',')
             def duser = PortalTreeNodeUser.createCriteria()
@@ -167,9 +170,11 @@ class PortalTreeNode {
             }[0]
         }
         return null
+        }
     }
 
-    def mainusers = {
+    def mainusers() {
+        return _reqCache("_ptn_mus_${id}") {
         if(mainrole){
             def drole = mainrole.tokenize(',')
             def duser = PortalTreeNodeUser.createCriteria()
@@ -181,6 +186,7 @@ class PortalTreeNode {
             }
         }
         return null
+        }
     }
 
     def checkroletext(curuser){
@@ -194,6 +200,7 @@ class PortalTreeNode {
     }
 
     def checkrole(curuser){
+        return _reqCache("_ptn_cr_${id}_${curuser?.id}") {
         if(curuser?.isAdmin){
             def treenodeuser = new PortalTreeNodeUser()
             treenodeuser['role'] = 'Admin'
@@ -215,19 +222,22 @@ class PortalTreeNode {
             }
         }
         return toreturn
+        }
     }
 
     def userbyrole(role) {
-        def dnode = PortalTreeNodeUser.findByNodeAndRole(this,role,[cache:true])
-        return dnode
+        return _reqCache("_ptn_ubr_${id}_${role}") { PortalTreeNodeUser.findByNodeAndRole(this,role,[cache:true]) }
     }
 
     def alluserbyrole(role) {
+        return _reqCache("_ptn_aubr_${id}_${role}") {
         def dnode = PortalTreeNodeUser.findAllByNodeAndRole(this,role,[cache:true])
         return dnode
+        }
     }
 
     def allroleundernode(role) {
+        return _reqCache("_ptn_arun_${id}_${role}") {
         def dnodes = []
         try {
             dnodes = PortalTreeNodeUser.findAll("from PortalTreeNodeUser as tnu where tnu.role=:drole and tnu.node.tree=:dtree and tnu.node.lft<=:dlft and tnu.node.rgt>=:drgt",[drole:role,dtree:this.tree,dlft:this.lft,drgt:this.rgt],[cache:true])
@@ -236,9 +246,11 @@ class PortalTreeNode {
             println "Error searching user role: " + exp
         }
         return dnodes
+        }
     }
 
     def allroleundertree(role) {
+        return _reqCache("_ptn_arut_${id}_${role}") {
         def dnodes = []
         try {
             dnodes = PortalTreeNodeUser.findAll("from PortalTreeNodeUser as tnu where tnu.role=:drole and tnu.node.tree=:dtree",[drole:role,dtree:this.tree],[cache:true])
@@ -247,6 +259,7 @@ class PortalTreeNode {
             println "Error searching user tree role: " + exp
         }
         return dnodes
+        }
     }
 
     def useris(role,curuser){
@@ -324,15 +337,15 @@ class PortalTreeNode {
         def parent = PortalTreeNode.find("from PortalTreeNode as tn where tn.lft<:mlft and tn.rgt>:mrgt and tn.tree=:ctree order by tn.lft desc",[mlft:mostleft,mrgt:mostright,ctree:dtree],[cache:true])
     }
 
-    def getpath = {
+    def getpath() {
+        return _reqCache("_ptn_gp_${id}") {
         def path = PortalTreeNode.findAll("from PortalTreeNode as tn where tn.lft<:curlft and tn.rgt>:currgt and tn.tree=:ctree order by tn.lft asc",[curlft:lft,currgt:rgt,ctree:tree],[cache:true])
         return path
+        }
     }
 
-    def getfullpath = {
-        def toret = this.getpath().join(' / ')
-        toret += ' / ' + this
-        return toret
+    def getfullpath() {
+        return _reqCache("_ptn_gfp_${id}") { getpath().join(' / ') + ' / ' + this }
     }
 
 
@@ -358,6 +371,23 @@ class PortalTreeNode {
 	}
     }
 
+    // Sentinel for caching null/false returns in request-scoped cache
+    static final _CACHE_NULL = new Object()
+
+    // Helper: compute once per request per key, handles null returns via sentinel
+    private def _reqCache(String key, Closure compute) {
+        try {
+            def req = org.springframework.web.context.request.RequestContextHolder.currentRequestAttributes().request
+            def cached = req.getAttribute(key)
+            if (cached != null) return cached.is(_CACHE_NULL) ? null : cached
+            def result = compute()
+            req.setAttribute(key, result != null ? result : _CACHE_NULL)
+            return result
+        } catch(e) {
+            return compute()
+        }
+    }
+
     String toString(){
         if(domain && domain.size()>10){
             domain[10..-1] + ": " + name
@@ -367,7 +397,7 @@ class PortalTreeNode {
         }
     }
 
-    def generateXML = {
+    def generateXML() {
         def writer = new StringWriter()
         MarkupBuilder xml = new MarkupBuilder(writer)
         toXml(this, xml)

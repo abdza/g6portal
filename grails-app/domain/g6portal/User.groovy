@@ -9,6 +9,10 @@ class User {
 
     static hasMany = [nodes:PortalTreeNodeUser]
 
+    // Transient cache for modulerole results — keyed by module, persists for session lifetime
+    static transients = ['_modulerole_cache']
+    Map _modulerole_cache = [:]
+
     static mapping = {
         version false
         address type: 'text'
@@ -82,13 +86,32 @@ class User {
         name
     }
 
+    // Sentinel for caching null/false returns in request-scoped cache
+    static final _CACHE_NULL = new Object()
+
+    // Helper: compute once per request per key, handles null returns via sentinel
+    private def _reqCache(String key, Closure compute) {
+        try {
+            def req = org.springframework.web.context.request.RequestContextHolder.currentRequestAttributes().request
+            def cached = req.getAttribute(key)
+            if (cached != null) return cached.is(_CACHE_NULL) ? null : cached
+            def result = compute()
+            req.setAttribute(key, result != null ? result : _CACHE_NULL)
+            return result
+        } catch(e) {
+            return compute()
+        }
+    }
+
     String targetname(){
+        return _reqCache("_tn_${id}") {
         def nodeuser=PortalTreeNodeUser.get(roletargetid)
         if(nodeuser?.node){
             return nodeuser.node.getdomain()
         }
         else{
             return "No role"
+        }
         }
     }
 
@@ -232,6 +255,7 @@ class User {
     }
     
     def currentrole(tree=null) {
+        return _reqCache("_cr_${id}_${tree?.id}") {
         def toret = PortalTreeNodeUser.get(roletargetid)
         if(toret){
             if(tree) {
@@ -273,6 +297,7 @@ class User {
             else{
                 return null
             }
+        }
         }
     }
     
@@ -361,11 +386,17 @@ class User {
     }
 
     def moduleroles() {
+        return _reqCache("_mrs_${id}") {
         def urole = UserRole.findAllByUser(this,[cache:true])
         return urole
+        }
     }
-    
+
     def modulerole(module) {
+        if (_modulerole_cache == null) _modulerole_cache = [:]
+        if (_modulerole_cache.containsKey(module)) {
+            return _modulerole_cache[module]
+        }
         def urole = UserRole.findAllByUserAndModule(this,module,[cache:true])
         def toret = urole*.role
         if(PortalSetting.namedefault('enablesuperuser',false) && this.isAdmin) {
@@ -374,22 +405,31 @@ class User {
         else if('Developer' in toret) {
             toret += ['Admin']
         }
+        _modulerole_cache[module] = toret
         return toret
     }
 
+    def clearModuleroleCache() {
+        _modulerole_cache = [:]
+    }
+
     def adminlist() {
+        return _reqCache("_al_${id}") {
         def urole = UserRole.findAllByUserAndRoleInList(this,['Admin','Developer'],[cache:true])
         def toret = urole*.module
         if(toret.size()==0 && this.isAdmin) {
             toret << 'portal'
         }
         return toret.unique()
+        }
     }
 
     def developerlist() {
+        return _reqCache("_dl_${id}") {
         def urole = UserRole.findAllByUserAndRole(this,'Developer',[cache:true])
         def toret = urole*.module
         return toret.unique()
+        }
     }
 
 }

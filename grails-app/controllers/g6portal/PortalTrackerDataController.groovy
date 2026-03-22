@@ -66,25 +66,36 @@ class PortalTrackerDataController {
         else {
             trackers = PortalTracker.findAllByModuleInList(session.adminmodules)
         }
+        def keydata = [:]
+        def internalParams = ['tracker_id','module','slug','action','controller','format']
         if(params.tracker_id) {
             tracker = PortalTracker.get(params.tracker_id)
             if(tracker) {
+                def fieldNames = tracker.fields*.name
                 tracker.fields.each { field ->
                     if (params[field.name]) {
-                        customdata << ['name':field.name,'value':params[field.name]]
+                        def iskey = params.customkeyfields?.tokenize(',')?.contains(field.name) ?: false
+                        customdata << ['name':field.name,'value':params[field.name],'iskey':iskey]
+                        if(iskey) { keydata[field.id] = params[field.name] }
                     }
                     else {
                         if(field.name in ['created_by']) {
-                            customdata << ['name':'created_by','value':session.curuser?.id]
+                            customdata << ['name':'created_by','value':session.curuser?.id,'iskey':false]
                         }
                         else if(field.name in ['created_date']) {
-                            customdata << ['name':'created_date','value':new Date().format('yyyy-MM-dd HH:mm') ]
+                            customdata << ['name':'created_date','value':new Date().format('yyyy-MM-dd HH:mm'),'iskey':false]
                         }
+                    }
+                }
+                // Also handle non-field params (excluding internal ones)
+                params.each { k, v ->
+                    if(!(k in internalParams) && !(k in fieldNames) && v) {
+                        customdata << ['name':k,'value':v,'iskey':false]
                     }
                 }
             }
         }
-        respond new PortalTrackerData(params), model:[trackers:trackers,tracker:tracker,customdata:customdata]
+        respond new PortalTrackerData(params), model:[trackers:trackers,tracker:tracker,customdata:customdata,keydata:keydata]
     }
 
 
@@ -386,7 +397,7 @@ class PortalTrackerDataController {
             if(field.name && field.name.endsWith('_')) {
                 field.name = field.name[0..-2]
             }
-            def foundfield = PortalTrackerField.findByTrackerAndName(portalTrackerData.tracker,field.name)
+            def foundfield = PortalTrackerField.findByTrackerAndNameIlike(portalTrackerData.tracker,field.name)
             if(foundfield){
                 setfields[foundfield.id] = field.col
             }
@@ -407,7 +418,7 @@ class PortalTrackerDataController {
     def cleardb() {
         def tracker = PortalTracker.get(params.tracker_id)
         def curuser = session.curuser
-        if(curuser && tracker && 'Admin' in curuser.modulerole(tracker.module)) {
+        if(curuser && tracker && ('Admin' in curuser.modulerole(tracker.module) || curuser.isAdmin)) {
             PortalTrackerData.withTransaction { transaction -> 
                 tracker.datas.each { tdata->
                     tdata.tracker.discard()
@@ -451,7 +462,7 @@ class PortalTrackerDataController {
     def cleandb() {
         def tracker = PortalTracker.get(params.tracker_id)
         def curuser = session.curuser
-        if(curuser && tracker && 'Admin' in curuser.modulerole(tracker.module)) {
+        if(curuser && tracker && ('Admin' in curuser.modulerole(tracker.module) || curuser.isAdmin)) {
             if(tracker.tracker_type!='DataStore') {
                 def sessiondata = sessionFactory.currentSession.connection()
                 def sql = new Sql(sessiondata)
@@ -473,7 +484,7 @@ class PortalTrackerDataController {
     def resetdb() {
         def tracker = PortalTracker.get(params.tracker_id)
         def curuser = session.curuser
-        if(curuser && tracker && 'Admin' in curuser.modulerole(tracker.module)) {
+        if(curuser && tracker && ('Admin' in curuser.modulerole(tracker.module) || curuser.isAdmin)) {
             def sessiondata = sessionFactory.currentSession.connection()
             def sql = new Sql(sessiondata)
             PortalTrackerData.withTransaction { transaction -> 
@@ -629,7 +640,10 @@ class PortalTrackerDataController {
         if('offset' in params) {
             params.remove('offset')
         }
-        def query = tracker.listquery(params,curuser)
+        if('id' in params) {
+            params.remove('id')
+        }
+        def query = tracker.listquery(params,curuser,"select all * ")
         def rename_checkbox = PortalSetting.namedefault(tracker.module + '.' + tracker.slug + '_rename_checkbox',[])
         sql.eachRow(query['query'],query['qparams']) { row->
             curpos = 0

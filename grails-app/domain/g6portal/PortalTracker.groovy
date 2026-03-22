@@ -708,53 +708,66 @@ class PortalTracker {
     def user_roles(curuser,datas=null) {
         def cuser_roles = []
         if(curuser){
+            // Request-scoped cache: avoid recomputing for the same (tracker, user, record) in one request
+            def cacheKey = "_uroles_${this.id}_${curuser?.id}_${datas?.get('id')}"
+            try {
+                def req = org.springframework.web.context.request.RequestContextHolder.currentRequestAttributes().request
+                def cached = req.getAttribute(cacheKey)
+                if (cached != null) return cached
+            } catch(e) {}
+
+            def currentRoleName = curuser.currentrole()?.role?.trim()
+
+            // Load all UserRole entries for this user+module in one raw SQL query
+            def userRoleNames = []
+            PortalTracker.withSession { sess ->
+                def sqlur = new groovy.sql.Sql(sess.connection())
+                def urrows = sqlur.rows("SELECT role FROM user_role WHERE user_id=:uid AND module=:mod", [uid: curuser.id, mod: module])
+                userRoleNames = urrows*.role as Set
+            }
+
+            // Collect Data Compare role conditions for batching; handle others inline
+            def dataCompareEntries = []
+
             roles.each { role->
                 if(role.name=='Admin' && checkAdmin(curuser)){
                     cuser_roles << role
                 }
                 else if(role.role_type=='User Role'){
-                    def userrole = UserRole.createCriteria().list() {
-                        'eq'('user',curuser)
-                        'eq'('module',module)
-                        'eq'('role',role.name)
-                    }
-                    userrole.each { ur->
-                        cuser_roles << role
-                    }
-                    if(curuser.currentrole()?.role?.trim()==role.name.trim()) {
+                    if(role.name in userRoleNames || currentRoleName == role.name?.trim()) {
                         cuser_roles << role
                     }
                 }
                 else if(role.role_type=='Data Compare'){
-                    def hasileval = role.evalrole(curuser,datas)
-                    if(hasileval && hasileval.trim()){
-                        def query = ""
-                        if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
-                            query = "select id from " + data_table() + " where "
-                        }
-                        else{
-                            query = "select top 1 id from " + data_table() + " where "
-                        }
-                        if(datas && datas['id'] ){
-                            query += " id=:record_id and " + hasileval
-                        }
-                        else{
-                            query += hasileval
-                        }
-                        if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
-                            query += " limit 1"
-                        }
-                        def queryParams = [:]
-                        if(datas && datas['id']) {
-                            queryParams['record_id'] = datas['id']
-                        }
-                        def data = raw_firstRow(query, queryParams)
-                        if(data){
-                            cuser_roles << role
+                    // Data Compare roles require a specific record — skip if no datas provided
+                    if(datas && datas['id']) {
+                        def hasileval = role.evalrole(curuser,datas)
+                        if(hasileval && hasileval.trim()){
+                            dataCompareEntries << [role: role, condition: hasileval]
                         }
                     }
                 }
             }
+
+            // Batch all Data Compare queries into one UNION ALL — one DB round-trip instead of N
+            if(dataCompareEntries) {
+                def unionParts = dataCompareEntries.collect { entry ->
+                    "SELECT ${entry.role.id} AS role_id FROM ${data_table()} WHERE id=${datas['id']} AND (${entry.condition})"
+                }
+                def batchQuery = unionParts.join(" UNION ALL ")
+                def matchedIds = raw_rows(batchQuery)?.collect { row -> row['role_id']?.toString() } as Set ?: [] as Set
+                dataCompareEntries.each { entry ->
+                    if(entry.role.id?.toString() in matchedIds) {
+                        cuser_roles << entry.role
+                    }
+                }
+            }
+
+            // Store in request cache before returning
+            try {
+                def req = org.springframework.web.context.request.RequestContextHolder.currentRequestAttributes().request
+                req.setAttribute(cacheKey, cuser_roles)
+            } catch(e) {}
         }
         return cuser_roles
     }

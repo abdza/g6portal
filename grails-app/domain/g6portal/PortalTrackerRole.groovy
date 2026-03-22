@@ -37,16 +37,30 @@ class PortalTrackerRole {
         cache true
     }
 
+    // Static template cache: key = "rule_{id}{lastUpdated}" — avoids re-compiling the same rule repeatedly
+    static java.util.concurrent.ConcurrentHashMap<String, Template> _templateCache = new java.util.concurrent.ConcurrentHashMap<>()
+    // Static engine shared across all instances — created once on first use
+    static GroovyPagesTemplateEngine _sharedEngine = null
+    static synchronized GroovyPagesTemplateEngine getSharedEngine() {
+        if (_sharedEngine == null) {
+            def g = new GroovyPagesTemplateEngine()
+            g.afterPropertiesSet()
+            _sharedEngine = g
+        }
+        return _sharedEngine
+    }
+
     def evalrole(curuser,datas){
         def toeval = this.role_rule
         def output = new StringWriter()
         def toreturn = null
         try{
             def location = "rule_" + this.id + this.lastUpdated
-            def gpte = new GroovyPagesTemplateEngine()
-            gpte.afterPropertiesSet()
-
-            Template template = gpte.createTemplate(toeval,location)
+            Template template = _templateCache.get(location)
+            if (template == null) {
+                template = getSharedEngine().createTemplate(toeval, location)
+                _templateCache.put(location, template)
+            }
             template.make([curuser:curuser,datas:datas,portalService:portalService]).writeTo(output)                
             toreturn = output.toString()
             return toreturn

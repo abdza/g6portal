@@ -1,6 +1,7 @@
-package g6portal 
+package g6portal
 import groovy.sql.Sql
 import grails.converters.JSON
+import grails.util.Holders
 import org.apache.commons.validator.EmailValidator
 import org.apache.commons.text.similarity.LongestCommonSubsequence
 
@@ -128,8 +129,10 @@ class PortalTrackerData {
                 println 'done init'
             }
             try {
+                def dataSource = Holders.applicationContext.getBean('dataSource')
+                def sql = new Sql(dataSource)
+                try {
                 PortalTrackerData.withSession { cursession ->
-                    def sql = new Sql(cursession.connection())
                     PoiExcel poiExcel = new PoiExcel()
                     poiExcel.headerstart = this.header_start
                     poiExcel.headerend = this.header_end
@@ -192,6 +195,9 @@ class PortalTrackerData {
                             updatesetting.save(flush:true)
                         }
                     }
+                }
+                } finally {
+                    sql.close()
                 }
             }
             catch(Exception e){

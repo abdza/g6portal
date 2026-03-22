@@ -440,8 +440,8 @@ public class PoiExcel {
                                         sqlfields += " , ";
                                     }
 
-                                    sqlfields += cfield.get("name");
-                                    updatefields += cfield.get("name") + "=:" + cfield.get("name");
+                                    sqlfields += "\"" + cfield.get("name") + "\"";
+                                    updatefields += "\"" + cfield.get("name") + "\"=:" + cfield.get("name");
                                     paramsqlfields += ":" + cfield.get("name");
                                 }
 
@@ -454,7 +454,7 @@ public class PoiExcel {
 									if(!firstcompare){
 										comparefields += " and ";
 									}
-									comparefields += cfield.get("name") + "=:" + cfield.get("name");
+									comparefields += "\"" + cfield.get("name") + "\"=:" + cfield.get("name");
 									firstcompare = false;
 								}
 							

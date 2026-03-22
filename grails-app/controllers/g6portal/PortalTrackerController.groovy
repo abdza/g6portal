@@ -619,7 +619,7 @@ class PortalTrackerController {
                     }
                     Cell cell = excelrow.createCell(curpos++)
                     def audit_trail = ""
-                    query = "select * from " + tracker.trail_table() + " where [" + tracker.slug + "_id]=" + row['id'] + " $userrules order by update_date desc,id desc"
+                    query = "select * from " + tracker.trail_table() + " where record_id=" + row['id'] + " $userrules order by update_date desc,id desc"
                     def auditrows = sql.rows(query.toString())
                     def first = true
                     auditrows.each { auditrow ->
@@ -655,12 +655,13 @@ class PortalTrackerController {
         }
         else {
             def page = PortalPage.findByModuleAndSlug(tracker.module,tracker.slug + "_list")
-            def datas = []
+            def datas = [:]
             if(page){
                 def content = page.content
                 def output = new StringWriter()
                 Binding binding = new Binding()
                 binding.setVariable('params',params)
+                binding.setVariable('tracker',tracker)
                 binding.setVariable('curuser',curuser)
                 if(page.datasources.size()){
                     page.datasources.each { datasource->
@@ -682,7 +683,8 @@ class PortalTrackerController {
                         preprocess = shell.evaluate(page.preprocess)
                     }
                     Template template = groovyPagesTemplateEngine.createTemplate(content,pagename)
-                    def pageparams = [pp:preprocess,portalService:portalService,sql:sql,datas:datas,datasource:sessiondata,sessionFactory:sessionFactory,curcontroller:this,curuser:curuser,tracker:tracker,params:params,userroles:tracker.user_roles(curuser,datas)*.name]
+                    def _userroles = tracker.user_roles(curuser,datas)*.name
+                    def pageparams = [pp:preprocess,portalService:portalService,sql:sql,datas:datas,datasource:sessiondata,sessionFactory:sessionFactory,curcontroller:this,curuser:curuser,tracker:tracker,params:params,userroles:_userroles]
                     template.make(pageparams).writeTo(output)
                     return render(view:"render",model:['pageInstance':page,'content':output.toString()] + pageparams)
                 }
@@ -757,14 +759,14 @@ class PortalTrackerController {
     }
 
     def display_data() {
-        PortalTracker.decodeparams(params) 
+        PortalTracker.decodeparams(params)
         def sessiondata = sessionFactory.currentSession.connection()
         def sql = new Sql(sessiondata)
-        // def groovyPagesTemplateEngine = new GroovyPagesTemplateEngine() 
+        // def groovyPagesTemplateEngine = new GroovyPagesTemplateEngine()
         // groovyPagesTemplateEngine.afterPropertiesSet()
         def tracker = PortalTracker.findByModuleAndSlug(params.module,params.slug)
         def page = null
-        def datas = []
+        def datas = [:]
         def curuser = null
         if(session.curuser) {
             // curuser = User.get(session.userid)
@@ -777,7 +779,7 @@ class PortalTrackerController {
         }
         def datasRecordStatus = null
         try { datasRecordStatus = datas ? datas['record_status'] : null } catch(e) {}
-        if(tracker.tracker_type in ['Tracker','Statement'] && datasRecordStatus){
+        if(tracker.tracker_type in ['Tracker','Statement','DataStore'] && datasRecordStatus){
             page = PortalPage.findByModuleAndSlug(tracker.module,tracker.slug + "_show_" + datasRecordStatus.replaceAll(' ','_').toLowerCase())
         }
         if(!page){
@@ -792,6 +794,7 @@ class PortalTrackerController {
             binding.setVariable('params',params)
             binding.setVariable('tracker',tracker)
             binding.setVariable('curuser',curuser)
+            binding.setVariable("datas",datas)
             if(page.datasources.size()){
               page.datasources.each { datasource->
                 def dquery = datasource.query.replaceAll('\r\n'," ").replaceAll('  ',' ')
@@ -811,7 +814,8 @@ class PortalTrackerController {
             try{
                 def pagename = 'page' + page.id + page.lastUpdated
                 Template template = groovyPagesTemplateEngine.createTemplate(content,pagename)
-                def pageparams = [pp:preprocess,portalService:portalService,sql:sql,defaultdata:defaultdata,datas:datas,datasource:sessiondata,sessionFactory:sessionFactory,curcontroller:this,curuser:curuser,tracker:tracker,params:params,userroles:tracker.user_roles(curuser,datas)*.name]
+                def _userroles = tracker.user_roles(curuser,datas)*.name
+                def pageparams = [pp:preprocess,portalService:portalService,sql:sql,defaultdata:defaultdata,datas:datas,datasource:sessiondata,sessionFactory:sessionFactory,curcontroller:this,curuser:curuser,tracker:tracker,params:params,userroles:_userroles]
                 template.make(pageparams).writeTo(output)
                 return render(view:"render",model:['pageInstance':page,'content':output.toString()] + pageparams)
             }
@@ -1226,8 +1230,31 @@ class PortalTrackerController {
                         try{
                             def pagename = 'page' + page.id + page.lastUpdated
                             datas = sql.firstRow("select * from " + tracker.data_table() + " where id=:id",['id':params.id])
+                            Binding binding2 = new Binding()
+                            binding2.setVariable('params',params)
+                            binding2.setVariable('tracker',tracker)
+                            binding2.setVariable('curuser',curuser)
+                            binding2.setVariable('datas',datas)
+                            def pagedata = [:]
+                            if(page.datasources.size()){
+                                page.datasources.each { pds->
+                                    def dquery = pds.query.replaceAll('\r\n'," ").replaceAll('  ',' ')
+                                    def inquery = new GroovyShell(binding2).evaluate(dquery)
+                                    inquery=inquery.replaceAll('\r\n'," ").replaceAll('  ',' ')
+                                    pagedata[pds.name]=[]
+                                    sql.eachRow(inquery) { row->
+                                        pagedata[pds.name]<<row.toRowResult()
+                                    }
+                                }
+                            }
+                            def preprocess2 = null
+                            if(page.preprocess) {
+                                def shell2 = new GroovyShell(this.class.classLoader,binding2)
+                                preprocess2 = shell2.evaluate(page.preprocess)
+                            }
                             Template template = groovyPagesTemplateEngine.createTemplate(content,pagename)
-                            def pageparams = [portalService:portalService,datas:datas,sessionFactory:sessionFactory,curcontroller:this,curuser:curuser,tracker:tracker,params:params,transition:ctrans,userroles:tracker.user_roles(curuser,datas)*.name]
+                            def _userroles2 = tracker.user_roles(curuser,datas)*.name
+                            def pageparams = [pp:preprocess2,portalService:portalService,datas:datas,pagedata:pagedata,sessionFactory:sessionFactory,curcontroller:this,curuser:curuser,tracker:tracker,params:params,transition:ctrans,userroles:_userroles2]
                             template.make(pageparams).writeTo(output)
                             return render(view:"render",model:['pageInstance':page,'content':output.toString()] + pageparams)
                         }
