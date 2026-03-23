@@ -1370,6 +1370,10 @@ class PortalTracker {
                                 validfield = false
                             }
                         }
+                        else if(key=='slug') {
+                            // 'slug' from URL routing param, not a data field — skip
+                            validfield = false
+                        }
                     }
                     def pfield = PortalTrackerField.createCriteria().get() {
                         'eq'('tracker',this)
@@ -1393,6 +1397,7 @@ class PortalTracker {
                                 binding.setVariable("session",session)
                                 binding.setVariable("curuser",curuser)
                                 binding.setVariable("sql",sql)
+                                binding.setVariable("params",params)
                                 def shell = new GroovyShell(this.class.classLoader,binding)
                                 defaultval = shell.evaluate(pfield.field_default)
                             }
@@ -1625,6 +1630,7 @@ class PortalTracker {
                     binding.setVariable("datas",curdatas)
                     binding.setVariable("curuser",curuser)
                     binding.setVariable("sql",sql)
+                    binding.setVariable("params",params)
                     def shell = new GroovyShell(this.class.classLoader,binding)
                     def defaultval = shell.evaluate(pfield.field_default)
                     if(defaultval != null) {

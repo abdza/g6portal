@@ -56,9 +56,9 @@ class UrlMappings {
         constraints {
             module(matches:/[a-zA-Z0-9_]+.*$/)
             slug(matches:/[a-zA-Z0-9_]+.*$/)
-            arg1(matches:/[a-zA-Z0-9_ ]+.*$/)
-            arg2(matches:/[a-zA-Z0-9_ ]+.*$/)
-            arg3(matches:/[a-zA-Z0-9_ ]+.*$/)
+            arg1(matches:/[a-zA-Z0-9_\- ]+.*$/)
+            arg2(matches:/[a-zA-Z0-9_\- ]+.*$/)
+            arg3(matches:/[a-zA-Z0-9_\- ]+.*$/)
         }
     }
 
@@ -68,8 +68,8 @@ class UrlMappings {
         constraints {
             module(matches:/[a-zA-Z0-9_]+.*$/)
             slug(matches:/[a-zA-Z0-9_]+.*$/)
-            arg1(matches:/[a-zA-Z0-9_ ]+.*$/)
-            arg2(matches:/[a-zA-Z0-9_ ]+.*$/)
+            arg1(matches:/[a-zA-Z0-9_\- ]+.*$/)
+            arg2(matches:/[a-zA-Z0-9_\- ]+.*$/)
         }
     }
 
@@ -79,7 +79,7 @@ class UrlMappings {
         constraints {
             module(matches:/[a-zA-Z0-9_]+.*$/)
             slug(matches:/[a-zA-Z0-9_]+.*$/)
-            arg1(matches:/[a-zA-Z0-9_ ]+.*$/)
+            arg1(matches:/[a-zA-Z0-9_\- ]+.*$/)
         }
     }
 
@@ -98,9 +98,9 @@ class UrlMappings {
         constraints {
             module(matches:/[a-zA-Z0-9]+.*$/)
             slug(matches:/[a-zA-Z0-9]+.*$/)
-            arg1(matches:/[a-zA-Z0-9_ ]+.*$/)
-            arg2(matches:/[a-zA-Z0-9_ ]+.*$/)
-            arg3(matches:/[a-zA-Z0-9_ ]+.*$/)
+            arg1(matches:/[a-zA-Z0-9_\- ]+.*$/)
+            arg2(matches:/[a-zA-Z0-9_\- ]+.*$/)
+            arg3(matches:/[a-zA-Z0-9_\- ]+.*$/)
         }
     }
 
@@ -110,8 +110,8 @@ class UrlMappings {
         constraints {
             module(matches:/[a-zA-Z0-9]+.*$/)
             slug(matches:/[a-zA-Z0-9]+.*$/)
-            arg1(matches:/[a-zA-Z0-9_ ]+.*$/)
-            arg2(matches:/[a-zA-Z0-9_ ]+.*$/)
+            arg1(matches:/[a-zA-Z0-9_\- ]+.*$/)
+            arg2(matches:/[a-zA-Z0-9_\- ]+.*$/)
         }
     }
 
@@ -121,7 +121,7 @@ class UrlMappings {
         constraints {
             module(matches:/[a-zA-Z0-9]+.*$/)
             slug(matches:/[a-zA-Z0-9]+.*$/)
-            arg1(matches:/[a-zA-Z0-9_ ]+.*$/)
+            arg1(matches:/[a-zA-Z0-9_\- ]+.*$/)
         }
     }
 

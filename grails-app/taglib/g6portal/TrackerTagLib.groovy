@@ -66,6 +66,7 @@ class TrackerTagLib {
                         binding.setVariable("session",session)
                         binding.setVariable("curuser",curuser)
                         binding.setVariable("sql",sql)
+                        binding.setVariable("params",params)
                         def shell = new GroovyShell(this.class.classLoader,binding)
                         defaultval = shell.evaluate(attrs.field.field_default)
                     }
@@ -83,7 +84,7 @@ class TrackerTagLib {
                     value = params[attrs.field.name?.trim()]
                 }
                 if(defaultval!=null) {
-                    out << hiddenField(name:attrs.field.name?.trim(),value:"default")
+                    out << hiddenField(name:attrs.field.name?.trim(),value:defaultval)
                 }
                 else if(attrs.field.params_override && params[attrs.field.name?.trim()]){
                     out << hiddenField(name:attrs.field.name?.trim(),value:params[attrs.field.name?.trim()])
