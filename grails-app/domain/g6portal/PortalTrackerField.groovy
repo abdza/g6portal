@@ -285,7 +285,7 @@ class PortalTrackerField {
             return node?.name
         }
         else if(this.field_type=='Date'){
-            if(value.toString()!='1900-01-01'){
+            if(value != null && value.toLocalDate().toString()!='1900-01-01'){
                 return value
             }
             else{

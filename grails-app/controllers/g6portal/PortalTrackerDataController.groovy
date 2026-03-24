@@ -168,12 +168,12 @@ class PortalTrackerDataController {
                                     def fieldval = field.fieldval(row[field.name])
                                     if(field.field_type=='Date'){
                                         if(fieldval){
-                                            cell.setCellValue(fieldval.format('yyyy-MM-dd'))
+                                            cell.setCellValue(fieldval.toLocalDate().toString())
                                         }
                                     }
                                     else if(field.field_type=='DateTime'){
                                         if(fieldval){
-                                            cell.setCellValue(fieldval.format('yyyy-MM-dd HH:mm'))
+                                            cell.setCellValue(fieldval.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime().toString().replace('T',' ').substring(0,16))
                                         }
                                     }
                                     else if(field.field_type=='BelongsTo'){
@@ -653,12 +653,12 @@ class PortalTrackerDataController {
                 def fieldval = field.fieldval(row[field.name])
                 if(field.field_type=='Date'){
                     if(fieldval){
-                        cell.setCellValue(fieldval.format('yyyy-MM-dd'))
+                        cell.setCellValue(fieldval.toLocalDate().toString())
                     }
                 }
                 else if(field.field_type=='DateTime'){
                     if(fieldval){
-                        cell.setCellValue(fieldval.format('yyyy-MM-dd HH:mm'))
+                        cell.setCellValue(fieldval.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime().toString().replace('T',' ').substring(0,16))
                     }
                 }
                 else if(field.field_type=='BelongsTo'){
