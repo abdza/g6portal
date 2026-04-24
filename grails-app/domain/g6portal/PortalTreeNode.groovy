@@ -99,15 +99,16 @@ class PortalTreeNode {
         // println "\nIn getdomain of portaltreenode\n"
         if(domain && domainid){
             try {
-                domain = domain.replace('csdportal.','')
+                def indomain = domain.replace('csdportal.','')
+                    indomain = indomain.replace('g6portal.','')
                 def trackerObjects = PortalSetting.namedefault("tracker_objects",[])
 
-                // println "\nCurdomain :::" + domain + "::: "
+                // println "\nCurdomain :::" + indomain + "::: "
                 // println "\nTrackerobjects: " + trackerObjects
 
-                if(domain in trackerObjects){
+                if(indomain in trackerObjects){
                     // println "\nDomain declared in trackerobjects\n"
-                    def dtrck = trackerObjects[domain].tokenize('.')
+                    def dtrck = trackerObjects[indomain].tokenize('.')
                     def tobj = null
                     if(dtrck.size()>1){
                         // println "\nDefined with module\n"
@@ -131,9 +132,9 @@ class PortalTreeNode {
                 else {
                   // println "\nNot declared\n"
                   def grailsApplication = Holders.getGrailsApplication()
-                  if(grailsApplication.getClassForName(domain)){
+                  if(grailsApplication.getClassForName(indomain)){
                       // println "\nGot class\n"
-                      def dobject = grailsApplication.getClassForName(domain).get(domainid)
+                      def dobject = grailsApplication.getClassForName(indomain).get(domainid)
                       return dobject
                   }
                 }

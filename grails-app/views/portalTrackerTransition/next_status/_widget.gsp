@@ -15,6 +15,7 @@ $('#${property}').select2({
     data: function (params) {
       return {
 	item: 'status',
+        exclude_composite: 'true',
         q: params.term, // search term
 <g:if test='${params.tracker_id}'>
         tracker_id:${params.tracker_id},

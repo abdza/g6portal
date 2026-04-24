@@ -518,15 +518,20 @@ public class PoiExcel {
 									sql.executeUpdate(qparam, torun);
 								}
 								else{
-									if(!this.gotBatch){
-										updatefields += " , dataupdate_id=:dataupdate_id";
+									if(comparefields.isEmpty()){
+										System.out.println("Skipping row with no key field data (comparefields empty): " + qparam.toString());
 									}
-									torun = "update " + this.filtertable + " set " + updatefields + " where " + comparefields;
-									int updated = 0;
-									updated = sql.executeUpdate(qparam, torun);
-									if(updated==0){
-										torun = "insert into " + this.filtertable + " (" + sqlfields + " , dataupdate_id) values (" + paramsqlfields + " , :dataupdate_id)";
-										sql.executeUpdate(qparam, torun);
+									else{
+										if(!this.gotBatch){
+											updatefields += " , dataupdate_id=:dataupdate_id";
+										}
+										torun = "update " + this.filtertable + " set " + updatefields + " where " + comparefields;
+										int updated = 0;
+										updated = sql.executeUpdate(qparam, torun);
+										if(updated==0){
+											torun = "insert into " + this.filtertable + " (" + sqlfields + " , dataupdate_id) values (" + paramsqlfields + " , :dataupdate_id)";
+											sql.executeUpdate(qparam, torun);
+										}
 									}
 								}
 							}

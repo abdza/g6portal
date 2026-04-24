@@ -25,6 +25,9 @@ class TreeTagLib {
                 else if(ptoken[0]=='tracker'){
                     tolink = createLink(controller: 'portalTracker', action: 'list', params:lparam)
                 }
+                else if(ptoken[0]=='run'){
+                    tolink = createLink(controller: 'portalPage', action: 'runpage', params:lparam)
+                }
                 else if(ptoken[0]=='file'){
                     tolink = createLink(controller: 'fileLink', action: 'download', params:lparam)
                 }

@@ -8,6 +8,7 @@
 	<li><g:link class="create" controller="portalTrackerField" action="updateDb" id="${params.id}">Update DB</g:link></li>
 	<li><g:link class="create" controller="portalTrackerField" action="createIndex" id="${params.id}">Create Index</g:link></li>
 	<li><g:link class="create" controller="portalTracker" action="fix_file_links" id="${params.id}">Fix FileLinks</g:link></li>
+	<li><g:link class="create" controller="portalTracker" action="fix_trail_file_links" id="${params.id}">Fix Trail FileLinks</g:link></li>
     </ul>
 </div>
 </section>

@@ -23,6 +23,9 @@ class PortalTrackerController {
 
     static allowedMethods = [save: "POST", update: "PUT", delete: "DELETE"]
 
+    // Background Excel export jobs: token → [done, file, error, filename]
+    static java.util.concurrent.ConcurrentHashMap excelJobs = new java.util.concurrent.ConcurrentHashMap()
+
     def index(Integer max) {
         def dparam = [max:params.max?:10,offset:params.offset?:0]
         params.max = dparam.max
@@ -193,6 +196,30 @@ class PortalTrackerController {
                 }
             }
             flash.message = "File links fixed"
+            redirect tracker
+            return
+        }
+    }
+
+    def fix_trail_file_links(Long id) {
+        def tracker = portalTrackerService.get(id)
+        if(tracker) {
+            def fixed = 0
+            def sql = new Sql(sessionFactory.currentSession.connection())
+            def trailTable = tracker.trail_table()
+            def rows = sql.rows("SELECT attachment_id, record_id FROM [${trailTable}] WHERE attachment_id IS NOT NULL".toString())
+            rows.each { row ->
+                def attachmentId = row['attachment_id']
+                def recordId = row['record_id']
+                if(attachmentId) {
+                    def updated = sql.executeUpdate(
+                        "UPDATE file_link SET module=:module, tracker_id=:tid, tracker_data_id=:rdid WHERE id=:id AND (tracker_id IS NULL OR tracker_data_id IS NULL)",
+                        [module: tracker.module, tid: tracker.id as Integer, rdid: recordId as Long, id: attachmentId as Long]
+                    )
+                    fixed += updated
+                }
+            }
+            flash.message = "Trail file links fixed: ${fixed} updated"
             redirect tracker
             return
         }
@@ -432,6 +459,10 @@ class PortalTrackerController {
             print("Listing status for tracker:" + tracker)
             toreturn << ['id':'null','name':'None']
             tracker.statuses.each {
+                // Exclude composite statuses when requested (e.g. for transition/initial_status selectors)
+                if(params.exclude_composite == 'true' && it.compositeStatuses) {
+                    return
+                }
                 toreturn << ['id':it.id,'name':it.name]
             }
             return render(contentType: "application/json") {
@@ -469,189 +500,310 @@ class PortalTrackerController {
             return
         }
         if(tracker && params.excel){
+            // ===== ASYNC STATUS POLL =====
+            if(params.excel_token && params.excel_status) {
+                def job = excelJobs[params.excel_token as String]
+                if(!job) {
+                    render(contentType: 'application/json', text: '{"ready":false,"error":"Job not found or expired"}')
+                } else if(job.error) {
+                    render(contentType: 'application/json', text: new groovy.json.JsonBuilder([ready:false, error:job.error.toString()]).toString())
+                } else {
+                    render(contentType: 'application/json', text: "{\"ready\":${job.done}}")
+                }
+                return
+            }
+
+            // ===== ASYNC FILE DOWNLOAD =====
+            if(params.excel_token && !params.excel_status) {
+                def tkn = params.excel_token as String
+                def job = excelJobs[tkn]
+                if(job?.done && job?.file) {
+                    def tmpFile = new File(job.file as String)
+                    if(tmpFile.exists()) {
+                        excelJobs.remove(tkn)
+                        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                        response.setHeader("Content-Disposition", "attachment;filename=${job.filename}.xlsx")
+                        response.setContentLength((int)tmpFile.length())
+                        tmpFile.withInputStream { is -> response.outputStream << is }
+                        response.outputStream.flush()
+                        tmpFile.delete()
+                    } else {
+                        response.sendError(404, "Export file not found")
+                    }
+                } else if(job?.error) {
+                    excelJobs.remove(tkn)
+                    response.sendError(500, "Export failed: ${job.error}")
+                } else {
+                    response.sendError(404, "Export not ready or expired")
+                }
+                return
+            }
+
             if(tracker.require_login && !curuser){
                 session['redirectAfterLogin'] = [ controller: controllerName, action: actionName, params: params ]
                 flash.message = "Please login to access the system"
                 redirect(controller:'user',action:'login')
+                return
             }
-            def fields = []
-            def ftags = null
-            if(tracker.excelfields){
-                ftags = tracker.excelfields.tokenize(',')*.trim()
-            }
-            else if(tracker.listfields){
-                ftags = tracker.listfields.tokenize(',')*.trim()
-            }
-            ftags.each { ftag->
-                def tfield = PortalTrackerField.createCriteria().get(){
-                    'eq'('tracker',tracker)
-                    'eq'('name',ftag)
-                }
-                if(tfield){
-                    fields << tfield
-                }
-            }
-            response.setContentType("application/octet-stream")
 
-            response.setHeader("Content-disposition", "attachment;filename=" + tracker.slug + ".xlsx")
+            // Capture web context before launching background thread
+            def bgToken = java.util.UUID.randomUUID().toString()
+            def bgTrackerId = tracker.id
+            def bgParams = new LinkedHashMap(params)
+            def bgCurUser = curuser
+            def bgStoredCurUser = session.curuser
+            def bgTrackerSlug = tracker.slug
+            def bgSessionFactory = sessionFactory
 
-            def wb = new SXSSFWorkbook(100)
+            bgParams.remove('max')
+            bgParams.remove('offset')
+            bgParams.remove('excel')
 
-            Sheet sheet = wb.createSheet(tracker.name.replaceAll("[^A-Za-z0-9]"," "))
-            Row headerRow = sheet.createRow(0)
-            def curpos = 0
-            fields.each { dh->
-                if(dh.field_type!='File'){
-                    Cell cell = headerRow.createCell(curpos++)            
-                    cell.setCellValue(dh.label)
+            excelJobs[bgToken] = [done: false, file: null, error: null, filename: bgTrackerSlug]
+
+            Thread.start {
+              try {
+              PortalTracker.withNewSession {
+                tracker = PortalTracker.get(bgTrackerId)
+                def bgSql = new Sql(bgSessionFactory.openSession().connection())
+                def fields = []
+                def ftags = null
+                if(tracker.excelfields){
+                    ftags = tracker.excelfields.tokenize(',')*.trim()
                 }
-            }
-            if(tracker.excel_audit) {
-                Cell cell = headerRow.createCell(curpos++)
-                cell.setCellValue("Audit Trail")
-            }
-            def currow = 1
-            if(params.user_id && params.user_id in PortalSetting.namedefault(params.slug + "_anon_excel",[])){
-                curuser = User.findByUserID(params.user_id)
-            }
-            if('max' in params) {
-                params.remove('max')
-            }
-            if('offset' in params) {
-                params.remove('offset')
-            }
-            def query = tracker.listquery(params,curuser)
-            def rename_checkbox = PortalSetting.namedefault(tracker.module + '.' + tracker.slug + '_rename_checkbox',[])
-            def rows = null
-            if(query['qparams']) {
-                rows = sql.rows(query['query'].toString(),query['qparams'])
-            }
-            else {
-                rows = sql.rows(query['query'].toString())
-            }
-            rows.each { row->
-                curpos = 0
-                Row excelrow = sheet.createRow(currow)
-                fields.each { field->
-                    if(field.field_type!='File'){
-                        Cell cell = excelrow.createCell(curpos++)
-                        def fieldval = field.fieldval(row[field.name])
-                        if(field.field_type=='Date'){
-                            if(fieldval){
-                                cell.setCellValue(fieldval.format('yyyy-MM-dd'))
-                            }
-                        }
-                        else if(field.field_type=='DateTime'){
-                            if(fieldval){
-                                cell.setCellValue(fieldval.format('yyyy-MM-dd HH:mm'))
-                            }
-                        }
-                        else if(field.field_type=='BelongsTo'){
-                            if(fieldval){
-                                def othertokens = field.field_options.tokenize(":")
-                                def othermodule = tracker.module
-                                def otherslug = othertokens[0]
-                                if(othertokens.size()>1) {
-                                    othermodule = othertokens[0]
-                                    otherslug = othertokens[1]
+                else if(tracker.listfields){
+                    ftags = tracker.listfields.tokenize(',')*.trim()
+                }
+                ftags?.each { ftag->
+                    def tfield = PortalTrackerField.createCriteria().get(){
+                        'eq'('tracker',tracker)
+                        'eq'('name',ftag)
+                    }
+                    if(tfield){
+                        fields << tfield
+                    }
+                }
+
+                def anonExcelUsers = PortalSetting.namedefault(bgTrackerSlug + "_anon_excel", [])
+                if(bgParams['user_id'] && bgParams['user_id'] in anonExcelUsers){
+                    bgCurUser = User.findByUserID(bgParams['user_id'])
+                }
+
+                def wb = new SXSSFWorkbook(100)
+                wb.setCompressTempFiles(true)
+
+                Sheet sheet = wb.createSheet(tracker.name.replaceAll("[^A-Za-z0-9]"," "))
+                Row headerRow = sheet.createRow(0)
+                def curpos = 0
+                fields.each { dh->
+                    if(dh.field_type!='File'){
+                        Cell cell = headerRow.createCell(curpos++)
+                        cell.setCellValue(dh.label)
+                    }
+                }
+                if(tracker.excel_audit) {
+                    Cell cell = headerRow.createCell(curpos++)
+                    cell.setCellValue("Audit Trail")
+                }
+                def currow = 1
+                def query = tracker.listquery(bgParams, bgCurUser)
+                def rename_checkbox = PortalSetting.namedefault(tracker.module + '.' + tracker.slug + '_rename_checkbox',[])
+                def rows = null
+                if(query['qparams']) {
+                    rows = bgSql.rows(query['query'].toString(),query['qparams'])
+                }
+                else {
+                    rows = bgSql.rows(query['query'].toString())
+                }
+                rows.each { row->
+                    curpos = 0
+                    Row excelrow = sheet.createRow(currow)
+                    fields.each { field->
+                        if(field.field_type!='File'){
+                            Cell cell = excelrow.createCell(curpos++)
+                            def fieldval = field.fieldval(row[field.name])
+                            if(field.field_type=='Date'){
+                                if(fieldval){
+                                    cell.setCellValue(fieldval.toLocalDate().toString())
                                 }
-                                def othertracker = PortalTracker.findByModuleAndSlug(othermodule,otherslug)
-                                if(othertracker) {
-                                    def datas = sql.firstRow("select * from " + othertracker.data_table() + " where id=" + row[field.name])
-                                    if(datas){
-                                        if(field.field_format){
-                                            cell.setCellValue(datas[field.field_format])
-                                        }
-                                        else{
-                                            cell.setCellValue(datas[othertracker.default_field()])
+                            }
+                            else if(field.field_type=='DateTime'){
+                                if(fieldval){
+                                    cell.setCellValue(fieldval.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime().toString().replace('T',' ').substring(0,16))
+                                }
+                            }
+                            else if(field.field_type=='BelongsTo'){
+                                if(fieldval){
+                                    def othertokens = field.field_options.tokenize(":")
+                                    def othermodule = tracker.module
+                                    def otherslug = othertokens[0]
+                                    if(othertokens.size()>1) {
+                                        othermodule = othertokens[0]
+                                        otherslug = othertokens[1]
+                                    }
+                                    def othertracker = PortalTracker.findByModuleAndSlug(othermodule,otherslug)
+                                    if(othertracker) {
+                                        def datas = bgSql.firstRow("select * from " + othertracker.data_table() + " where id=" + row[field.name])
+                                        if(datas){
+                                            if(field.field_format){
+                                                cell.setCellValue(datas[field.field_format])
+                                            }
+                                            else{
+                                                cell.setCellValue(datas[othertracker.default_field()])
+                                            }
                                         }
                                     }
                                 }
                             }
-                        }
-                        else if(field.field_type=='Checkbox'){
-                            if(rename_checkbox.size()) {
-                                if (fieldval == true){
-                                    cell.setCellValue(rename_checkbox[0])
-                                }else{
-                                    cell.setCellValue(rename_checkbox[1])
-                                }
-                            }
-                            else {
-                                  cell.setCellValue(fieldval)
-                            }
-                        }
-                        else if(field.field_type=='File'){
-                            cell.setCellValue(fieldval.name)
-                        }
-                        else if(field.field_query){
-                            def curval = sql.firstRow(field.evalquery(session,row))?.value
-                            if(curval) {
-                                if(!(curval.toString()[0] in ['=','+','-','@'])){
-                                    cell.setCellValue(curval)
+                            else if(field.field_type=='Checkbox'){
+                                if(rename_checkbox.size()) {
+                                    if (fieldval == true){
+                                        cell.setCellValue(rename_checkbox[0])
+                                    }else{
+                                        cell.setCellValue(rename_checkbox[1])
+                                    }
                                 }
                                 else {
-                                    cell.setCellValue(' ' + curval)
-                                }
-                            }
-                        }
-                        else{
-                            if(fieldval) {
-                                if(!(fieldval.toString()[0] in ['=','+','-','@'])){
                                     cell.setCellValue(fieldval)
                                 }
-                                else{
-                                    cell.setCellValue(' ' + fieldval)
+                            }
+                            else if(field.field_type=='File'){
+                                cell.setCellValue(fieldval?.name ?: '')
+                            }
+                            else if(field.field_query){
+                                def curval = bgSql.firstRow(field.evalquery(null,row))?.value
+                                if(curval) {
+                                    if(!(curval.toString()[0] in ['=','+','-','@'])){
+                                        cell.setCellValue(curval)
+                                    }
+                                    else {
+                                        cell.setCellValue(' ' + curval)
+                                    }
+                                }
+                            }
+                            else{
+                                if(fieldval) {
+                                    if(!(fieldval.toString()[0] in ['=','+','-','@'])){
+                                        cell.setCellValue(fieldval)
+                                    }
+                                    else{
+                                        cell.setCellValue(' ' + fieldval)
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                if(tracker.excel_audit) {
-                    def userroles = tracker.user_roles(curuser,row['id'])
-                    def userrules = ''
-                    if(userroles.size()){
-                        def currules = []
-                        userroles.each { urole->
-                            currules << " allowedroles like '%" + urole.name + "%' "
+                    if(tracker.excel_audit) {
+                        def userroles = tracker.user_roles(bgCurUser, row['id'])
+                        def userrules = ''
+                        if(userroles.size()){
+                            def currules = []
+                            userroles.each { urole->
+                                currules << " allowedroles like '%" + urole.name + "%' "
+                            }
+                            userrules = "and (allowedroles is null or allowedroles = 'null' or allowedroles = '' or " + currules.join('or') + ")"
                         }
-                        userrules = "and (allowedroles = 'null' or allowedroles = '' or " + currules.join('or') + ")"
+                        Cell cell = excelrow.createCell(curpos++)
+                        def audit_trail = ""
+                        def auditQuery = "select * from " + tracker.trail_table() + " where record_id=" + row['id'] + " $userrules order by update_date desc,id desc"
+                        def auditrows = bgSql.rows(auditQuery.toString())
+                        def first = true
+                        auditrows.each { auditrow ->
+                            if(!first) {
+                                audit_trail += '----------------------------------------------------\n\r'
+                            }
+                            else {
+                                first = false
+                            }
+                            audit_trail += auditrow['description']
+                            def updater = User.get(auditrow['updater_id'])
+                            audit_trail += '\n\rUpdated by: ' + updater?.name
+                            audit_trail += '\n\rOn: ' + (auditrow['update_date']?.format('dd-MMM-yy') ?: '')
+                            audit_trail += '\n\r\n\r'
+                        }
+                        cell.setCellValue(audit_trail)
                     }
-                    Cell cell = excelrow.createCell(curpos++)
-                    def audit_trail = ""
-                    query = "select * from " + tracker.trail_table() + " where record_id=" + row['id'] + " $userrules order by update_date desc,id desc"
-                    def auditrows = sql.rows(query.toString())
-                    def first = true
-                    auditrows.each { auditrow ->
-                        if(!first) {
-                            audit_trail += '----------------------------------------------------\n\r'
-                        }
-                        else {
-                            first = false
-                        }
-                        audit_trail += auditrow['description']
-                        /* if(auditrow['attachment_id']){
-                            def attachment = FileLink.get(auditrow['attachment_id'])
-                            out << "Attached file : " + filelink(slug:attachment.slug) + "<br/>"
-                        } */
-                        def updater = User.get(auditrow['updater_id'])
-                        audit_trail += '\n\rUpdated by: ' + updater?.name
-                        audit_trail += '\n\rUpdated on: ' + formatDate(format:"HH:mm a dd-MMM-yy",date:auditrow['update_date'])
-                        audit_trail += '\n\r\n\r'
-                    }
-                    cell.setCellValue(audit_trail)
+                    currow++
                 }
-                currow++
+                try{
+                    def tmpFile = File.createTempFile("g6excel_", ".xlsx")
+                    tmpFile.deleteOnExit()
+                    tmpFile.withOutputStream { fos -> wb.write(fos) }
+                    excelJobs[bgToken] = [done: true, file: tmpFile.absolutePath, error: null, filename: bgTrackerSlug]
+                    println "Background Excel export completed: ${currow-1} rows -> ${tmpFile.absolutePath}"
+                }
+                catch(Exception exp){
+                    println "Background Excel export error writing workbook: " + exp
+                    excelJobs[bgToken] = [done: true, file: null, error: exp.message ?: "Export failed while writing workbook"]
+                }
+                finally {
+                    try { wb.dispose() } catch(Exception e) {}
+                    try { bgSql?.close() } catch(Exception e) {}
+                }
+              } // closes withNewSession
+              } catch(Exception outerEx) {
+                println "Unexpected error in background Excel export: " + outerEx.message
+                outerEx.printStackTrace()
+                excelJobs[bgToken] = [done: true, file: null, error: outerEx.message ?: "Unexpected export error"]
+              }
+            } // closes Thread.start
+
+            // Return polling page immediately so proxy never times out
+            def pollingHtml = """<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Generating Excel...</title>
+<style>
+body{font-family:Arial,sans-serif;text-align:center;padding:60px 20px;background:#f5f5f5;}
+.box{background:#fff;border-radius:8px;padding:40px;display:inline-block;box-shadow:0 2px 8px rgba(0,0,0,.1);min-width:320px;}
+h2{color:#333;margin-bottom:10px;}
+#status{color:#666;margin:16px 0;}
+.spinner{display:inline-block;width:40px;height:40px;border:4px solid #ddd;border-top-color:#0078d4;border-radius:50%;animation:spin .8s linear infinite;margin-bottom:16px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.error{color:#c00;}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="spinner" id="spinner"></div>
+  <h2>Generating Excel Report</h2>
+  <p id="status">Please wait while your report is being prepared&hellip;</p>
+</div>
+<script>
+var token = '${bgToken}';
+var baseUrl = window.location.href.split('?')[0];
+var checkUrl = baseUrl + '?excel=1&excel_token=' + token + '&excel_status=1';
+var downloadUrl = baseUrl + '?excel=1&excel_token=' + token;
+function check() {
+    fetch(checkUrl, {credentials:'same-origin'})
+        .then(function(r){return r.json();})
+        .then(function(data){
+            if(data.ready){
+                document.getElementById('status').textContent='Report ready! Downloading…';
+                document.getElementById('spinner').style.display='none';
+                var a=document.createElement('a');
+                a.href=downloadUrl;
+                a.download='';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(function(){window.location.href=baseUrl;},1500);
+            } else if(data.error){
+                document.getElementById('spinner').style.display='none';
+                document.getElementById('status').innerHTML='<span class="error">Error: '+data.error+'</span>';
+            } else {
+                setTimeout(check,2000);
             }
-            try{
-                wb.write(response.outputStream)
-                response.outputStream.flush()
-                response.outputStream.close()
-                wb.dispose()
-            }
-            catch(Exception exp){
-                println "Tracker download list excel error writing:" + exp
-            }
+        })
+        .catch(function(){setTimeout(check,2000);});
+}
+setTimeout(check,2000);
+</script>
+</body>
+</html>"""
+            render(contentType: 'text/html', text: pollingHtml)
+            return
         }
         else {
             def page = PortalPage.findByModuleAndSlug(tracker.module,tracker.slug + "_list")
@@ -1013,7 +1165,7 @@ class PortalTrackerController {
                                 // println "Running postprocess"
                                 Binding binding = new Binding()
                                 binding.setVariable("datasource",datasource)
-                                binding.setVariable("sql",datasource)
+                                binding.setVariable("sql",sql)
                                 binding.setVariable("session",session)
                                 binding.setVariable("params",params)
                                 binding.setVariable("datas",datas)
@@ -1279,8 +1431,158 @@ class PortalTrackerController {
         }
     }
 
+    @Transactional
+    def transition_direct() {
+        PortalTracker.decodeparams(params)
+        def tracker = PortalTracker.findByModuleAndSlug(params.module, params.slug)
+        def curuser = session.curuser
+        def datas = null
+        if (params.id) {
+            datas = tracker.getdatas(params.id)
+        }
+        def tname = params.transition?.replace("_", " ")?.capitalize()
+        def ctransall = PortalTrackerTransition.findAllByTrackerAndNameIlike(tracker, tname)
+        def ctrans = null
+        if (ctransall) {
+            ctransall.each { cc ->
+                if (cc.testenabled(session, datas)) {
+                    ctrans = cc
+                }
+            }
+        }
+        if (!ctrans || !ctrans.immediate_submission) {
+            flash.message = "You are not authorized to do that"
+            redirect(controller: 'portalPage', action: 'index')
+            return
+        }
+        def postoutput = PortalTracker.withTransaction { transaction ->
+            def datasource = sessionFactory.currentSession.connection()
+            def sql = new Sql(datasource)
+            def defaultfields = []
+            def fieldtokens = ctrans.editfields?.tokenize(',')*.trim()
+            fieldtokens?.each { ft ->
+                def field = PortalTrackerField.findByTrackerAndName(tracker, ft)
+                if (field && field.field_default) {
+                    defaultfields << field
+                }
+            }
+            params.submit = true
+            params.next_status = ctrans.next_status?.id
+            datas = tracker.updaterecord(params, request, session, sql, defaultfields)
+            datas = tracker.getdatas(datas['id'])
+            if (!datas && session['datas']) {
+                datas = session['datas']
+            }
+            def postoutput = null
+            if (ctrans && datas) {
+                def trail_id = null
+                if (ctrans.updatetrails) {
+                    params.statusUpdateDesc = ctrans.updatetrail(session, datas, portalService)
+                }
+                if (tracker.tracker_type != 'DataStore') {
+                    trail_id = tracker.updatetrail(params, session, request, curuser, datasource, groovyPagesTemplateEngine, portalService)
+                }
+                if (ctrans.postprocess) {
+                    try {
+                        Binding binding = new Binding()
+                        binding.setVariable("datasource", datasource)
+                        binding.setVariable("sql", sql)
+                        binding.setVariable("session", session)
+                        binding.setVariable("datas", datas)
+                        binding.setVariable("ctrans", ctrans)
+                        binding.setVariable("params", params)
+                        binding.setVariable("tracker", tracker)
+                        binding.setVariable("curuser", curuser)
+                        binding.setVariable("trail_id", trail_id)
+                        binding.setVariable("portalService", portalService)
+                        binding.setVariable("mailService", mailService)
+                        def shell = new GroovyShell(this.class.classLoader, binding)
+                        postoutput = shell.evaluate(ctrans.postprocess.content)
+                        if (postoutput && postoutput instanceof LinkedHashMap && 'flash' in postoutput) {
+                            flash.message = postoutput['flash']
+                        }
+                    } catch (Exception e) {
+                        println "Error postprocessing for transition_direct " + ctrans + ": " + e
+                    }
+                }
+                datas = tracker.getdatas(datas['id'])
+                if (!datas && session['datas']) {
+                    datas = session['datas']
+                }
+                Binding updatebinding = new Binding()
+                updatebinding.setVariable("session", session)
+                if (datas) {
+                    datas['update_desc'] = params.statusUpdateDesc
+                }
+                updatebinding.setVariable("datas", datas)
+                updatebinding.setVariable("tracker", tracker)
+                updatebinding.setVariable("portalService", portalService)
+                def shell = new GroovyShell(PortalTracker.class.ClassLoader, updatebinding)
+                ctrans.emails.each { email ->
+                    def tosend = null
+                    def toccs = null
+                    try {
+                        tosend = shell.evaluate(email.emailto)
+                        if (tosend && (tosend.getClass().isArray() || tosend instanceof List || tosend instanceof Set)) {
+                            tosend = tosend.join(',')
+                        }
+                        if (email.emailcc) {
+                            toccs = shell.evaluate(email.emailcc)
+                            if (toccs && (toccs.getClass().isArray() || toccs instanceof List || toccs instanceof Set)) {
+                                toccs = toccs.join(',')
+                            }
+                        }
+                    } catch (Exception e) {
+                        PortalErrorLog.record(params, curuser, 'tracker', 'transition_direct - tosend/toccs', e.toString() + "\n\n" + email, tracker.slug, tracker.module)
+                    }
+                    if (tosend) {
+                        def emailcontent = email.evalbody(datas, groovyPagesTemplateEngine, portalService)
+                        try {
+                            def sendemail = new PortalEmail()
+                            sendemail.emailto = tosend
+                            if (toccs) sendemail.emailcc = toccs
+                            sendemail.title = emailcontent['title']
+                            sendemail.module = tracker.module
+                            sendemail.body = emailcontent['body']
+                            sendemail.deliveryTime = new Date()
+                            sendemail.send(mailService)
+                        } catch (Exception e) {
+                            PortalErrorLog.record(params, curuser, 'tracker', 'transition_direct - sending email', e.toString(), tracker.slug, tracker.module)
+                        }
+                    }
+                }
+            }
+            if (session['datas']) {
+                session['datas'] = null
+            }
+            postoutput
+        }
+        if (postoutput && postoutput instanceof LinkedHashMap && 'redirect_slug' in postoutput) {
+            def rparams = ['slug': postoutput['redirect_slug'], 'module': postoutput['redirect_module'] ?: tracker.module]
+            if ('redirect_params' in postoutput) rparams += postoutput['redirect_params']
+            def nextpage = PortalPage.findByModuleAndSlug(rparams['module'], rparams['slug'])
+            if (nextpage) {
+                if (nextpage.runable) {
+                    redirect(controller: 'portalPage', action: 'runpage', params: rparams); return
+                } else {
+                    redirect(controller: 'portalPage', action: 'display', params: rparams); return
+                }
+            } else {
+                def nexttracker = PortalTracker.findByModuleAndSlug(rparams['module'], rparams['slug'])
+                if (nexttracker) {
+                    redirect(controller: 'portalTracker', action: 'list', params: rparams); return
+                } else {
+                    redirect(controller: 'portalPage', action: 'display', params: rparams); return
+                }
+            }
+        } else if (postoutput && postoutput instanceof LinkedHashMap && 'redirect_url' in postoutput) {
+            redirect(url: postoutput['redirect_url']); return
+        }
+        redirect(action: 'display_data', params: [module: params.module, slug: params.slug, id: params.id])
+    }
+
     def transition() {
-      PortalTracker.decodeparams(params) 
+      PortalTracker.decodeparams(params)
       def datasource = sessionFactory.currentSession.connection()
       def sql = new Sql(datasource)
       // def groovyPagesTemplateEngine = new GroovyPagesTemplateEngine() 

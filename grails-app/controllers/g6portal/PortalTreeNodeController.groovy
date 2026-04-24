@@ -70,7 +70,9 @@ class PortalTreeNodeController {
         else {
             def foundtarget = false
             def trackerDomain = PortalSetting.namedefault('tracker_objects',null)
-            def domaintype = treeNodeInstance.domain.replace('csdportal.','')
+            def domaintype = treeNodeInstance.domain.contains('.') ?
+                treeNodeInstance.domain.substring(treeNodeInstance.domain.lastIndexOf('.') + 1) :
+                treeNodeInstance.domain
             println "Looking for domaintype:" + domaintype
             println "In " + trackerDomain
             if(domaintype in trackerDomain) {
@@ -81,13 +83,7 @@ class PortalTreeNodeController {
 
             }
             if(!foundtarget) {
-                def controllername = null
-                if(treeNodeInstance.domain[-1]==treeNodeInstance.domain[-1].toUpperCase()){
-                    controllername = treeNodeInstance.domain[10..-1]
-                }
-                else{
-                    controllername = treeNodeInstance.domain[10].toLowerCase() + treeNodeInstance.domain[11..-1]
-                }
+                def controllername = domaintype[0].toLowerCase() + domaintype[1..-1]
                 redirect(controller: controllername, action: 'edit', id: treeNodeInstance.domainid)
             }
         }

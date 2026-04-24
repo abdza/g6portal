@@ -322,6 +322,34 @@ class PortalTracker {
                 }
                 sql.execute(query)
             }
+            // Ensure all required trail table columns exist (table may be from a previous framework version)
+            def trailTableName = this.trail_table()
+            def isPostgres = config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")
+            def trailColumns = [
+                [name: 'attachment_id', ddl_pg: 'numeric(19,0) NULL',    ddl_ms: '[attachment_id] numeric(19,0) NULL'],
+                [name: 'description',   ddl_pg: 'text NULL',              ddl_ms: '[description] text NULL'],
+                [name: 'record_id',     ddl_pg: 'numeric(19,0) NULL',    ddl_ms: '[record_id] numeric(19,0) NULL'],
+                [name: 'update_date',   ddl_pg: 'timestamp NULL',         ddl_ms: '[update_date] datetime NULL'],
+                [name: 'updater_id',    ddl_pg: 'numeric(19,0) NULL',    ddl_ms: '[updater_id] numeric(19,0) NULL'],
+                [name: 'status',        ddl_pg: 'varchar(255) NULL',      ddl_ms: '[status] varchar(255) NULL'],
+                [name: 'changes',       ddl_pg: 'text NULL',              ddl_ms: '[changes] text NULL'],
+                [name: 'allowedroles',  ddl_pg: 'varchar(255) NULL',      ddl_ms: '[allowedroles] varchar(255) NULL'],
+            ]
+            trailColumns.each { col ->
+                try {
+                    def colCheck = "select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + trailTableName + "' and COLUMN_NAME = '" + col.name + "'"
+                    if (!sql.firstRow(colCheck)) {
+                        if (isPostgres) {
+                            sql.execute('alter table "' + trailTableName + '" add ' + col.name + ' ' + col.ddl_pg)
+                        } else {
+                            sql.execute('alter table ' + trailTableName + ' add ' + col.ddl_ms)
+                        }
+                        log.info("Added missing trail column '${col.name}' to ${trailTableName}")
+                    }
+                } catch (Exception e) {
+                    log.error("Error ensuring trail column '${col.name}' on ${trailTableName}: ${e.message}")
+                }
+            }
             def tablename = this.trail_table()
             def fname = 'record_id'
             if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
@@ -551,9 +579,9 @@ class PortalTracker {
 
     def savetrail(record_id,description,curuser,status=null,session=null,request=null) {
         def dparams = [:]
-        dparams['statusUpdateDesc'] = description
+        dparams['statusUpdateDesc'] = description?.toString()
         dparams['id'] = record_id
-        dparams['status'] = status
+        dparams['record_status'] = status
         PortalTracker.withSession { sqlsession ->
             return updatetrail(dparams,session,request,curuser,sqlsession.connection())
         }
@@ -949,6 +977,28 @@ class PortalTracker {
         }
     }
 
+    // Expand a record_status qparam value if it refers to a composite status.
+    // Returns a new qparams map with record_status replaced by a List of member names.
+    def expandCompositeStatus(qparams) {
+        if (!qparams?.containsKey('record_status')) return qparams
+        def statusVal = qparams['record_status']
+        if (!(statusVal instanceof String) || !statusVal) return qparams
+        def compositeStatus = PortalTrackerStatus.createCriteria().get() {
+            'eq'('tracker', this)
+            'eq'('name', statusVal)
+            isNotNull('compositeStatuses')
+        }
+        if (compositeStatus?.compositeStatuses) {
+            def memberNames = compositeStatus.compositeStatuses.tokenize(',')*.trim().findAll { it }
+            if (memberNames) {
+                def newParams = new LinkedHashMap(qparams)
+                newParams['record_status'] = memberNames
+                return newParams
+            }
+        }
+        return qparams
+    }
+
     def parseqparams(qparams,joiner='and') {
         def qq = []
         def finalparams = [:]
@@ -975,7 +1025,7 @@ class PortalTracker {
                         }
                         gotq = true
                     }
-                    else if(qpval[0] in ['<','>']) {
+                    else if(qpval.size() > 0 && qpval[0] in ['<','>']) {
                         if(qpval[1]=='=') {
                             qq << " " + qpkey + " " + qpval[0] + "= :" + qpkey + " "
                             qpval = qpval[2..-1]
@@ -986,7 +1036,7 @@ class PortalTracker {
                         }
                         gotq = true
                     }
-                    else if(qpval[0] in ['!']) {
+                    else if(qpval.size() > 0 && qpval[0] in ['!']) {
                         qq << " " + qpkey + " != :" + qpkey + " "
                         qpval = qpval[1..-1]
                         gotq = true
@@ -1012,7 +1062,7 @@ class PortalTracker {
                                     dp << " " + qpkey + " like :" + ddkey + " "
                                 }
                             }
-                            else if(arval[0] in ['<','>']) {
+                            else if(arval.size() > 0 && arval[0] in ['<','>']) {
                                 if(arval[1]=='=') {
                                     dp << " " + qpkey + " " + arval[0] + "= :" + ddkey + " "
                                     arval = arval[2..-1]
@@ -1054,7 +1104,7 @@ class PortalTracker {
                                                 inp << " " + qpkey + " like :" + ddkey + " "
                                             }
                                         }
-                                        else if(iv[0] in ['<','>']) {
+                                        else if(iv.size() > 0 && iv[0] in ['<','>']) {
                                             if(iv[1]=='=') {
                                                 inp << " " + qpkey + " " + iv[0] + "= :" + ddkey + " "
                                                 iv = iv[2..-1]
@@ -1104,6 +1154,7 @@ class PortalTracker {
             try {
                 def sql = new Sql(sqlsession.connection())
                 if(qparams && qparams.size()>0){
+                    qparams = expandCompositeStatus(qparams)
                     query += " where "
                     def ppquery = parseqparams(qparams)
                     query += ppquery['query']
@@ -1210,6 +1261,7 @@ class PortalTracker {
             def query = "select * from " + this.data_table()
             try {
                 if(qparams && qparams.size()>0){
+                    qparams = expandCompositeStatus(qparams)
                     query += " where "
                     def ppquery = parseqparams(qparams)
                     query += ppquery['query']
@@ -1500,7 +1552,7 @@ class PortalTracker {
                                     }
                                 }
                             }
-                            else if(pfield.field_type in ['User','Branch','File','Event']){
+                            else if(pfield.field_type in ['User','Branch','File','Event','BelongsTo']){
                                 if(!value){
                                     validfield = false
                                 }
@@ -1821,11 +1873,34 @@ class PortalTracker {
                         qparams[endDateKey] = ddates[1]
                     }
                 }
+                else if(curkey == 'record_status') {
+                    // Special handling: expand composite statuses to OR across member names
+                    def compositeStatus = PortalTrackerStatus.createCriteria().get() {
+                        'eq'('tracker', this)
+                        'eq'('name', curval)
+                        isNotNull('compositeStatuses')
+                    }
+                    if (compositeStatus?.compositeStatuses) {
+                        def memberNames = compositeStatus.compositeStatuses.tokenize(',')*.trim().findAll { it }
+                        def dp = []
+                        memberNames.eachWithIndex { sname, i ->
+                            def pkey = "record_status_cs_${i}"
+                            dp << "record_status = :${pkey}"
+                            qparams[pkey] = sname
+                        }
+                        if (dp) {
+                            condition << "(" + dp.join(" or ") + ")"
+                        }
+                    } else {
+                        condition << "record_status = :record_status"
+                        qparams['record_status'] = curval
+                    }
+                }
                 else if(!(curkey in ['slug','module','action','controller','max','offset'])){
                     def tfield = PortalTrackerField.createCriteria().get(){
                         'eq'('tracker',this)
                         'eq'('name',curkey)
-                    } 
+                    }
                     if(tfield){
                         if(tfield.field_type in ['Text','Text Area','Date','DateTime','Drop Down']){
                             if(tfield.field_type in ['Date','DateTime']) {

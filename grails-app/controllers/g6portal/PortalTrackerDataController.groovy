@@ -19,6 +19,14 @@ class PortalTrackerDataController {
 
     static allowedMethods = [save: "POST", update: "PUT", delete: "DELETE"]
 
+    private String validateIdentifier(String identifier) {
+        if (!identifier) return ""
+        if (!identifier.matches(/^[a-zA-Z_][a-zA-Z0-9_]*$/)) {
+            throw new SecurityException("Invalid database identifier: ${identifier}")
+        }
+        return identifier
+    }
+
     def index(Integer max) {
         def curuser = session.curuser
         def dparam = [max:params.max?:10,offset:params.offset?:0]
@@ -487,13 +495,26 @@ class PortalTrackerDataController {
         if(curuser && tracker && ('Admin' in curuser.modulerole(tracker.module) || curuser.isAdmin)) {
             def sessiondata = sessionFactory.currentSession.connection()
             def sql = new Sql(sessiondata)
-            PortalTrackerData.withTransaction { transaction -> 
-                sql.execute("drop table " + tracker.data_table())
-                if(tracker.tracker_type!='DataStore') {
-                    sql.execute("drop table " + tracker.trail_table())
+            try {
+                PortalTrackerData.withTransaction { transaction ->
+                    def dataTableName = validateIdentifier(tracker.data_table())
+                    sql.execute("drop table " + dataTableName)
                 }
+                flash.message = 'Reset database ' + tracker + ' has been done'
+            } catch (SecurityException e) {
+                log.error("Security violation in resetdb(): ${e.message}")
+                flash.message = 'Database operation failed due to security violation'
             }
-            flash.message = 'Reset database ' + tracker + ' has been done'
+            try {
+                PortalTrackerData.withTransaction { transaction ->
+                    if(tracker.tracker_type=='Tracker') {
+                        def trailTableName = validateIdentifier(tracker.trail_table())
+                        sql.execute("drop table " + trailTableName)
+                    }
+                }
+            } catch (SecurityException e) {
+                log.error("Security violation in resetdb() trail: ${e.message}")
+            }
         }
         else{
             flash.message = 'You do not have the clearance to reset database for ' + tracker

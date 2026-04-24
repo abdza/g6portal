@@ -273,12 +273,26 @@ class FileLinkController {
                 // Check if user is admin or has access to the file's module
                 if(session.enablesuperuser) {
                     hasAccess = true
-                } else if(session.adminmodules && filelink.module) {
-                    hasAccess = (filelink.module in session.adminmodules)
-                } else if(filelink.tracker_id) {
+                } else if(session.adminmodules && filelink.module && filelink.module in session.adminmodules) {
+                    hasAccess = true
+                }
+                // Also check tracker-level access (record owner/manager/pic roles) — runs even if adminmodules check failed
+                if(!hasAccess && filelink.tracker_id) {
                     def tracker = PortalTracker.get(filelink.tracker_id)
                     if(tracker && session.curuser) {
-                        hasAccess = tracker.user_roles(session.curuser).size() > 0
+                        def recordDatas = filelink.tracker_data_id ? tracker.firstRow(['id': filelink.tracker_data_id]) : null
+                        hasAccess = tracker.user_roles(session.curuser, recordDatas).size() > 0
+                    }
+                }
+                // Fallback for trail attachment FileLinks that may lack tracker_id: look up by module
+                if(!hasAccess && !filelink.tracker_id && filelink.module && session.curuser) {
+                    def trackers = PortalTracker.findAllByModule(filelink.module)
+                    for(def t : trackers) {
+                        def recordDatas = filelink.tracker_data_id ? t.firstRow(['id': filelink.tracker_data_id]) : null
+                        if(t.user_roles(session.curuser, recordDatas).size() > 0) {
+                            hasAccess = true
+                            break
+                        }
                     }
                 }
             }

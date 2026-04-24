@@ -22,6 +22,9 @@ class PortalPageController {
 
     static allowedMethods = [save: "POST", update: "PUT", delete: "DELETE"]
 
+    // Background XLSX export jobs: token → [done, file, error, filename]
+    static java.util.concurrent.ConcurrentHashMap xlsxJobs = new java.util.concurrent.ConcurrentHashMap()
+
     def index(Integer max) {
         def dparam = [max:params.max?:10,offset:params.offset?:0]
         params.max = dparam.max
@@ -84,6 +87,201 @@ class PortalPageController {
         if(page){
             if(page && page.published){
                 if(curuser?.isAdmin || (page.runable && (!page.requirelogin || curuser))){
+
+                    // ===== XLSX: intercept before script runs to avoid proxy timeout =====
+                    if(page.render == 'XLSX') {
+
+                        // Status poll
+                        if(params.async_token && params.async_status) {
+                            def job = xlsxJobs[params.async_token as String]
+                            if(!job) {
+                                render(contentType: 'application/json', text: '{"ready":false,"error":"Job not found or expired"}')
+                            } else if(job.error) {
+                                render(contentType: 'application/json', text: new groovy.json.JsonBuilder([ready:false, error:job.error.toString()]).toString())
+                            } else {
+                                render(contentType: 'application/json', text: "{\"ready\":${job.done}}")
+                            }
+                            return
+                        }
+
+                        // File download
+                        if(params.async_token && !params.async_status) {
+                            def tkn = params.async_token as String
+                            def job = xlsxJobs[tkn]
+                            if(job?.done && job?.file) {
+                                def tmpFile = new File(job.file as String)
+                                if(tmpFile.exists()) {
+                                    xlsxJobs.remove(tkn)
+                                    response.setContentType("application/octet-stream")
+                                    response.setHeader("Content-Disposition", "attachment;filename=${job.filename}.xlsx")
+                                    response.setContentLength((int)tmpFile.length())
+                                    tmpFile.withInputStream { is -> response.outputStream << is }
+                                    response.outputStream.flush()
+                                    tmpFile.delete()
+                                } else {
+                                    response.sendError(404, "Export file not found")
+                                }
+                            } else if(job?.error) {
+                                xlsxJobs.remove(tkn)
+                                response.sendError(500, "Export failed: ${job.error}")
+                            } else {
+                                response.sendError(404, "Export not ready or expired")
+                            }
+                            return
+                        }
+
+                        // Launch background job
+                        def bgToken = java.util.UUID.randomUUID().toString()
+                        def bgPageId = page.id
+                        def bgParams = new LinkedHashMap(params)
+                        def bgCurUser = curuser
+                        def bgSessionFactory = sessionFactory
+                        def bgMailService = mailService
+                        def bgPortalService = portalService
+                        def bgUserService = userService
+                        def bgLinkGenerator = grailsLinkGenerator
+                        def bgClassLoader = this.class.classLoader
+                        def bgSessionAttrs = [curuser: curuser, userid: session.userid]
+
+                        xlsxJobs[bgToken] = [done: false, file: null, error: null, filename: page.slug]
+
+                        Thread.start {
+                            def bgConnection = null
+                            def bgSql = null
+                            try {
+                                PortalPage.withNewSession {
+                                    def bgPage = PortalPage.get(bgPageId)
+                                    bgConnection = bgSessionFactory.openSession().connection()
+                                    bgSql = new Sql(bgConnection)
+
+                                    Binding binding = new Binding()
+                                    binding.setVariable("datasource", bgConnection)
+                                    binding.setVariable("sessionFactory", bgSessionFactory)
+                                    binding.setVariable("session", bgSessionAttrs)
+                                    binding.setVariable("sql", bgSql)
+                                    binding.setVariable("flash", [:])
+                                    binding.setVariable("curuser", bgCurUser)
+                                    binding.setVariable("mailService", bgMailService)
+                                    binding.setVariable("params", bgParams)
+                                    binding.setVariable("request", null)
+                                    binding.setVariable("grailsLinkGenerator", bgLinkGenerator)
+                                    binding.setVariable("portalService", bgPortalService)
+                                    binding.setVariable("userService", bgUserService)
+
+                                    def datas = [:]
+                                    bgPage.datasources.each { ds->
+                                        def dquery = ds.query.replaceAll('\r\n'," ").replaceAll('  ',' ')
+                                        def query = new GroovyShell(bgClassLoader, binding).evaluate(dquery)
+                                        query = query.replaceAll('\r\n'," ").replaceAll('  ',' ')
+                                        datas[ds.name] = []
+                                        def pattern = ~/:([a-zA-Z_]+)/
+                                        def matcher = query =~ pattern
+                                        if(matcher.size()>0) {
+                                            if(ds.return_one) {
+                                                datas[ds.name] = bgSql.firstRow(query, bgParams)
+                                            } else {
+                                                bgSql.eachRow(query, bgParams) { row-> datas[ds.name] << row.toRowResult() }
+                                            }
+                                        } else {
+                                            if(ds.return_one) {
+                                                datas[ds.name] = bgSql.firstRow(query)
+                                            } else {
+                                                bgSql.eachRow(query) { row-> datas[ds.name] << row.toRowResult() }
+                                            }
+                                        }
+                                    }
+                                    binding.setVariable("datas", datas)
+
+                                    def bgContent = new GroovyShell(bgClassLoader, binding).evaluate(bgPage.content)
+
+                                    if(!bgContent || !('wb' in bgContent) || !('filename' in bgContent)) {
+                                        xlsxJobs[bgToken] = [done: true, file: null, error: "Page did not return a valid workbook"]
+                                        return
+                                    }
+
+                                    def tmpFile = File.createTempFile("g6xlsx_", ".xlsx")
+                                    tmpFile.deleteOnExit()
+                                    tmpFile.withOutputStream { fos -> bgContent['wb'].write(fos) }
+                                    try { bgContent['wb'].dispose() } catch(Exception e) {}
+                                    xlsxJobs[bgToken] = [done: true, file: tmpFile.absolutePath, error: null, filename: bgContent['filename']]
+                                    println "Background XLSX export completed: ${tmpFile.absolutePath}"
+                                }
+                            } catch(Exception e) {
+                                println "Background XLSX export error: " + e.message
+                                e.printStackTrace()
+                                xlsxJobs[bgToken] = [done: true, file: null, error: e.message ?: "Export failed"]
+                            } finally {
+                                try { bgSql?.close() } catch(Exception e) {}
+                                try { bgConnection?.close() } catch(Exception e) {}
+                            }
+                        }
+
+                        // Return polling page immediately so proxy never times out
+                        def pollingHtml = """<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Generating Excel...</title>
+<style>
+body{font-family:Arial,sans-serif;text-align:center;padding:60px 20px;background:#f5f5f5;}
+.box{background:#fff;border-radius:8px;padding:40px;display:inline-block;box-shadow:0 2px 8px rgba(0,0,0,.1);min-width:320px;}
+h2{color:#333;margin-bottom:10px;}
+#status{color:#666;margin:16px 0;}
+.spinner{display:inline-block;width:40px;height:40px;border:4px solid #ddd;border-top-color:#0078d4;border-radius:50%;animation:spin .8s linear infinite;margin-bottom:16px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.error{color:#c00;}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="spinner" id="spinner"></div>
+  <h2>Generating Excel Report</h2>
+  <p id="status">Please wait while your report is being prepared&hellip;</p>
+</div>
+<script>
+var token = '${bgToken}';
+var baseUrl = window.location.href.split('?')[0];
+var checkUrl = baseUrl + '?async_token=' + token + '&async_status=1';
+var downloadUrl = baseUrl + '?async_token=' + token;
+function check() {
+    fetch(checkUrl, {credentials:'same-origin'})
+        .then(function(r){return r.json();})
+        .then(function(data){
+            if(data.ready){
+                document.getElementById('status').textContent='Report ready! Downloading\\u2026';
+                document.getElementById('spinner').style.display='none';
+                var a=document.createElement('a');
+                a.href=downloadUrl;
+                a.download='';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                document.getElementById('status').textContent='Download complete.';
+                setTimeout(function(){
+                    if(document.referrer && document.referrer !== window.location.href){
+                        window.location.href=document.referrer;
+                    } else {
+                        window.history.back();
+                    }
+                },1500);
+            } else if(data.error){
+                document.getElementById('spinner').style.display='none';
+                document.getElementById('status').innerHTML='<span class="error">Error: '+data.error+'</span>';
+            } else {
+                setTimeout(check,2000);
+            }
+        })
+        .catch(function(){setTimeout(check,2000);});
+}
+setTimeout(check,2000);
+</script>
+</body>
+</html>"""
+                        render(contentType: 'text/html', text: pollingHtml)
+                        return
+                    }
+                    // ===== END XLSX async handling =====
+
                     try{
                         PortalPage.withTransaction { sqltrans->
                             Binding binding = new Binding()
@@ -164,14 +362,15 @@ class PortalPageController {
             return render(text: content, contentType: "text/html")
         }
         else if(page.render=='XLSX') {
+            // This path is only reached if XLSX was not intercepted above (should not happen in runpage)
             if(!('wb' in content)) {
                 PortalErrorLog.record(params,curuser,controllerName,actionName,"No wb defined in excel page return",page.slug,page.module)
-                flash.message = "Error generating excel file" 
+                flash.message = "Error generating excel file"
                 redirect(action: "index", params: params)
             }
             if(!('filename' in content)) {
                 PortalErrorLog.record(params,curuser,controllerName,actionName,"No filename defined in excel page return",page.slug,page.module)
-                flash.message = "Error generating excel file" 
+                flash.message = "Error generating excel file"
                 redirect(action: "index", params: params)
             }
             response.setContentType("application/octet-stream")

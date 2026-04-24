@@ -347,6 +347,7 @@ class PortalModule {
                             curstatus.updateable=istatus.updateable
                             curstatus.attachable=istatus.attachable
                             curstatus.suppressupdatebutton=istatus.suppressupdatebutton
+                            curstatus.compositeStatuses=istatus.compositeStatuses
                             if(!curstatus.validate()){
                                 curstatus.errors.allErrors.each {
                                     println 't error:' + it
@@ -794,6 +795,7 @@ class PortalModule {
                         updateable: status.updateable,
                         attachable: status.attachable,
                         suppressupdatebutton: status.suppressupdatebutton,
+                        compositeStatuses: status.compositeStatuses,
                         emailonupdate: emailonupdate,
                         runonupdate: status.runonupdate?.slug
                     ]

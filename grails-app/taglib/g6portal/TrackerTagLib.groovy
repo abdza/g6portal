@@ -476,7 +476,8 @@ class TrackerTagLib {
                                                 def trole = ctrans.roles.any { role-> role.id in othertracker.user_roles(curuser,row)*.id }
                                                 def backtostr = attrs.field.tracker.module + ':' + attrs.field.tracker.slug
                                                 def prevtest = false
-                                                if('record_status' in row && row['record_status'] in ctrans.prev_status*.name){
+                                                if('record_status' in row && (row['record_status'] in ctrans.prev_status*.name ||
+                                                    ctrans.prev_status.any { ps -> ps.compositeStatuses && row['record_status'] in ps.compositeStatuses.tokenize(',')*.trim() })){
                                                     prevtest = true
                                                 }
                                                 else if(attrs.field.tracker?.tracker_type=='DataStore' && attrs.field.tracker?.initial_status?.name in ctrans.prev_status*.name) {
@@ -678,7 +679,15 @@ class TrackerTagLib {
                                 if(params[attrs.field.field_options + '.record_status']){
                                     if(params[attrs.field.field_options + '.record_status']!='All'){
                                         session['tracker_' + attrs.field.field_options + '.record_status'] = params[attrs.field.field_options + '.record_status']
-                                        query += " and record_status='" + params[attrs.field.field_options + '.record_status'] + "'"
+                                        def statusFilter1 = params[attrs.field.field_options + '.record_status']
+                                        def compositeStatus1 = PortalTrackerStatus.findByTrackerAndName(othertracker, statusFilter1)
+                                        if (compositeStatus1?.compositeStatuses) {
+                                            def memberNames1 = compositeStatus1.compositeStatuses.tokenize(',')*.trim().findAll { it }
+                                            def inList1 = memberNames1.collect { "'" + it.replace("'", "''") + "'" }.join(',')
+                                            query += " and record_status IN (" + inList1 + ")"
+                                        } else {
+                                            query += " and record_status='" + statusFilter1.replace("'", "''") + "'"
+                                        }
                                     }
                                     else{
                                         session['tracker_' + attrs.field.field_options + '.record_status'] = null
@@ -686,7 +695,15 @@ class TrackerTagLib {
                                 }
                                 else{
                                     if(session['tracker_' + attrs.field.field_options + '.record_status']){
-                                        query += " and record_status='" + session['tracker_' + attrs.field.field_options + '.record_status'] + "'"
+                                        def statusFilter2 = session['tracker_' + attrs.field.field_options + '.record_status']
+                                        def compositeStatus2 = PortalTrackerStatus.findByTrackerAndName(othertracker, statusFilter2)
+                                        if (compositeStatus2?.compositeStatuses) {
+                                            def memberNames2 = compositeStatus2.compositeStatuses.tokenize(',')*.trim().findAll { it }
+                                            def inList2 = memberNames2.collect { "'" + it.replace("'", "''") + "'" }.join(',')
+                                            query += " and record_status IN (" + inList2 + ")"
+                                        } else {
+                                            query += " and record_status='" + statusFilter2.replace("'", "''") + "'"
+                                        }
                                     }
                                 }
                             }
@@ -719,7 +736,8 @@ class TrackerTagLib {
                                     def trole = ctrans.roles.any { role-> role.id in othertracker.user_roles(curuser,row)*.id }
                                     def backtostr = attrs.field.tracker.module + ':' + attrs.field.tracker.slug
                                     def prevtest = false
-                                    if('record_status' in row && row['record_status'] in ctrans.prev_status*.name){
+                                    if('record_status' in row && (row['record_status'] in ctrans.prev_status*.name ||
+                                        ctrans.prev_status.any { ps -> ps.compositeStatuses && row['record_status'] in ps.compositeStatuses.tokenize(',')*.trim() })){
                                         prevtest = true
                                     }
                                     else if(attrs.field.tracker.tracker_type=='DataStore' && attrs.field.tracker?.initial_status?.name in ctrans.prev_status*.name) {
@@ -1072,12 +1090,11 @@ content: event.description
             }
             def countquery = attrs.tracker.listquery(countparams,curuser,"select count(*)")
             def totalcount = 0
-            println "Countquery:" + countquery
-            if(countquery['query'].indexOf(':')) {
-                def typedParams = countquery['qparams'].collectEntries { key, value ->
-                    [key, value?.toString()]
-                }
-                totalcount = sql.firstRow(countquery['query'], typedParams)[0]
+            def countTypedParams = countquery['qparams'].collectEntries { key, value ->
+                [key, value?.toString()]
+            }
+            if(countTypedParams) {
+                totalcount = sql.firstRow(countquery['query'], countTypedParams)[0]
             }
             else {
                 totalcount = sql.firstRow(countquery['query'])[0]
@@ -1659,7 +1676,17 @@ content: event.description
 
             out << form(name:"updaterecord",useToken:true,action:"update_record",id:attrs.record_id,params:[module:attrs.tracker.module,slug:attrs.tracker.slug],enctype:"multipart/form-data"){
 
-                if(curstatus?.checkupdateable(userroles*.name)){
+                // Determine effective status: direct match, or a composite status that contains it
+                def effectiveCurstatus = curstatus
+                if(!effectiveCurstatus?.checkupdateable(userroles*.name) && datas?.containsKey('record_status') && datas['record_status']) {
+                    effectiveCurstatus = attrs.tracker.statuses.find { s ->
+                        s.compositeStatuses &&
+                        datas['record_status'] in s.compositeStatuses.tokenize(',')*.trim() &&
+                        s.checkupdateable(userroles*.name)
+                    } ?: curstatus
+                }
+
+                if(effectiveCurstatus?.checkupdateable(userroles*.name)){
                     out << "<h2>Update Status</h2>"
                     out << hiddenField(name:"id",value:attrs.record_id)
                     out << hiddenField(name:"statusUpdate",value:1)
@@ -1670,10 +1697,10 @@ content: event.description
                     if(!apath) {
                         apath = PortalSetting.findByName(attrs.tracker.slug + '_attachment_path')
                     }
-                    if(curstatus.attachable && apath){
+                    if(effectiveCurstatus.attachable && apath){
                         out << "<label>Attach File:</label><input style='float:none;' type='file' name='uploadfile'/><br/>"
                     }
-                    if(!curstatus.suppressupdatebutton){
+                    if(!effectiveCurstatus.suppressupdatebutton){
                         out << submitButton(class:"btn btn-primary m-1",style:"float:none;clear:right;",name:"submit",value:"Submit Update")
                     }
                 }
@@ -1815,8 +1842,13 @@ content: event.description
         }
         else {
             if(prev_status){
+                def recordStatusName = attrs.datas?.get('record_status')
                 attrs.tracker.transitions.each { t->
-                    if(prev_status.id in t.prev_status*.id){
+                    def directMatch = prev_status.id in t.prev_status*.id
+                    def compositeMatch = !directMatch && recordStatusName && t.prev_status.any { ps ->
+                        ps.compositeStatuses && recordStatusName in ps.compositeStatuses.tokenize(',')*.trim()
+                    }
+                    if(directMatch || compositeMatch){
                         if(attrs.userroles.any { crole-> crole in t.roles }){
                             transitions << t
                         }
@@ -1828,8 +1860,13 @@ content: event.description
         transitions.sort{ it.name }.each { transition->
             def enabletrans = transition.testenabled(session,attrs.datas)
             if(enabletrans){
-                out << link(class:"btn btn-primary m-1",name:"transition_" + transition.id,action:"transition",params:['module':attrs.tracker.module,'slug':attrs.tracker.slug,'id':attrs.record_id,'transition':transition.name.replace(" ","_").toLowerCase()]) {
-                    out << transition
+                if(transition.immediate_submission) {
+                    def directUrl = createLink(uri: "/${attrs.tracker.module}/${attrs.tracker.slug}/${transition.name.replace(' ','_').toLowerCase()}/${attrs.record_id}/direct")
+                    out << "<a class='btn btn-primary m-1' name='transition_${transition.id}' href='${directUrl}'>${transition}</a>"
+                } else {
+                    out << link(class:"btn btn-primary m-1",name:"transition_" + transition.id,action:"transition",params:['module':attrs.tracker.module,'slug':attrs.tracker.slug,'id':attrs.record_id,'transition':transition.name.replace(" ","_").toLowerCase()]) {
+                        out << transition
+                    }
                 }
             }
         }
@@ -1849,7 +1886,7 @@ content: event.description
                 userroles.each { urole->
                     currules << " allowedroles like '%" + urole.name + "%' "
                 }
-                userrules = "and (allowedroles = 'null' or allowedroles = '' or " + currules.join('or') + ")"
+                userrules = "and (allowedroles is null or allowedroles = 'null' or allowedroles = '' or " + currules.join('or') + ")"
             }
             if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                 query = "select * from " + attrs.tracker.trail_table() + " where record_id=:id $userrules order by update_date desc,id desc"

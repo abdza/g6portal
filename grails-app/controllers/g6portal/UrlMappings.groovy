@@ -181,6 +181,18 @@ class UrlMappings {
         }
     }
 
+	"/$module/$slug/$transition/$id/direct" {
+        method = "GET"
+        controller = "portalTracker"
+        action = "transition_direct"
+        constraints {
+            module(matches:/[a-zA-Z0-9]+.*$/)
+            slug(matches:/[a-zA-Z0-9]+.*$/)
+            transition(matches:/[a-zA-Z]+.*$/)
+            id(matches:/[0-9]+.*$/)
+        }
+    }
+
 	"/$module/$slug/$transition/$id?" {
         method = "GET"
         controller = "portalTracker"

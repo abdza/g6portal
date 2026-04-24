@@ -18,12 +18,14 @@ class PortalTrackerStatus {
     suppressupdatebutton(nullable:true)
     flow(nullable:true)
     actiontransitions(nullable:true)
+    compositeStatuses(nullable:true)
   }
 
   static mapping = {
     displayfields type: 'text'
     editfields type: 'text'
     editroles type: 'text'
+    compositeStatuses type: 'text'
     cache true
   }
 
@@ -40,6 +42,14 @@ class PortalTrackerStatus {
   Boolean actiontransitions
   PortalTrackerEmail emailonupdate
   PortalPage runonupdate
+  String compositeStatuses
+
+  List<String> getMemberStatusNames() {
+    if (compositeStatuses) {
+      return compositeStatuses.tokenize(',')*.trim()
+    }
+    return [name]
+  }
 
   String toString() {
     return name
