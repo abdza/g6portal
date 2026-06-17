@@ -245,11 +245,45 @@ class PortalModule {
                 println "Importing tracker: " + itracker
                 PortalTracker.withTransaction { dbtrans-> 
                     def curtracker = PortalTracker.findAllByModuleAndSlug(itracker.module,itracker.slug)
+                    // Preserve upload records before deleting tracker; savedparams uses field IDs
+                    // which change after import, so remap to field names for safe restore.
+                    def savedTrackerDatas = []
                     if(curtracker.size()>0){
                         curtracker.each { ct->
+                            def fieldIdToName = [:]
+                            ct.fields.each { f -> fieldIdToName[f.id] = f.name }
                             ct.datas.each { ctd->
-                                ctd.isTrackerDeleting = true
-                                ctd.save(flush:true)
+                                def remappedParams = null
+                                if(ctd.savedparams) {
+                                    try {
+                                        def parsedParams = new JsonSlurper().parseText(ctd.savedparams)
+                                        def remapped = [:]
+                                        parsedParams.each { pk, pv ->
+                                            def m = (pk =~ /^(datasource|custom|update)_(\d+)$/)
+                                            if(m) {
+                                                def fname = fieldIdToName[m[0][2].toLong()]
+                                                if(fname) remapped["${m[0][1]}_fname_${fname}"] = pv
+                                            } else {
+                                                remapped[pk] = pv
+                                            }
+                                        }
+                                        remappedParams = JsonOutput.toJson(remapped)
+                                    } catch(Exception ep) {
+                                        remappedParams = ctd.savedparams
+                                    }
+                                }
+                                savedTrackerDatas << [
+                                    tracker_module: ct.module, tracker_slug: ct.slug,
+                                    old_id: ctd.id, module: ctd.module, path: ctd.path,
+                                    date_created: ctd.date_created, data_row: ctd.data_row,
+                                    data_end: ctd.data_end, header_start: ctd.header_start,
+                                    header_end: ctd.header_end, uploaded: ctd.uploaded,
+                                    send_email: ctd.send_email, sent_email_date: ctd.sent_email_date,
+                                    messages: ctd.messages, savedparams_remapped: remappedParams,
+                                    uploadStatus: ctd.uploadStatus, file_link_id: { try { ctd.file_link?.id } catch(Exception e) { null } }(),
+                                    uploader_id: { try { ctd.uploader?.id } catch(Exception e) { null } }(), excel_password: ctd.excel_password
+                                ]
+                                ctd.isTrackerDeleting = true  // must set on in-memory object; HQL executeUpdate only updates DB, not the first-level cache Hibernate uses for beforeDelete
                             }
                             ct.delete(flush:true)
                         }
@@ -288,8 +322,19 @@ class PortalModule {
                         }
                     }
                     if(curtracker.save(flush:true)){
+                        // Create data/trail tables before processing fields so that
+                        // curfield.updatedb() ALTER TABLE calls succeed without exceptions.
+                        // Exceptions from DDL on a non-existent table corrupt the Hibernate
+                        // session's transaction state, causing subsequent saves to fail.
+                        try {
+                            def importDs = grails.util.Holders.applicationContext.getBean('dataSource')
+                            curtracker.updatedb(importDs)
+                        } catch(Exception tbe) {
+                            println "Could not create tables for tracker ${curtracker.slug}: ${tbe}"
+                        }
                         itracker.fields.each { ifield->
                             def curfield = PortalTrackerField.findByTrackerAndName(curtracker,ifield.name)
+                            def isNewField = (curfield == null)
                             if(!curfield){
                                 curfield = new PortalTrackerField()
                             }
@@ -319,6 +364,15 @@ class PortalModule {
                                 }
                             }
                             curfield.save(flush:true)
+                            // For new fields, ensure the DB column exists immediately
+                            if(isNewField) {
+                                try {
+                                    def importDs = grails.util.Holders.applicationContext.getBean('dataSource')
+                                    curfield.updatedb(importDs)
+                                } catch(Exception fdbe) {
+                                    println "Could not add column for new field ${curfield.name}: ${fdbe}"
+                                }
+                            }
                             ifield.error_checks.each { ec->
                                 def error_check = new PortalTrackerError()
                                 error_check.field = curfield
@@ -543,6 +597,58 @@ class PortalModule {
                             }
                         }
                         curtracker.save(flush:true)
+
+                        // Restore upload records, remapping savedparams back to new field IDs
+                        // and fixing dataupdate_id references in the data table.
+                        def fieldNameToId = [:]
+                        curtracker.fields.each { f -> fieldNameToId[f.name] = f.id }
+                        PortalTrackerData.withSession { cs ->
+                            def sql = new Sql(cs.connection())
+                            savedTrackerDatas.findAll { it.tracker_module == itracker.module && it.tracker_slug == itracker.slug }.each { savedData ->
+                                def newData = new PortalTrackerData()
+                                newData.tracker = curtracker
+                                newData.module = savedData.module
+                                newData.path = savedData.path
+                                newData.date_created = savedData.date_created
+                                newData.data_row = savedData.data_row
+                                newData.data_end = savedData.data_end
+                                newData.header_start = savedData.header_start
+                                newData.header_end = savedData.header_end
+                                newData.uploaded = savedData.uploaded
+                                newData.send_email = savedData.send_email
+                                newData.sent_email_date = savedData.sent_email_date
+                                newData.messages = savedData.messages
+                                newData.uploadStatus = savedData.uploadStatus
+                                newData.excel_password = savedData.excel_password
+                                if(savedData.file_link_id) newData.file_link = FileLink.get(savedData.file_link_id)
+                                if(savedData.uploader_id) newData.uploader = User.get(savedData.uploader_id)
+                                if(savedData.savedparams_remapped) {
+                                    try {
+                                        def parsedParams = new JsonSlurper().parseText(savedData.savedparams_remapped)
+                                        def remapped = [:]
+                                        parsedParams.each { pk, pv ->
+                                            def m = (pk =~ /^(datasource|custom|update)_fname_(.+)$/)
+                                            if(m) {
+                                                def newFid = fieldNameToId[m[0][2]]
+                                                if(newFid) remapped["${m[0][1]}_${newFid}"] = pv
+                                            } else {
+                                                remapped[pk] = pv
+                                            }
+                                        }
+                                        newData.savedparams = JsonOutput.toJson(remapped)
+                                    } catch(Exception ep) {
+                                        newData.savedparams = savedData.savedparams_remapped
+                                    }
+                                }
+                                newData.save(flush:true)
+                                try {
+                                    def tableName = curtracker.data_table()
+                                    sql.execute("update ${tableName} set dataupdate_id = ${newData.id} where dataupdate_id = ${savedData.old_id}" as String)
+                                } catch(Exception ep) {
+                                    println "Error updating dataupdate_id from ${savedData.old_id} to ${newData.id}: ${ep}"
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -615,8 +721,14 @@ class PortalModule {
         }
     }
 
+    // Pretty-printed JSON (one key per line, sorted collections) keeps export
+    // files line-oriented so diffs between imports stay small and readable
+    static String formatExportJson(obj) {
+        return JsonOutput.prettyPrint(JsonOutput.toJson(obj))
+    }
+
     def exportfilelinks(migrationfolder) {
-        def filelinks = FileLink.findAllByModule(this.name)
+        def filelinks = FileLink.findAllByModule(this.name).sort { a,b -> (a.slug?:'') <=> (b.slug?:'') ?: (a.name?:'') <=> (b.name?:'') ?: a.id <=> b.id }
         if(filelinks.size()){
             def filelinkfile = new File(migrationfolder + '/filelinklist.json')
             def filelinkarray = []
@@ -645,12 +757,12 @@ class PortalModule {
                     ]
                 }
             }
-            filelinkfile.write(JsonOutput.toJson(filelinkarray))
+            filelinkfile.write(formatExportJson(filelinkarray))
         }
     }
 
     def exportsettings(migrationfolder) {
-        def settings = PortalSetting.findAllByModule(this.name)
+        def settings = PortalSetting.findAllByModule(this.name).sort { it.name }
         if(settings.size()){
             def settingfile = new File(migrationfolder + '/settinglist.json')
             def settingarray = []
@@ -665,12 +777,12 @@ class PortalModule {
                   datum_type: setting.datum_type
                 ]
             }
-          settingfile.write(JsonOutput.toJson(settingarray))
+          settingfile.write(formatExportJson(settingarray))
         }
     }
 
     def exportuserroles(migrationfolder) {
-        def userroles = UserRole.findAllByModule(this.name)
+        def userroles = UserRole.findAllByModule(this.name).sort { a,b -> (a.user.newStaffID?:'') <=> (b.user.newStaffID?:'') ?: (a.role?:'') <=> (b.role?:'') }
         if(userroles.size()){
             def userrolefile = new File(migrationfolder + '/userrolelist.json')
             def userrolearray = []
@@ -681,12 +793,12 @@ class PortalModule {
                     role: userrole.role
                 ]
             }
-            userrolefile.write(JsonOutput.toJson(userrolearray))
+            userrolefile.write(formatExportJson(userrolearray))
         }
     }
 
     def exportpages(migrationfolder) {
-        def pages = PortalPage.findAllByModule(this.name)
+        def pages = PortalPage.findAllByModule(this.name).sort { it.slug }
         if(pages.size()){
             def pagefile = new File(migrationfolder + '/pagelist.json')
             def pagearray = []
@@ -704,7 +816,7 @@ class PortalModule {
                 def datasources = null
                 if(page.datasources){
                     datasources = []
-                    page.datasources.each { ds->
+                    page.datasources.sort { it.name }.each { ds->
                         datasources << [
                             name: ds.name,
                             return_one: ds.return_one,
@@ -728,12 +840,12 @@ class PortalModule {
                     datasources: datasources
                 ]
             }
-            pagefile.write(JsonOutput.toJson(pagearray))
+            pagefile.write(formatExportJson(pagearray))
         }
     }
 
     def exporttrackers(migrationfolder) {
-        def trackers = PortalTracker.findAllByModule(this.name)
+        def trackers = PortalTracker.findAllByModule(this.name).sort { it.slug }
         if(trackers.size()){
             def trackerfile = new File(migrationfolder + '/trackerlist.json')
             def trackerarray = []
@@ -741,7 +853,7 @@ class PortalModule {
                 def fieldsarray = []
                 tracker.fields.sort{ it.name }.each { field->
                     def errorarray = []
-                    field.error_checks.each { ec->
+                    field.error_checks.sort { a,b -> (a.error_type?:'') <=> (b.error_type?:'') ?: (a.description?:'') <=> (b.description?:'') }.each { ec->
                         errorarray << [
                             error_type: ec.error_type,
                             description: ec.description,
@@ -775,7 +887,7 @@ class PortalModule {
                     ]
                 }
                 def statusesarray = []
-                tracker.statuses.each { status->
+                tracker.statuses.sort { it.name }.each { status->
                     def emailonupdate = null
                     if(status.emailonupdate){
                         emailonupdate = [
@@ -801,7 +913,7 @@ class PortalModule {
                     ]
                 }
                 def rolesarray = []
-                tracker.roles.each { role->
+                tracker.roles.sort { a,b -> (a.name?:'') <=> (b.name?:'') ?: (a.role_type?:'') <=> (b.role_type?:'') }.each { role->
                     rolesarray << [
                         name: role.name,
                         role_type: role.role_type,
@@ -811,10 +923,10 @@ class PortalModule {
                     ]
                 }
                 def transitionsarray = []
-                tracker.transitions.each { transition->
+                tracker.transitions.sort { a,b -> (a.name?:'') <=> (b.name?:'') ?: (a.next_status?.name?:'') <=> (b.next_status?.name?:'') }.each { transition->
                     def emails = []
                     if(transition.emails){
-                        transition.emails.each { cemail->
+                        transition.emails.sort { it.name }.each { cemail->
                             emails << [
                                 name: cemail.name,
                                 emailto: cemail.emailto,
@@ -823,8 +935,8 @@ class PortalModule {
                             ]
                         }
                     }
-                    def roles = transition.roles*.name
-                    def prev_status = transition.prev_status*.name
+                    def roles = transition.roles*.name.sort()
+                    def prev_status = transition.prev_status*.name.sort()
                     transitionsarray << [
                         name: transition.name,
                         display_name: transition.display_name,
@@ -847,7 +959,7 @@ class PortalModule {
                     ]
                 }
                 def flowsarray = []
-                tracker.flows.each { flow->
+                tracker.flows.sort { it.name }.each { flow->
                     flowsarray << [
                         name: flow.name,
                         fields: flow.fields,
@@ -855,7 +967,7 @@ class PortalModule {
                     ]
                 }
                 def indexarray = []
-                tracker.indexes.each { ind->
+                tracker.indexes.sort { it.name }.each { ind->
                     indexarray << [
                         name: ind.name,
                         fields: ind.fields
@@ -899,13 +1011,13 @@ class PortalModule {
                     indexes: indexarray
                 ]
             }
-            trackerfile.write(JsonOutput.toJson(trackerarray))
+            trackerfile.write(formatExportJson(trackerarray))
         }
     }
 
-    def exportmodule(file_on,staff_on) {
+    def exportmodule(file_on,staff_on,targetfolder = null) {
         def curfolder = System.getProperty("user.dir")
-        def migrationfolder = PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration') + '/' + this.name
+        def migrationfolder = targetfolder ?: (PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration') + '/' + this.name)
         if(!(new File(migrationfolder).exists())){
             new File(migrationfolder).mkdirs()
         }

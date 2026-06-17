@@ -493,27 +493,31 @@ class PortalTrackerDataController {
         def tracker = PortalTracker.get(params.tracker_id)
         def curuser = session.curuser
         if(curuser && tracker && ('Admin' in curuser.modulerole(tracker.module) || curuser.isAdmin)) {
-            def sessiondata = sessionFactory.currentSession.connection()
-            def sql = new Sql(sessiondata)
             try {
-                PortalTrackerData.withTransaction { transaction ->
-                    def dataTableName = validateIdentifier(tracker.data_table())
-                    sql.execute("drop table " + dataTableName)
-                }
+                def dataTableName = validateIdentifier(tracker.data_table())
+                def sql = new Sql(sessionFactory.currentSession.connection())
+                sql.execute("drop table " + dataTableName)
                 flash.message = 'Reset database ' + tracker + ' has been done'
             } catch (SecurityException e) {
                 log.error("Security violation in resetdb(): ${e.message}")
                 flash.message = 'Database operation failed due to security violation'
+            } catch (Exception e) {
+                log.error("Error dropping data table in resetdb(): ${e.message}")
+                flash.message = 'Reset failed: ' + e.message
             }
-            try {
-                PortalTrackerData.withTransaction { transaction ->
-                    if(tracker.tracker_type=='Tracker') {
-                        def trailTableName = validateIdentifier(tracker.trail_table())
-                        sql.execute("drop table " + trailTableName)
-                    }
+            if(tracker.tracker_type=='Tracker') {
+                try {
+                    def trailTableName = validateIdentifier(tracker.trail_table())
+                    def sql = new Sql(sessionFactory.currentSession.connection())
+                    sql.execute("drop table " + trailTableName)
+                    flash.message = 'Reset database ' + tracker + ' has been done'
+                } catch (SecurityException e) {
+                    log.error("Security violation in resetdb(): ${e.message}")
+                    flash.message = 'Database operation failed due to security violation'
+                } catch (Exception e) {
+                    log.error("Error dropping trail table in resetdb(): ${e.message}")
+                    flash.message = 'Reset failed: ' + e.message
                 }
-            } catch (SecurityException e) {
-                log.error("Security violation in resetdb() trail: ${e.message}")
             }
         }
         else{
@@ -539,8 +543,15 @@ class PortalTrackerDataController {
               update.update(mailService)
             }
         }
-        flash.message = 'Update ' + update + ' has been run'
-        redirect controller:"portalTracker", action:"list", method:"GET", params:['module':update.tracker.module,'slug':update.tracker.slug]
+        redirect action:"uploadsummary", id: update.id
+    }
+
+    def uploadsummary(Long id) {
+        def update = portalTrackerDataService.get(id)
+        if (!update) { notFound(); return }
+        // Force refresh from DB — raw SQL in update() bypasses the Hibernate L2 cache
+        PortalTrackerData.withSession { session -> session.refresh(update) }
+        [portalTrackerData: update]
     }
 
     def edit(Long id) {

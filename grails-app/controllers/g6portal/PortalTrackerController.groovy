@@ -1183,6 +1183,7 @@ setTimeout(check,2000);
                             }
                             catch(Exception e){
                                 println "Error postprocessing for transition " + ctrans + " with " + ctrans.postprocess.content + " error:" + e
+                                flash.message = e.getMessage() ?: "An unexpected error occurred during processing. Please check the server log."
                             }
                         }
                         datas = tracker.getdatas(datas['id'])
@@ -1503,6 +1504,7 @@ setTimeout(check,2000);
                         }
                     } catch (Exception e) {
                         println "Error postprocessing for transition_direct " + ctrans + ": " + e
+                        flash.message = e.getMessage() ?: "An unexpected error occurred during processing. Please check the server log."
                     }
                 }
                 datas = tracker.getdatas(datas['id'])

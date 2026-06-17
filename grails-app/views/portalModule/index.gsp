@@ -28,6 +28,9 @@
                         <g:if test="${session['developermodules']}">
                             <li><g:link class="create" action="importform">Import Zip</g:link></li>
                         </g:if>
+                        <g:if test="${curuser?.isAdmin || session['developermodules']}">
+                            <li><g:link class="list" action="importlogs">Import Logs</g:link></li>
+                        </g:if>
                     </ul>
                 </div>
             </section>

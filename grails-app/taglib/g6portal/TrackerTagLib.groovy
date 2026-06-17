@@ -387,6 +387,21 @@ class TrackerTagLib {
                                     def othertracker = attrs.field.othertracker()
                                     if(othertracker){
                                         def otherfield = attrs.field.field_format
+                                        if(value) {
+                                            def curval = sql.firstRow("select id from " + othertracker.data_table() + " where " + otherfield + "=:curval ",['curval':value])
+                                            if(!curval) {
+                                                // Fuzzy fallback: match by leading code prefix to handle minor formatting
+                                                // differences between imported data and reference tracker values
+                                                // e.g. "1120 Mang Directors &COE" → matches "1120 - Mang Directors &COE"
+                                                def code = value.toString().tokenize(' -')[0]?.trim()
+                                                if(code) {
+                                                    curval = sql.firstRow("select id from " + othertracker.data_table() + " where " + otherfield + " like :pat",['pat':code + '%'])
+                                                }
+                                            }
+                                            if(curval) {
+                                                value = curval['id']
+                                            }
+                                        }
                                         def options = sql.rows("select id," + otherfield + " from " + othertracker.data_table())
                                         if(options.size()>10) {
                                             out << select(name:attrs.field.name?.trim(),value:value,from:options,optionKey:"id",optionValue:otherfield,noSelection:['':'Please select'])
@@ -822,7 +837,7 @@ class TrackerTagLib {
             }
             if(fields || attrs.tracker.searchfields){
                 out << form(name:"trackfilter",method:"get",action:"list",params:['module':attrs.tracker.module,'slug':attrs.tracker.slug]){
-                    def notcontinue = ['slug']
+                    def notcontinue = ['slug', 'offset']
                     out << "<fieldset class='form'>"
                     def trackerObjects = PortalSetting.namedefault("tracker_objects",[])
                     fields.each { field->
@@ -1167,7 +1182,10 @@ content: event.description
                 params.max = 10
             }
 
-            def query = attrs.tracker.listquery(params,curuser,"select " + comp_string + ' "' + field_names.join('","') + '" ')
+            def selectStr = field_names.size() > 0
+                ? "select " + comp_string + '"' + field_names.join('","') + '"'
+                : "select * "
+            def query = attrs.tracker.listquery(params,curuser,selectStr)
 
             def currow = 0
             def rows = []
@@ -1223,7 +1241,7 @@ content: event.description
                         value = row[field.name?.trim()]
                     }
                     if(firstfield){
-                        out << link(action:'display_data',class:'linkdetail ',params:[module:attrs.tracker.module,slug:attrs.tracker.slug,id:row['id']]){
+                        out << link(controller:'portalTracker',action:'display_data',class:'linkdetail ',params:[module:attrs.tracker.module,slug:attrs.tracker.slug,id:row['id']]){
                             def todisplay = displayField(field:field,value:value,datas:row,nolinking:true)
                             if(todisplay.size()>0) {
                                 out << todisplay

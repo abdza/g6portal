@@ -631,11 +631,18 @@ class PortalTracker {
             def fieldname = []
             def fieldval = []
             datas.each { key,val->
-                def dfield = PortalTrackerField.findByTrackerAndName(this,key)
-                if(dfield){
+                if(key == 'record_status') {
                     fieldname << key
                     fieldval << ":" + key
-                    qparams[key] = dfield.safeval(val)
+                    qparams[key] = val
+                }
+                else {
+                    def dfield = PortalTrackerField.findByTrackerAndName(this,key)
+                    if(dfield){
+                        fieldname << key
+                        fieldval << ":" + key
+                        qparams[key] = dfield.safeval(val)
+                    }
                 }
             }
             query = "insert into " + data_table() + " (" + fieldname.join(',') + ") values (" + fieldval.join(" , ") + ")"

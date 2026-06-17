@@ -104,9 +104,23 @@
                         <ul>
                         <g:if test="${this.portalModule.name in session['developermodules']}">
                             <li><g:link controller='portalSetting' class="create" action="create" params="['module':this.portalModule.name]">Add Setting</g:link></li>
+                            <li><g:link class="list" action="exportSettings" id="${this.portalModule.id}">Export Settings</g:link></li>
                         </g:if>
                         </ul>
                     </div>
+                    <g:if test="${this.portalModule.name in session['developermodules']}">
+                        <div style="margin: 10px 0; padding: 10px; border: 1px solid #ccc; border-radius: 4px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+                            <g:uploadForm action="importSettings" id="${this.portalModule.id}" style="display:inline-flex; align-items:center; gap:8px; margin:0;">
+                                <label>Import Settings (Excel): </label>
+                                <input type="file" name="settingsFile" accept=".xlsx" required />
+                                <input type="submit" class="save" value="Import" />
+                            </g:uploadForm>
+                            <g:form action="deleteAllSettings" id="${this.portalModule.id}" method="post" style="display:inline; margin:0;">
+                                <input type="submit" class="delete" value="Delete All Settings"
+                                    onclick="return confirm('Delete ALL settings for module \'${this.portalModule.name}\'?') &amp;&amp; confirm('This cannot be undone. Are you absolutely sure?');" />
+                            </g:form>
+                        </div>
+                    </g:if>
                     <table class='table'>
                     <tr><th>#</th><th>Name</th><th>Type</th><th>Value</th><th>Action</th></tr>
                     <g:each in='${settings}' var='setting' status='i'>
@@ -134,12 +148,16 @@
                         </ul>
                     </div>
                     <g:if test="${this.portalModule.name in session['developermodules']}">
-                        <div style="margin: 10px 0; padding: 10px; border: 1px solid #ccc; border-radius: 4px;">
-                            <g:uploadForm action="importUserRoles" id="${this.portalModule.id}">
+                        <div style="margin: 10px 0; padding: 10px; border: 1px solid #ccc; border-radius: 4px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+                            <g:uploadForm action="importUserRoles" id="${this.portalModule.id}" style="display:inline-flex; align-items:center; gap:8px; margin:0;">
                                 <label>Import User Roles (Excel): </label>
                                 <input type="file" name="userRoleFile" accept=".xlsx" required />
                                 <input type="submit" class="save" value="Import" />
                             </g:uploadForm>
+                            <g:form action="deleteAllUserRoles" id="${this.portalModule.id}" method="post" style="display:inline; margin:0;">
+                                <input type="submit" class="delete" value="Delete All Roles"
+                                    onclick="return confirm('Delete ALL user roles for module \'${this.portalModule.name}\'?') &amp;&amp; confirm('This cannot be undone. Are you absolutely sure?');" />
+                            </g:form>
                         </div>
                     </g:if>
                     <g:if test="${flash.errors}">
@@ -177,6 +195,27 @@ ${role.user.name}
                     </g:each>
                     </table>
                     <br/>
+                    <g:if test="${curuser?.isAdmin || this.portalModule.name in session['developermodules']}">
+                        <h3>Import History</h3>
+                        <div class="nav" role="navigation">
+                            <ul>
+                                <li><g:link class="list" action="importlogs" params="[module:this.portalModule.name]">View All Import Logs</g:link></li>
+                            </ul>
+                        </div>
+                        <table class='table'>
+                        <tr><th>#</th><th>Date</th><th>Imported By</th><th>Remarks</th><th>Action</th></tr>
+                        <g:each in='${importlogs}' var='importlog' status='i'>
+                            <tr>
+                            <td>${i+1}</td>
+                            <td><g:formatDate date="${importlog.dateCreated}" format="yyyy-MM-dd HH:mm:ss"/></td>
+                            <td>${importlog.staffname} (${importlog.staffid})</td>
+                            <td>${importlog.remarks}</td>
+                            <td><g:link action='importlog' id='${importlog.id}'>View Changes</g:link></td>
+                            </tr>
+                        </g:each>
+                        </table>
+                        <br/>
+                    </g:if>
                     <h3>Admins</h3>
                     <g:each in='${admins}' var='admin'>
                         <li><g:link controller='userRole' action='show' id='${admin.id}'>${admin.user.name}</g:link></li>

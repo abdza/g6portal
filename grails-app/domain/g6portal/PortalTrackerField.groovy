@@ -82,8 +82,10 @@ class PortalTrackerField {
     }
 
     def safeval(value){
+        if(value == null) return null
         def toreturn = ''
         if(this.field_type in ['Integer','User','Branch','File','TreeNode']){
+            if(value.toString().trim() == '') return null
             try {
                 toreturn = value.toInteger()
             }
@@ -92,6 +94,7 @@ class PortalTrackerField {
             }
         }
         else if(this.field_type == 'Number'){
+            if(value.toString().trim() == '') return null
             try{
                 toreturn = new Double(value)
             }

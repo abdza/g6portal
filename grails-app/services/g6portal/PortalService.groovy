@@ -629,9 +629,9 @@ class PortalService {
     }
 
     @Transactional
-    def export_module(Long id,file_on,user_on) {
+    def export_module(Long id,file_on,user_on,targetfolder = null) {
         def module = PortalModule.get(id)
-        module.exportmodule(file_on,user_on)
+        module.exportmodule(file_on,user_on,targetfolder)
     }
 
     def static File compress(final File srcDir, final File zipFile) {
@@ -647,6 +647,191 @@ class PortalService {
         })
         zos.close()
         return zipFile
+    }
+
+    // ---- Module import diff support ----------------------------------------
+    // Compares the current state of a module (temp export) against the files
+    // about to be imported, producing a unified diff for the import log.
+
+    // Cap on Myers edit distance; beyond this a file pair is rendered as a
+    // full remove/add block instead (keeps memory bounded on huge rewrites)
+    static final int DIFF_MAX_EDITS = 1000
+
+    def static boolean isTextFile(File f) {
+        if(!f.exists()) { return true }
+        def len = Math.min(f.length(), 8000L) as int
+        if(len == 0) { return true }
+        byte[] buf = new byte[len]
+        f.withInputStream { it.read(buf) }
+        return !buf.any { it == (byte)0 }
+    }
+
+    // Myers O(ND) diff returning a list of [op, line] where op is '=', '-' or '+'
+    def static List myersDiff(List a, List b) {
+        int n = a.size()
+        int m = b.size()
+        // trim common prefix/suffix so the edit search only covers the changed middle
+        int pre = 0
+        while(pre < n && pre < m && a[pre] == b[pre]) { pre++ }
+        int suf = 0
+        while(suf < (n - pre) && suf < (m - pre) && a[n - 1 - suf] == b[m - 1 - suf]) { suf++ }
+        def amid = a.subList(pre, n - suf)
+        def bmid = b.subList(pre, m - suf)
+        def midops = myersDiffCore(amid, bmid)
+        def ops = []
+        (0..<pre).each { ops << ['=', a[it]] }
+        ops.addAll(midops)
+        (n - suf..<n).each { ops << ['=', a[it]] }
+        return ops
+    }
+
+    def static List myersDiffCore(List a, List b) {
+        int n = a.size()
+        int m = b.size()
+        if(n == 0 && m == 0) { return [] }
+        int dmax = Math.min(n + m, DIFF_MAX_EDITS)
+        int offset = dmax
+        int[] v = new int[2 * dmax + 1]
+        def trace = []
+        int dfound = -1
+        for(int d = 0; d <= dmax && dfound < 0; d++) {
+            trace << (int[])v.clone()
+            for(int k = -d; k <= d; k += 2) {
+                int x
+                if(k == -d || (k != d && v[offset + k - 1] < v[offset + k + 1])) {
+                    x = v[offset + k + 1]
+                } else {
+                    x = v[offset + k - 1] + 1
+                }
+                int y = x - k
+                while(x < n && y < m && a[x] == b[y]) { x++; y++ }
+                v[offset + k] = x
+                if(x >= n && y >= m) { dfound = d; break }
+            }
+        }
+        if(dfound < 0) {
+            // edit distance exceeds cap: render as whole-block replace
+            def ops = []
+            a.each { ops << ['-', it] }
+            b.each { ops << ['+', it] }
+            return ops
+        }
+        // backtrack from (n,m) to (0,0) collecting ops in reverse
+        def rops = []
+        int x = n
+        int y = m
+        for(int d = dfound; d > 0; d--) {
+            int[] vprev = trace[d]
+            int k = x - y
+            int prevK
+            if(k == -d || (k != d && vprev[offset + k - 1] < vprev[offset + k + 1])) {
+                prevK = k + 1
+            } else {
+                prevK = k - 1
+            }
+            int prevX = vprev[offset + prevK]
+            int prevY = prevX - prevK
+            while(x > prevX && y > prevY) { rops << ['=', a[x - 1]]; x--; y-- }
+            if(x == prevX) { rops << ['+', b[y - 1]]; y-- }
+            else { rops << ['-', a[x - 1]]; x-- }
+        }
+        while(x > 0 && y > 0) { rops << ['=', a[x - 1]]; x--; y-- }
+        while(x > 0) { rops << ['-', a[x - 1]]; x-- }
+        while(y > 0) { rops << ['+', b[y - 1]]; y-- }
+        return rops.reverse()
+    }
+
+    // Unified diff text for one file (3 lines of context). Empty string if identical.
+    def static String unifiedDiff(String relpath, List alines, List blines) {
+        def ops = myersDiff(alines, blines)
+        if(!ops.any { it[0] != '=' }) { return '' }
+        int context = 3
+        def out = new StringBuilder()
+        out << "--- a/${relpath}\n"
+        out << "+++ b/${relpath}\n"
+        // group ops into hunks
+        def changeidx = []
+        ops.eachWithIndex { op, i -> if(op[0] != '=') { changeidx << i } }
+        def hunks = []
+        def cur = null
+        changeidx.each { i ->
+            if(cur != null && i - cur[1] <= context * 2) {
+                cur[1] = i
+            } else {
+                if(cur != null) { hunks << cur }
+                cur = [i, i]
+            }
+        }
+        if(cur != null) { hunks << cur }
+        // precompute a/b line numbers at each op index
+        int aln = 1
+        int bln = 1
+        def alnAt = new int[ops.size() + 1]
+        def blnAt = new int[ops.size() + 1]
+        ops.eachWithIndex { op, i ->
+            alnAt[i] = aln
+            blnAt[i] = bln
+            if(op[0] == '=') { aln++; bln++ }
+            else if(op[0] == '-') { aln++ }
+            else { bln++ }
+        }
+        alnAt[ops.size()] = aln
+        blnAt[ops.size()] = bln
+        hunks.each { h ->
+            int start = Math.max(0, h[0] - context)
+            int end = Math.min(ops.size() - 1, h[1] + context)
+            int acount = 0
+            int bcount = 0
+            (start..end).each { i ->
+                if(ops[i][0] != '+') { acount++ }
+                if(ops[i][0] != '-') { bcount++ }
+            }
+            out << "@@ -${alnAt[start]},${acount} +${blnAt[start]},${bcount} @@\n"
+            (start..end).each { i ->
+                def op = ops[i]
+                out << (op[0] == '=' ? ' ' : op[0]) << op[1] << '\n'
+            }
+        }
+        return out.toString()
+    }
+
+    // Diff two module folders. olddir = current DB state (temp export),
+    // newdir = incoming migration files. Returns unified diff text ('' if identical).
+    def static String diff_module_folders(File olddir, File newdir) {
+        def relpaths = new TreeSet<String>()
+        [olddir, newdir].each { base ->
+            if(base.exists()) {
+                base.eachFileRecurse(groovy.io.FileType.FILES) { f ->
+                    relpaths << (f.path - base.path).replace('\\','/').replaceAll('^/','')
+                }
+            }
+        }
+        def out = new StringBuilder()
+        relpaths.each { rel ->
+            def oldf = new File(olddir, rel)
+            def newf = new File(newdir, rel)
+            if(oldf.exists() && newf.exists() && oldf.bytes == newf.bytes) { return }
+            if(!isTextFile(oldf) || !isTextFile(newf)) {
+                if(!oldf.exists()) { out << "Binary file b/${rel} added\n" }
+                else if(!newf.exists()) { out << "Binary file a/${rel} removed\n" }
+                else { out << "Binary files a/${rel} and b/${rel} differ\n" }
+                return
+            }
+            def alines = oldf.exists() ? oldf.text.split('\n', -1) as List : []
+            def blines = newf.exists() ? newf.text.split('\n', -1) as List : []
+            if(alines && alines[-1] == '') { alines = alines[0..-2] }
+            if(blines && blines[-1] == '') { blines = blines[0..-2] }
+            if(!oldf.exists()) {
+                out << "--- /dev/null\n+++ b/${rel}\n@@ -0,0 +1,${blines.size()} @@\n"
+                blines.each { out << '+' << it << '\n' }
+            } else if(!newf.exists()) {
+                out << "--- a/${rel}\n+++ /dev/null\n@@ -1,${alines.size()} +0,0 @@\n"
+                alines.each { out << '-' << it << '\n' }
+            } else {
+                out << unifiedDiff(rel, alines, blines)
+            }
+        }
+        return out.toString()
     }
 
     @Transactional

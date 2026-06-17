@@ -105,6 +105,22 @@ class PortalTrackerData {
         if(debug_dataupdate){
             println 'in update ' + this.tracker
         }
+        if(!this.savedparams){
+            def errMsg = "Upload failed: the file could not be read or contains no recognisable headers. Please verify the file and try again."
+            try {
+                if(this.id) {
+                    def failed = PortalTrackerData.get(this.id)
+                    if(failed) {
+                        failed.messages = errMsg
+                        failed.uploadStatus = -1
+                        failed.save(flush:true)
+                    }
+                }
+            } catch(Exception ce) {
+                println "Could not persist error message to PortalTrackerData: ${ce}"
+            }
+            throw new RuntimeException(errMsg)
+        }
         if(this.savedparams){
             if(debug_dataupdate){
                 println 'got saved params'
@@ -129,8 +145,14 @@ class PortalTrackerData {
                 println 'done init'
             }
             try {
-                def dataSource = Holders.applicationContext.getBean('dataSource')
-                def sql = new Sql(dataSource)
+                // Create a direct JDBC connection (outside the HikariCP pool) so that
+                // SQL errors during row loading cannot poison pooled connections that are
+                // shared with Hibernate and the firstRow/rows query methods.
+                def jdbcUrl = config.dataSource.url
+                def jdbcUser = config.dataSource.username
+                def jdbcPass = config.dataSource.password
+                def jdbcDriver = config.dataSource.driverClassName
+                def sql = Sql.newInstance(jdbcUrl, jdbcUser, jdbcPass, jdbcDriver)
                 try {
                 PortalTrackerData.withSession { cursession ->
                     PoiExcel poiExcel = new PoiExcel()
@@ -150,17 +172,42 @@ class PortalTrackerData {
                             }
                         }
                     }
+                    if(statementfields.isEmpty()){
+                        throw new RuntimeException("Upload failed: none of the file's column headers matched the expected template. Please verify you are using the correct file format.")
+                    }
                     try {
                         rowcount = poiExcel.loadData(this.path,sql,savedparams,statementfields,this.tracker.data_table(),(int)this.id,gotupdate)
                     }
                     catch(Exception exp){
-                        PortalErrorLog.record(null,null,'data update','data update - updating ',e.toString(),this.tracker.slug,this.tracker.module)
+                        PortalErrorLog.record(null,null,'data update','data update - updating ',exp.toString(),this.tracker.slug,this.tracker.module)
+                        throw new RuntimeException("Upload failed while reading file data: ${exp.getMessage() ?: exp.getClass().getSimpleName()}", exp)
                     }
-                    def reloadupdate = PortalTrackerData.get(this.id)
-                    reloadupdate.uploaded = true
-                    reloadupdate.uploadStatus = 1
-                    reloadupdate.messages = rowcount + ' rows uploaded'
-                    reloadupdate.save(flush:true)
+                    def uploadedCount = 0
+                    try {
+                        def tableName = this.tracker.data_table()
+                        def countRow = sql.firstRow("SELECT COUNT(*) AS cnt FROM [${tableName}] WHERE dataupdate_id = ${this.id}" as String)
+                        uploadedCount = countRow?.cnt ?: 0
+                    } catch(Exception ce) {
+                        uploadedCount = rowcount
+                    }
+                    def rejectedCount = rowcount - uploadedCount
+                    if (rowcount > 0 && uploadedCount == 0) {
+                        throw new RuntimeException("Upload failed: ${rowcount} row(s) were received but none could be imported. The file may be using an incorrect column format — please verify and re-upload.")
+                    }
+                    if (rejectedCount > 0) {
+                        this.uploadStatus = 2  // partial success flag
+                    }
+                    def uploadFilename = this.path ? this.path.tokenize('/')[-1] : 'Unknown'
+                    def finalMessages = "File: ${uploadFilename}\nStatus: Completed\nRecords Received: ${rowcount}\nRecords Uploaded: ${uploadedCount}\nRecords Rejected: ${rejectedCount}".toString()
+                    try {
+                        def rawDs2 = Holders.applicationContext.getBean('dataSource')
+                        def rawSql2 = new Sql(rawDs2)
+                        rawSql2.execute("UPDATE portal_tracker_data SET uploaded = 1, upload_status = 1, messages = ? WHERE id = ?",
+                                        [finalMessages, (long)this.id])
+                        rawSql2.close()
+                    } catch(Exception rawE) {
+                        println "Could not update upload status via raw SQL: ${rawE}"
+                    }
 
                     if(this?.tracker?.tracker_type!='DataStore' && this?.tracker?.initial_status){
                         try {
@@ -203,8 +250,21 @@ class PortalTrackerData {
             catch(Exception e){
                 println "Got error uploading data:" + e
                 PortalErrorLog.record(null,null,'data update','data update - general',e.toString(),this.tracker.slug,this.tracker.module)
-                // this.messages = 'Data file not found.' + e
-                // this.save(flush:true)
+                // Persist error to PortalTrackerData.messages via raw SQL — Hibernate session
+                // may be in a bad state so GORM saves are not safe here.
+                try {
+                    def rawDs = Holders.applicationContext.getBean('dataSource')
+                    def rawSql = new Sql(rawDs)
+                    rawSql.execute("UPDATE portal_tracker_data SET messages = ? WHERE id = ?",
+                                   ["Upload error: ${e.getMessage() ?: e.getClass().getSimpleName()}" as String, (long)this.id])
+                    rawSql.close()
+                } catch(Exception ce) {
+                    println "Could not persist error message to PortalTrackerData: ${ce}"
+                }
+                // Clear the Hibernate session so a failure here does not leave the session
+                // in a dirty state that breaks subsequent GORM calls in the same request.
+                try { PortalTrackerData.withSession { cs -> cs.clear() } } catch(Exception ce) {}
+                throw new RuntimeException("Upload failed: ${e.getMessage() ?: e.getClass().getSimpleName()}", e)
             }
         }
         else{
@@ -225,7 +285,9 @@ class PortalTrackerData {
         PoiExcel poiExcel = new PoiExcel()
         this.path = this.file_link.path
         def curheaders = poiExcel.findHeaders(this.file_link.path,statementfields)
-        if(curheaders){
+        // When explicit manualmaps are provided with autosearch disabled, proceed even if
+        // findHeaders found no fuzzy label matches — column positions are already known.
+        if(curheaders || (manualmaps && !autosearch)){
             //if found the headers process them
             def fileparams = [:]
             this.tracker.fields.each { dfield->
@@ -308,7 +370,7 @@ class PortalTrackerData {
                 this.data_row = fheadrow + 1
             }
             this.savedparams = fileparams as JSON
-            PortalTracker.withSession { cs->
+            PortalTrackerData.withSession { cs->
                 this.save(flush:true)
             }
         }
