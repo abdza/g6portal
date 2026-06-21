@@ -76,6 +76,57 @@ class PortalTracker {
 
     static transients = ['sqlfieldnames','sqlvalues','curdatas']
 
+    private String sanitizeSearchInput(String input) {
+        if (!input) return ""
+        return input.replaceAll(/[';\/\*-]/, "").trim()
+    }
+
+    private String validateIdentifier(String identifier) {
+        if (!identifier) return ""
+        if (!identifier.matches(/^[a-zA-Z_][a-zA-Z0-9_]*$/)) {
+            throw new SecurityException("Invalid database identifier: ${identifier}")
+        }
+        return identifier
+    }
+
+    private String validateConditionQuery(String conditionQ) {
+        if (!conditionQ?.trim()) {
+            return ""
+        }
+        def trimmedCondition = conditionQ.trim()
+        def dangerousPatterns = [
+            /(?i)\b(drop|delete|truncate|alter|create|insert|update)\s/,
+            /(?i)\b(exec|execute|sp_|xp_|fn_)\b/,
+            /(?i)(--|\/\*|\*\/)/,
+            /(?i)\bunion\s+select\b/,
+            /(?i);\s*select\b/,
+            /(?i)\b(into\s+outfile|load_file|load\s+data)\b/,
+            /(?i)\binformation_schema\b/,
+            /(?i)\b(benchmark|sleep|waitfor|pg_sleep)\b/
+        ]
+        for (def pattern : dangerousPatterns) {
+            if (trimmedCondition =~ pattern) {
+                throw new SecurityException("Potentially dangerous SQL pattern detected in condition query")
+            }
+        }
+        if (trimmedCondition.length() > 2000) {
+            throw new SecurityException("Condition query too long (max 2000 characters)")
+        }
+        return trimmedCondition
+    }
+
+    def getSecureConditionQ() {
+        if (!this.condition_q) {
+            return ""
+        }
+        try {
+            return validateConditionQuery(this.condition_q)
+        } catch (SecurityException e) {
+            log.error("Security violation in condition_q for tracker ${this.slug}: ${e.message}")
+            return ""
+        }
+    }
+
     // Database mapping configuration
     static mapping = {
         listfields type: 'text'         // Store as TEXT for large field lists
@@ -181,9 +232,16 @@ class PortalTracker {
     def cleardb() {
         PortalTrackerData.withSession { sessiondata ->
             def sql = new Sql(sessiondata.connection())
-            sql.execute("truncate table " + data_table())
-            if(tracker_type=='Tracker') {
-                sql.execute("truncate table " + trail_table())
+            try {
+                def dataTableName = validateIdentifier(data_table())
+                sql.execute("truncate table " + dataTableName)
+                if(tracker_type=='Tracker') {
+                    def trailTableName = validateIdentifier(trail_table())
+                    sql.execute("truncate table " + trailTableName)
+                }
+            } catch (SecurityException e) {
+                log.error("Security violation in cleardb(): ${e.message}")
+                throw new RuntimeException("Database operation failed due to security violation")
             }
         }
     }
@@ -589,7 +647,7 @@ class PortalTracker {
 
     def updatetraildesc(record_id,description) {
         PortalTracker.withSession { sqlsession ->
-            def query = "update " + trail_table() + " set description=:description where id=:id"
+            def query = "update " + validateIdentifier(trail_table()) + " set description=:description where id=:id"
             def qparams = ['id':record_id,'description':description]
             def datasource = sqlsession.connection()
             def sql = new Sql(datasource)
@@ -619,7 +677,7 @@ class PortalTracker {
                 }
             }
             qparams['id']=datas['id']
-            query = 'update ' + data_table() + ' set ' + updatefields.join(' , ') + ' where id=:id'
+            query = 'update ' + validateIdentifier(data_table()) + ' set ' + updatefields.join(' , ') + ' where id=:id'
             try{
                 sql.execute(query,qparams)
             }
@@ -645,7 +703,8 @@ class PortalTracker {
                     }
                 }
             }
-            query = "insert into " + data_table() + " (" + fieldname.join(',') + ") values (" + fieldval.join(" , ") + ")"
+            def dataTableName = validateIdentifier(data_table())
+            query = "insert into " + dataTableName + " (" + fieldname.join(',') + ") values (" + fieldval.join(" , ") + ")"
             def maxid = null
             if(config.dataSource.url.contains("jdbc:postgresql")) {
                 query += " returning id"
@@ -691,9 +750,10 @@ class PortalTracker {
     def row_status(datasource,record_id){
         if(tracker_type!='DataStore') {
             def sql = new Sql(datasource)
-            def query = "select top 1 record_status from " + data_table() + " where id=:id"
+            def dataTableName = validateIdentifier(data_table())
+            def query = "select top 1 record_status from " + dataTableName + " where id=:id"
             if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
-                query = "select record_status from " + data_table() + " where id=:id limit 1"
+                query = "select record_status from " + dataTableName + " where id=:id limit 1"
             }
             def rec_status=sql.firstRow(query,['id':record_id])
             if(rec_status){
@@ -896,13 +956,14 @@ class PortalTracker {
             qparams['allowedroles'] = updateallowedroles
             def curdate = new Date()
             qparams['update_date'] = curdate
+            def trailTableName = validateIdentifier(trail_table())
             if(config.dataSource.url.contains("jdbc:postgresql")) {
                 if(attachment){
                     qparams['attachment_id'] = attachment?.id
-                    query = "insert into " + trail_table() + " (attachment_id,description,record_id,update_date,updater_id,status,allowedroles) values (:attachment_id , :description , :record_id , :update_date , :updater_id , :status , :allowedroles) returning id"
+                    query = "insert into " + trailTableName + " (attachment_id,description,record_id,update_date,updater_id,status,allowedroles) values (:attachment_id , :description , :record_id , :update_date , :updater_id , :status , :allowedroles) returning id"
                 }
                 else{
-                    query = "insert into " + trail_table() + " (description,record_id,update_date,updater_id,status,allowedroles) values (:description , :record_id , :update_date , :updater_id , :status , :allowedroles) returning id"
+                    query = "insert into " + trailTableName + " (description,record_id,update_date,updater_id,status,allowedroles) values (:description , :record_id , :update_date , :updater_id , :status , :allowedroles) returning id"
                 }
                 try{
                     // print("Update trail query:" + query)
@@ -917,10 +978,10 @@ class PortalTracker {
             else if(config.dataSource.url.contains("jdbc:h2")){
                 if(attachment){
                     qparams['attachment_id'] = attachment?.id
-                    query = "insert into " + trail_table() + " (attachment_id,description,record_id,update_date,updater_id,status,allowedroles) values (:attachment_id , :description , :record_id , :update_date , :updater_id , :status , :allowedroles)"
+                    query = "insert into " + trailTableName + " (attachment_id,description,record_id,update_date,updater_id,status,allowedroles) values (:attachment_id , :description , :record_id , :update_date , :updater_id , :status , :allowedroles)"
                 }
                 else{
-                    query = "insert into " + trail_table() + " (description,record_id,update_date,updater_id,status,allowedroles) values (:description , :record_id , :update_date , :updater_id , :status , :allowedroles)"
+                    query = "insert into " + trailTableName + " (description,record_id,update_date,updater_id,status,allowedroles) values (:description , :record_id , :update_date , :updater_id , :status , :allowedroles)"
                 }
                 try{
                     // print("Update trail query:" + query)
@@ -934,10 +995,10 @@ class PortalTracker {
             else {
                 if(attachment){
                     qparams['attachment_id'] = attachment?.id
-                    query = "insert into " + trail_table() + " (attachment_id,description,record_id,update_date,updater_id,status,allowedroles) values (:attachment_id , :description , :record_id , :update_date , :updater_id , :status , :allowedroles)"
+                    query = "insert into " + trailTableName + " (attachment_id,description,record_id,update_date,updater_id,status,allowedroles) values (:attachment_id , :description , :record_id , :update_date , :updater_id , :status , :allowedroles)"
                 }
                 else{
-                    query = "insert into " + trail_table() + " (description,record_id,update_date,updater_id,status,allowedroles) values (:description , :record_id , :update_date , :updater_id , :status , :allowedroles)"
+                    query = "insert into " + trailTableName + " (description,record_id,update_date,updater_id,status,allowedroles) values (:description , :record_id , :update_date , :updater_id , :status , :allowedroles)"
                 }
                 try{
                     /* sql.execute(query,qparams)
@@ -1321,7 +1382,7 @@ class PortalTracker {
             session['prevdata'] = curdatas
             def next_status = PortalTrackerStatus.get(params['next_status'])
             if(next_status?.name?.toLowerCase()=='delete'){
-                query = "select * from " + data_table() + " where id=:id"
+                query = "select * from " + validateIdentifier(data_table()) + " where id=:id"
                 def data = sql.firstRow(query,['id':params.id])
                 this.fields.each { dfield->
                     if(dfield.field_type=='File'){
@@ -1381,16 +1442,17 @@ class PortalTracker {
         else{
             def maxid = null
             if(tracker_type!='DataStore') {
+                def dataTableName = validateIdentifier(data_table())
                 if(config.dataSource.url.contains("jdbc:postgresql")) {
-                    def ddq = "insert into " + data_table() + " (record_status) values ('sys_draft') returning id"
+                    def ddq = "insert into " + dataTableName + " (record_status) values ('sys_draft') returning id"
                     maxid = sql.firstRow(ddq);
-                } 
+                }
                 else if(config.dataSource.url.contains("jdbc:h2")){
-                    def ddq = "insert into " + data_table() + " (record_status) values ('sys_draft')"
+                    def ddq = "insert into " + dataTableName + " (record_status) values ('sys_draft')"
                     maxid = ['id':sql.executeInsert(ddq)[0][0]]
                 }
                 else {
-                    sql.execute("insert into " + data_table() + " (record_status) values ('sys_draft')");
+                    sql.execute("insert into " + dataTableName + " (record_status) values ('sys_draft')");
                     maxid = sql.firstRow("select SCOPE_IDENTITY() as id")
                 }
                 if(maxid['id']){
@@ -1721,7 +1783,7 @@ class PortalTracker {
                 if(params.id){  // under most circumstance it will only update here. unless
                     qparams['id'] = params.id
                     try {
-                        query = "update " + data_table() + " set " + updatefields.join(' , ') + " where id=:id"
+                        query = "update " + validateIdentifier(data_table()) + " set " + updatefields.join(' , ') + " where id=:id"
                         println "Updaterecord query:" + query
                         println "Updaterecord qparams:" + qparams
                         sql.execute(query,qparams)
@@ -1732,20 +1794,21 @@ class PortalTracker {
                     }
                 }       
                 else{  // it was a datastore, then it will update here because id has not been set yet
-                    PortalTracker.withSession { intsession -> 
+                    PortalTracker.withSession { intsession ->
                         def maxid = null
                         def internalsql = new Sql(intsession.connection())
+                        def dataTableName = validateIdentifier(data_table())
                         if(config.dataSource.url.contains("jdbc:postgresql")) {
-                            def ddq = "insert into " + data_table() + " (\"" + fieldnames.join('","') + "\") values (" + fieldnamepos.join(' , ') + ") returning id"
+                            def ddq = "insert into " + dataTableName + " (\"" + fieldnames.join('","') + "\") values (" + fieldnamepos.join(' , ') + ") returning id"
                             maxid = internalsql.firstRow(ddq,qparams)
                         }
                         else if(config.dataSource.url.contains("jdbc:h2")){
-                            def ddq = "insert into " + data_table() + " (\"" + fieldnames.join('","') + "\") values (" + fieldnamepos.join(' , ') + ")"
+                            def ddq = "insert into " + dataTableName + " (\"" + fieldnames.join('","') + "\") values (" + fieldnamepos.join(' , ') + ")"
                             maxid = ['id':internalsql.executeInsert(ddq,qparams)[0][0]]
                         }
                         else {
                             try {
-                                query = "insert into " + data_table() + " (" + fieldnames.join(',') + ") values (" + fieldnamepos.join(' , ') + ");select SCOPE_IDENTITY() as id;"
+                                query = "insert into " + dataTableName + " (" + fieldnames.join(',') + ") values (" + fieldnamepos.join(' , ') + ");select SCOPE_IDENTITY() as id;"
                                 maxid = internalsql.firstRow(query,qparams)
                                 qparams['id'] = maxid.id
                             }
@@ -1824,48 +1887,58 @@ class PortalTracker {
             if(curval){
                 if(curkey=='search'){
                     def likequery = []
+                    def searchTerm = sanitizeSearchInput(curval)
+
+                    if (searchTerm) {
                     def tfields = PortalTrackerField.createCriteria().list(){
                         'eq'('tracker',this)
                         'in'('name',searchfields.tokenize(',')*.trim())
-                    } 
+                    }
                     tfields.each { tfield->
+                        try {
+                        def fieldName = validateIdentifier(tfield.name)
                         if(tfield.field_type=='BelongsTo') {
                             def othertracker = tfield.othertracker()
                             if(othertracker){
+                                def tableName = validateIdentifier(othertracker.data_table())
+                                def formatField = validateIdentifier(tfield.field_format)
                                 def searchParamKey = "search_belongsto_" + tfield.name
                                 if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
-                                    likequery << tfield.name + " in (select id from " + othertracker.data_table() + " where " + tfield.field_format + " ilike :" + searchParamKey + ")"
+                                    likequery << fieldName + " in (select id from \"${tableName}\" where \"${formatField}\" ilike :" + searchParamKey + ")"
                                 }
                                 else {
-                                    likequery << tfield.name + " in (select id from " + othertracker.data_table() + " where " + tfield.field_format + " like :" + searchParamKey + ")"
+                                    likequery << fieldName + " in (select id from [${tableName}] where [${formatField}] like :" + searchParamKey + ")"
 
                                 }
-                                qparams[searchParamKey] = '%' + params.search + '%'
+                                qparams[searchParamKey] = '%' + searchTerm + '%'
                             }
                         }
                         else if(tfield.field_type=='User'){
                             def userSearchKey = "search_user_" + tfield.name
                             if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
-                                likequery << tfield.name + " in (select id from portal_user where name ilike :" + userSearchKey + " or StaffId ilike :" + userSearchKey + " or EMAIL ilike :" + userSearchKey + ")"
+                                likequery << fieldName + " in (select id from portal_user where name ilike :" + userSearchKey + " or StaffId ilike :" + userSearchKey + " or EMAIL ilike :" + userSearchKey + ")"
                             }
                             else {
-                                likequery << tfield.name + " in (select id from portal_user where name like :" + userSearchKey + " or StaffId like :" + userSearchKey + " or EMAIL like :" + userSearchKey + ")"
+                                likequery << fieldName + " in (select id from portal_user where name like :" + userSearchKey + " or StaffId like :" + userSearchKey + " or EMAIL like :" + userSearchKey + ")"
 
                             }
-                            qparams[userSearchKey] = '%' + params.search + '%'
+                            qparams[userSearchKey] = '%' + searchTerm + '%'
                         }
                         else{
-                            // likequery << tfield.name + " like '%" + params.search.replace("'","''") + "%'"
                             if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
-                                likequery << tfield.name + " ilike :" + tfield.name + " "
+                                likequery << fieldName + " ilike :" + tfield.name + " "
                             }
                             else {
-                                likequery << tfield.name + " like :" + tfield.name + " "
+                                likequery << fieldName + " like :" + tfield.name + " "
                             }
-                            qparams[tfield.name] = '%' + params.search + '%'
+                            qparams[tfield.name] = '%' + searchTerm + '%'
 
-                      }
+                        }
+                        } catch (SecurityException e) {
+                            log.warn("Skipping field ${tfield.name} in search: ${e.message}")
+                        }
                     }
+                    } // if (searchTerm)
                     if(likequery){
                         condition << " (" + likequery.join(' or ')  + ") "
                     }
