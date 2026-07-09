@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.regex.Pattern;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -20,6 +21,9 @@ import javax.servlet.http.HttpServletRequest;
 import javax.xml.parsers.ParserConfigurationException;
 
 import org.apache.poi.EncryptedDocumentException;
+import org.apache.poi.poifs.crypt.Decryptor;
+import org.apache.poi.poifs.crypt.EncryptionInfo;
+import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.openxml4j.opc.OPCPackage;
 import org.apache.poi.ss.usermodel.Cell;
@@ -82,6 +86,13 @@ public class PoiExcel {
 	public int headerend=1;
 	public int datastart=2;
 	public int dataend=-1;
+	// Per-load failure diagnostics: filled by loadData, read via failureSummary()
+	public int failedcount = 0;
+	private LinkedHashMap<String,Integer> failColumns = new LinkedHashMap<String,Integer>();      // column -> failing row count
+	private LinkedHashMap<String,Integer> failColumnLimit = new LinkedHashMap<String,Integer>();  // column -> max allowed length
+	private LinkedHashMap<String,Integer> failColumnMaxLen = new LinkedHashMap<String,Integer>(); // column -> longest value seen
+	private LinkedHashMap<String,Integer> failReasons = new LinkedHashMap<String,Integer>();      // sql error -> failing row count
+	private HashMap<String,Integer> columnLimits = new HashMap<String,Integer>();                 // column -> varchar length limit
 	private List<CellRangeAddress> mergedRegions;
 	private HashMap<Integer, Object> titles;
 
@@ -89,7 +100,26 @@ public class PoiExcel {
 	}
 
 	public List<Object> getHeaders(String filename) throws Exception {
-		OPCPackage pkg = OPCPackage.open(filename);
+		return getHeaders(filename, null);
+	}
+
+	public List<Object> getHeaders(String filename, String password) throws Exception {
+		OPCPackage pkg;
+		if (password != null && !password.isEmpty()) {
+			try {
+				POIFSFileSystem fs = new POIFSFileSystem(new File(filename));
+				EncryptionInfo info = new EncryptionInfo(fs);
+				Decryptor d = Decryptor.getInstance(info);
+				if (!d.verifyPassword(password)) {
+					throw new EncryptedDocumentException("Invalid password provided");
+				}
+				pkg = OPCPackage.open(d.getDataStream(fs));
+			} catch (Exception e) {
+				throw new Exception("Failed to open password-protected Excel file: " + e.getMessage(), e);
+			}
+		} else {
+			pkg = OPCPackage.open(filename);
+		}
 		XSSFReader r = new XSSFReader( pkg );
 		sst = new ReadOnlySharedStringsTable(pkg);
 		stylesTable = r.getStylesTable();
@@ -307,9 +337,52 @@ public class PoiExcel {
 	}
 
 	public int loadData(String filename,Sql sql,JSONObject savedparams,List<Object> statementfields, String filtertable, Integer dataupdate_id, boolean gotupdate) throws Exception {
-		OPCPackage pkg = OPCPackage.open(filename);
+		return loadData(filename, null, sql, savedparams, statementfields, filtertable, dataupdate_id, gotupdate);
+	}
+
+	public int loadData(String filename, String password, Sql sql,JSONObject savedparams,List<Object> statementfields, String filtertable, Integer dataupdate_id, boolean gotupdate) throws Exception {
+		OPCPackage pkg;
+		if (password != null && !password.isEmpty()) {
+			try {
+				POIFSFileSystem fs = new POIFSFileSystem(new File(filename));
+				EncryptionInfo info = new EncryptionInfo(fs);
+				Decryptor d = Decryptor.getInstance(info);
+				if (!d.verifyPassword(password)) {
+					throw new EncryptedDocumentException("Invalid password provided");
+				}
+				pkg = OPCPackage.open(d.getDataStream(fs));
+			} catch (Exception e) {
+				throw new Exception("Failed to open password-protected Excel file: " + e.getMessage(), e);
+			}
+		} else {
+			pkg = OPCPackage.open(filename);
+		}
 		XSSFReader r = new XSSFReader( pkg );
 		sst = new ReadOnlySharedStringsTable(pkg);
+		boolean origAutoCommit = true;
+		try { origAutoCommit = sql.getConnection().getAutoCommit(); sql.getConnection().setAutoCommit(false); } catch(Exception e) { System.out.println("Warning: could not enable batch mode: " + e); }
+		// Load varchar length limits of the target table so failed inserts can be
+		// traced back to the offending column in failureSummary()
+		failedcount = 0;
+		failColumns.clear();
+		failColumnLimit.clear();
+		failColumnMaxLen.clear();
+		failReasons.clear();
+		columnLimits.clear();
+		try {
+			java.sql.ResultSet crs = sql.getConnection().getMetaData().getColumns(null, null, filtertable, null);
+			while (crs.next()) {
+				String typeName = crs.getString("TYPE_NAME");
+				if (typeName != null && typeName.toLowerCase().contains("char")) {
+					int size = crs.getInt("COLUMN_SIZE");
+					// varchar(max)/nvarchar(max) report huge sizes - no practical limit, skip
+					if (size > 0 && size < 100000000) {
+						columnLimits.put(crs.getString("COLUMN_NAME"), size);
+					}
+				}
+			}
+			crs.close();
+		} catch(Exception e) { System.out.println("Warning: could not read column limits for " + filtertable + ": " + e); }
 		fetchSheetParser(sql,savedparams,statementfields,filtertable,dataupdate_id,gotupdate);
 		InputStream sheet = r.getSheetsData().next();
 		InputSource sheetSource = new InputSource(sheet);
@@ -321,9 +394,33 @@ public class PoiExcel {
 				System.out.println("Exception:" + e.toString());
 			}
 		}
+		try { sql.getConnection().commit(); } catch(Exception e) { System.out.println("Warning: final batch commit error: " + e); }
+		try { sql.getConnection().setAutoCommit(origAutoCommit); } catch(Exception ignore) {}
 		sheet.close();
 		pkg.close();
 		return rowcount;
+	}
+
+	/**
+	 * Human-readable explanation of rows that failed to insert during loadData.
+	 * Empty string when every row loaded. Names the offending columns so users can
+	 * check either the file's data or the tracker field type.
+	 */
+	public String failureSummary() {
+		if (failedcount == 0) {
+			return "";
+		}
+		StringBuilder sb = new StringBuilder();
+		for (Map.Entry<String, Integer> en : failColumns.entrySet()) {
+			sb.append("Column '").append(en.getKey()).append("': ").append(en.getValue())
+			  .append(" row(s) exceed the field's maximum length of ").append(failColumnLimit.get(en.getKey()))
+			  .append(" characters (longest value in file: ").append(failColumnMaxLen.get(en.getKey()))
+			  .append("). Shorten the data in the file, or change the field type to Text Area to allow long text.\n");
+		}
+		for (Map.Entry<String, Integer> en : failReasons.entrySet()) {
+			sb.append(en.getValue()).append(" row(s) failed with: ").append(en.getKey()).append("\n");
+		}
+		return sb.toString();
 	}
 
 	private void fetchSheetParser(Sql sql, JSONObject savedparams,List<Object> statementfields,String filtertable,Integer dataupdate_id,boolean gotupdate) throws SAXException, ParserConfigurationException {
@@ -540,10 +637,39 @@ public class PoiExcel {
 							System.out.println("SQL exception found:" + e.toString());
 							System.out.println("torun:" + torun);
 							System.out.println("qparam:" + qparam.toString());
+							failedcount += 1;
+							// Attribute the failure to the column(s) whose value exceeds the
+							// table's varchar limit; otherwise keep the raw SQL error
+							boolean matched = false;
+							for (Map.Entry<String, Object> en : qparam.entrySet()) {
+								if (en.getValue() instanceof String) {
+									Integer limit = columnLimits.get(en.getKey());
+									int len = ((String) en.getValue()).length();
+									if (limit != null && len > limit) {
+										matched = true;
+										Integer prev = failColumns.get(en.getKey());
+										failColumns.put(en.getKey(), prev == null ? 1 : prev + 1);
+										failColumnLimit.put(en.getKey(), limit);
+										Integer prevMax = failColumnMaxLen.get(en.getKey());
+										if (prevMax == null || len > prevMax) {
+											failColumnMaxLen.put(en.getKey(), len);
+										}
+									}
+								}
+							}
+							if (!matched) {
+								String msg = e.getMessage() != null ? e.getMessage() : e.toString();
+								if (msg.length() > 300) { msg = msg.substring(0, 300); }
+								Integer prev = failReasons.get(msg);
+								failReasons.put(msg, prev == null ? 1 : prev + 1);
+							}
 						}
 					}
 					firstRow = false;
 					rowcount += 1;
+					if (rowcount % 500 == 0) {
+						try { sql.getConnection().commit(); } catch(Exception e) { System.out.println("Batch commit error at row " + rowcount + ": " + e); }
+					}
 				}
 		}
 		public void characters(char[] ch, int start, int length) {
@@ -552,7 +678,26 @@ public class PoiExcel {
 	}
 
 	public HashMap<String, Object> findHeaders(String filename,List<Object> statementfields) throws Exception {
-		OPCPackage pkg = OPCPackage.open(filename);
+		return findHeaders(filename, null, statementfields);
+	}
+
+	public HashMap<String, Object> findHeaders(String filename, String password, List<Object> statementfields) throws Exception {
+		OPCPackage pkg;
+		if (password != null && !password.isEmpty()) {
+			try {
+				POIFSFileSystem fs = new POIFSFileSystem(new File(filename));
+				EncryptionInfo info = new EncryptionInfo(fs);
+				Decryptor d = Decryptor.getInstance(info);
+				if (!d.verifyPassword(password)) {
+					throw new EncryptedDocumentException("Invalid password provided");
+				}
+				pkg = OPCPackage.open(d.getDataStream(fs));
+			} catch (Exception e) {
+				throw new Exception("Failed to open password-protected Excel file: " + e.getMessage(), e);
+			}
+		} else {
+			pkg = OPCPackage.open(filename);
+		}
 		XSSFReader r = new XSSFReader( pkg );
 		sst = new ReadOnlySharedStringsTable(pkg);
 		stylesTable = r.getStylesTable();

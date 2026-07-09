@@ -393,7 +393,7 @@ class PortalTrackerDataController {
         PoiExcel poiExcel = new PoiExcel()
         poiExcel.headerstart = portalTrackerData.header_start?:1
         poiExcel.headerend = portalTrackerData.header_end?:1
-        fields = poiExcel.getHeaders(portalTrackerData.path)
+        fields = poiExcel.getHeaders(portalTrackerData.path,portalTrackerData.excel_password)
 
         params.each { key,dparm->
             if(dparm=='All'){

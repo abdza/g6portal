@@ -189,7 +189,7 @@ class PortalTrackerFieldController {
                 PoiExcel poiExcel = new PoiExcel()
                 poiExcel.headerstart = params.header_start?params.header_start.toInteger():0
                 poiExcel.headerend = params.header_end?params.header_end.toInteger():0
-                fields = poiExcel.getHeaders(copytarget)
+                fields = poiExcel.getHeaders(copytarget, params.excel_password)
             } else if (fileExtension in ['json','txt']) {
                 // Handle JSON file
                 try {
@@ -324,7 +324,7 @@ class PortalTrackerFieldController {
         PoiExcel poiExcel = new PoiExcel()
         poiExcel.headerstart = portalTrackerData.header_start?:1
         poiExcel.headerend = portalTrackerData.header_end?:1
-        fields = poiExcel.getHeaders(portalTrackerData.path)
+        fields = poiExcel.getHeaders(portalTrackerData.path, portalTrackerData.excel_password)
 
         Binding binding = new Binding()
         params.each { key,dparm->

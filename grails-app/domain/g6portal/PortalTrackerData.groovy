@@ -2,6 +2,7 @@ package g6portal
 import groovy.sql.Sql
 import grails.converters.JSON
 import grails.util.Holders
+import static grails.util.Holders.config
 import org.apache.commons.validator.EmailValidator
 import org.apache.commons.text.similarity.LongestCommonSubsequence
 
@@ -31,6 +32,30 @@ class PortalTrackerData {
         excel_password(nullable:true)
     }
 
+    /**
+     * Validates database identifiers (table names, column names)
+     */
+    private String validateTableName(String tableName) {
+        if (!tableName) return ""
+        // Only allow alphanumeric characters, underscores
+        if (!tableName.matches(/^[a-zA-Z_][a-zA-Z0-9_]*$/)) {
+            throw new SecurityException("Invalid database table name: ${tableName}")
+        }
+        return tableName
+    }
+
+    /**
+     * Sanitizes status names to prevent injection
+     */
+    private String sanitizeStatusName(String statusName) {
+        if (!statusName) return ""
+        // Allow only alphanumeric characters, spaces, underscores, and hyphens for status names
+        def sanitized = statusName.replaceAll(/[^a-zA-Z0-9\s_-]/, "").trim()
+        if (sanitized.length() > 255) {
+            sanitized = sanitized.substring(0, 255)
+        }
+        return sanitized
+    }
 
     static mapping = {
         savedparams type: 'text'
@@ -176,7 +201,7 @@ class PortalTrackerData {
                         throw new RuntimeException("Upload failed: none of the file's column headers matched the expected template. Please verify you are using the correct file format.")
                     }
                     try {
-                        rowcount = poiExcel.loadData(this.path,sql,savedparams,statementfields,this.tracker.data_table(),(int)this.id,gotupdate)
+                        rowcount = poiExcel.loadData(this.path,this.excel_password,sql,savedparams,statementfields,this.tracker.data_table(),(int)this.id,gotupdate)
                     }
                     catch(Exception exp){
                         PortalErrorLog.record(null,null,'data update','data update - updating ',exp.toString(),this.tracker.slug,this.tracker.module)
@@ -184,26 +209,41 @@ class PortalTrackerData {
                     }
                     def uploadedCount = 0
                     try {
-                        def tableName = this.tracker.data_table()
-                        def countRow = sql.firstRow("SELECT COUNT(*) AS cnt FROM [${tableName}] WHERE dataupdate_id = ${this.id}" as String)
+                        def tableName = validateTableName(this.tracker.data_table())
+                        // Plain String, not GString — GString expressions become bound
+                        // parameters, which turns the table name into "[?]" and fails
+                        def countRow = sql.firstRow(("SELECT COUNT(*) AS cnt FROM [" + tableName + "] WHERE dataupdate_id = " + ((long)this.id)) as String)
                         uploadedCount = countRow?.cnt ?: 0
                     } catch(Exception ce) {
-                        uploadedCount = rowcount
+                        println "Could not count uploaded rows for dataupdate ${this.id}: ${ce}"
+                        // Fall back to the loader's own failure tally instead of assuming success
+                        uploadedCount = rowcount - poiExcel.failedcount
                     }
                     def rejectedCount = rowcount - uploadedCount
+                    // If rows were present in the file but none loaded, the file format is wrong
                     if (rowcount > 0 && uploadedCount == 0) {
                         throw new RuntimeException("Upload failed: ${rowcount} row(s) were received but none could be imported. The file may be using an incorrect column format — please verify and re-upload.")
                     }
-                    if (rejectedCount > 0) {
-                        this.uploadStatus = 2  // partial success flag
-                    }
                     def uploadFilename = this.path ? this.path.tokenize('/')[-1] : 'Unknown'
                     def finalMessages = "File: ${uploadFilename}\nStatus: Completed\nRecords Received: ${rowcount}\nRecords Uploaded: ${uploadedCount}\nRecords Rejected: ${rejectedCount}".toString()
+                    if (rejectedCount > 0) {
+                        def failDetails = ''
+                        try { failDetails = poiExcel.failureSummary() } catch(Exception ignore) {}
+                        if (failDetails) {
+                            finalMessages += "\n\n=== Rejected Row Details ===\n" + failDetails
+                        }
+                    }
+                    // Use raw SQL to update final status — avoids Hibernate optimistic locking
+                    // conflicts that occur when the Groovy SQL row operations cause version drift.
+                    // upload_status 2 = partial success (some rows rejected). Do NOT set it on
+                    // the Hibernate entity: a dirty entity gets re-flushed at commit and would
+                    // overwrite this raw update with the stale "in queue" message.
+                    def finalStatus = rejectedCount > 0 ? 2 : 1
                     try {
                         def rawDs2 = Holders.applicationContext.getBean('dataSource')
                         def rawSql2 = new Sql(rawDs2)
-                        rawSql2.execute("UPDATE portal_tracker_data SET uploaded = 1, upload_status = 1, messages = ? WHERE id = ?",
-                                        [finalMessages, (long)this.id])
+                        rawSql2.execute("UPDATE portal_tracker_data SET uploaded = 1, upload_status = ?, messages = ? WHERE id = ?",
+                                        [finalStatus, finalMessages, (long)this.id])
                         rawSql2.close()
                     } catch(Exception rawE) {
                         println "Could not update upload status via raw SQL: ${rawE}"
@@ -211,11 +251,29 @@ class PortalTrackerData {
 
                     if(this?.tracker?.tracker_type!='DataStore' && this?.tracker?.initial_status){
                         try {
-                            sql.execute("update " + this.tracker.data_table() + " set record_status = '" + this.tracker.initial_status.name + "' where record_status is null")
-                        }
-                        catch(Exception e){
-                            PortalErrorLog.record(null,null,'data update','data update - setting initial status',e.toString(),this.tracker.slug,this.tracker.module)
-                            println "Error updating to default status for tracker " + this.tracker + " to default " + this.tracker.initial_status.name
+                            // Validate table name and status name to prevent injection
+                            def tableName = validateTableName(this.tracker.data_table())
+                            def statusName = sanitizeStatusName(this.tracker.initial_status.name)
+
+                            // Use parameterized query to prevent SQL injection
+                            if(config.dataSource.url.contains("jdbc:postgresql")) {
+                                sql.execute("update \"${tableName}\" set record_status = ? where record_status is null",
+                                           [statusName])
+                            } else {
+                                sql.execute("update [${tableName}] set [record_status] = ? where [record_status] is null",
+                                           [statusName])
+                            }
+
+                            log.info "Successfully updated initial status for tracker ${this.tracker.slug} to ${statusName}"
+
+                        } catch(SecurityException se) {
+                            PortalErrorLog.record(null,null,'security violation','data update - invalid table/status name',se.toString(),this.tracker?.slug,this.tracker?.module)
+                            log.error "Security violation updating status for tracker ${this.tracker}: ${se.message}"
+                            throw se
+                        } catch(Exception e){
+                            PortalErrorLog.record(null,null,'data update','data update - setting initial status',e.toString(),this.tracker?.slug,this.tracker?.module)
+                            log.error "Error updating to default status for tracker ${this.tracker} to default ${this.tracker?.initial_status?.name}: ${e.message}"
+                            // Don't rethrow - allow processing to continue
                         }
                     }
                     if(this?.tracker?.postprocess){
@@ -284,7 +342,7 @@ class PortalTrackerData {
         }
         PoiExcel poiExcel = new PoiExcel()
         this.path = this.file_link.path
-        def curheaders = poiExcel.findHeaders(this.file_link.path,statementfields)
+        def curheaders = poiExcel.findHeaders(this.file_link.path,this.excel_password,statementfields)
         // When explicit manualmaps are provided with autosearch disabled, proceed even if
         // findHeaders found no fuzzy label matches — column positions are already known.
         if(curheaders || (manualmaps && !autosearch)){
