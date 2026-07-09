@@ -312,6 +312,8 @@ class PortalModule {
                     curtracker.anonymous_list = itracker.anonymous_list
                     curtracker.anonymous_view = itracker.anonymous_view
                     curtracker.require_login = itracker.require_login
+                    curtracker.excel_audit = itracker.excel_audit
+                    curtracker.defaultlimit = itracker.defaultlimit
                     curtracker.tickactions = itracker.tickactions
                     curtracker.actionbuttons = itracker.actionbuttons
                     curtracker.condition_q = itracker.condition_q
@@ -358,6 +360,7 @@ class PortalModule {
                             curfield.suppress_follow_link=ifield.suppress_follow_link
                             curfield.field_description=ifield.field_description
                             curfield.field_tooltip=ifield.field_tooltip
+                            curfield.field_placeholder=ifield.field_placeholder
                             if(!curfield.validate()){
                                 curfield.errors.allErrors.each {
                                     println 't error:' + it
@@ -401,6 +404,7 @@ class PortalModule {
                             curstatus.updateable=istatus.updateable
                             curstatus.attachable=istatus.attachable
                             curstatus.suppressupdatebutton=istatus.suppressupdatebutton
+                            curstatus.actiontransitions=istatus.actiontransitions
                             curstatus.compositeStatuses=istatus.compositeStatuses
                             if(!curstatus.validate()){
                                 curstatus.errors.allErrors.each {
@@ -509,6 +513,9 @@ class PortalModule {
                             curtransition.gotoprevstatuslist=itransition.gotoprevstatuslist
                             curtransition.same_status=itransition.same_status
                             curtransition.cancelbutton=itransition.cancelbutton
+                            curtransition.redirect_after=itransition.redirect_after
+                            curtransition.button_class=itransition.button_class
+                            curtransition.immediate_submission=itransition.immediate_submission
                             if(curprev){
                                 curtransition.prev_status = curprev
                             }
@@ -660,6 +667,7 @@ class PortalModule {
             [table: 'portal_tracker_field',     column: 'label'],
             [table: 'portal_tracker_field',     column: 'field_description'],
             [table: 'portal_tracker_field',     column: 'field_tooltip'],
+            [table: 'portal_tracker_field',     column: 'field_placeholder'],
             [table: 'portal_tracker_transition', column: 'enabledcondition'],
         ]
         println "ensureColumnSizes: checking ${columnsToExpand.size()} column(s)"
@@ -883,6 +891,7 @@ class PortalModule {
                         suppress_follow_link: field.suppress_follow_link,
                         field_description: field.field_description,
                         field_tooltip: field.field_tooltip,
+                        field_placeholder: field.field_placeholder,
                         error_checks: errorarray
                     ]
                 }
@@ -907,6 +916,7 @@ class PortalModule {
                         updateable: status.updateable,
                         attachable: status.attachable,
                         suppressupdatebutton: status.suppressupdatebutton,
+                        actiontransitions: status.actiontransitions,
                         compositeStatuses: status.compositeStatuses,
                         emailonupdate: emailonupdate,
                         runonupdate: status.runonupdate?.slug
@@ -948,6 +958,9 @@ class PortalModule {
                         updatetrails: transition.updatetrails,
                         submitbuttontext: transition.submitbuttontext,
                         cancelbuttontext: transition.cancelbuttontext,
+                        redirect_after: transition.redirect_after,
+                        button_class: transition.button_class,
+                        immediate_submission: transition.immediate_submission,
                         gotoprevstatuslist: transition.gotoprevstatuslist,
                         same_status: transition.same_status,
                         cancelbutton: transition.cancelbutton,
@@ -999,6 +1012,8 @@ class PortalModule {
                     anonymous_list: tracker.anonymous_list,
                     anonymous_view: tracker.anonymous_view,
                     require_login: tracker.require_login,
+                    excel_audit: tracker.excel_audit,
+                    defaultlimit: tracker.defaultlimit,
                     tickactions: tracker.tickactions,
                     actionbuttons: tracker.actionbuttons,
                     condition_q: tracker.condition_q,

@@ -12,4 +12,4 @@
     </ul>
 </div>
 </section>
-<f:table except='tracker,hyperscript,url_value,is_encrypted,role_query,encode_exception,suppress_follow_link,error_checks,field_format,hide_heading,classes,params_override,field_display,field_query,field_description,field_tooltip' collection="${portalTracker.fields.sort{ a, b -> a.name.compareToIgnoreCase(b.name) }}" />
+<f:table except='tracker,hyperscript,url_value,is_encrypted,role_query,encode_exception,suppress_follow_link,error_checks,field_format,hide_heading,classes,params_override,field_display,field_query,field_description,field_tooltip,field_placeholder' collection="${portalTracker.fields.sort{ a, b -> a.name.compareToIgnoreCase(b.name) }}" />

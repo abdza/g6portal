@@ -804,7 +804,8 @@ class PortalTracker {
         def cuser_roles = []
         if(curuser){
             // Request-scoped cache: avoid recomputing for the same (tracker, user, record) in one request
-            def cacheKey = "_uroles_${this.id}_${curuser?.id}_${datas?.get('id')}"
+            def cacheId = (datas && datas['id']) ? datas['id'] : null
+            def cacheKey = "_uroles_${this.id}_${curuser?.id}_${cacheId}"
             try {
                 def req = org.springframework.web.context.request.RequestContextHolder.currentRequestAttributes().request
                 def cached = req.getAttribute(cacheKey)

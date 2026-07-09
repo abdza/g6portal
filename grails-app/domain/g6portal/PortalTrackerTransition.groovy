@@ -31,6 +31,7 @@ class PortalTrackerTransition {
       display_name(nullable:true)
       cancelbutton(nullable:true)
       immediate_submission(nullable:true)
+      button_class(nullable:true)
     }
 
     static mapping = {
@@ -56,6 +57,7 @@ class PortalTrackerTransition {
     String submitbuttontext
     String cancelbuttontext
     String redirect_after
+    String button_class
     Boolean gotoprevstatuslist
     Boolean same_status
     Boolean cancelbutton

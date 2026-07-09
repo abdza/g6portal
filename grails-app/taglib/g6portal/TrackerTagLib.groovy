@@ -191,11 +191,12 @@ class TrackerTagLib {
                                         }
                                     }
                                 }
+                                def placeholderAttr = attrs.field.field_placeholder ? " placeholder='${attrs.field.field_placeholder}'" : ""
                                 if(value) {
-                                  out << "<input type='${fieldtype}' id='${fieldname}' name='${fieldname}' ${step_val} value='${value}' ${field_hyperscript}/>"
+                                  out << "<input type='${fieldtype}' id='${fieldname}' name='${fieldname}' ${step_val} value='${value}'${placeholderAttr} ${field_hyperscript}/>"
                                 }
                                 else {
-                                  out << "<input type='${fieldtype}' id='${fieldname}' name='${fieldname}' ${step_val} ${field_hyperscript}/>"
+                                  out << "<input type='${fieldtype}' id='${fieldname}' name='${fieldname}' ${step_val}${placeholderAttr} ${field_hyperscript}/>"
                                 }
                             }
                             if(attrs.field.field_type=='Date'){
@@ -290,7 +291,12 @@ class TrackerTagLib {
                             }
                         }
                         else if(attrs.field.field_type=='Text Area'){
-                            out << textArea(name:attrs.field.name?.trim(),value:value?.replace("''","'"))
+                            if(attrs.field.field_placeholder){
+                                out << textArea(name:attrs.field.name?.trim(),value:value?.replace("''","'"),placeholder:attrs.field.field_placeholder)
+                            }
+                            else{
+                                out << textArea(name:attrs.field.name?.trim(),value:value?.replace("''","'"))
+                            }
                         }
                         else if(attrs.field.field_type=='Checkbox'){
                             if(attrs.field.field_options){
@@ -1880,9 +1886,9 @@ content: event.description
             if(enabletrans){
                 if(transition.immediate_submission) {
                     def directUrl = createLink(uri: "/${attrs.tracker.module}/${attrs.tracker.slug}/${transition.name.replace(' ','_').toLowerCase()}/${attrs.record_id}/direct")
-                    out << "<a class='btn btn-primary m-1' name='transition_${transition.id}' href='${directUrl}'>${transition}</a>"
+                    out << "<a class='btn btn-primary m-1 ${transition.button_class ?: ''}' name='transition_${transition.id}' href='${directUrl}'>${transition}</a>"
                 } else {
-                    out << link(class:"btn btn-primary m-1",name:"transition_" + transition.id,action:"transition",params:['module':attrs.tracker.module,'slug':attrs.tracker.slug,'id':attrs.record_id,'transition':transition.name.replace(" ","_").toLowerCase()]) {
+                    out << link(class:"btn btn-primary m-1 " + transition.button_class,name:"transition_" + transition.id,action:"transition",params:['module':attrs.tracker.module,'slug':attrs.tracker.slug,'id':attrs.record_id,'transition':transition.name.replace(" ","_").toLowerCase()]) {
                         out << transition
                     }
                 }

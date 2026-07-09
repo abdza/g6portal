@@ -45,6 +45,7 @@ class PortalTrackerField {
         suppress_follow_link(nullable:true)
         field_description(nullable:true)    // Descriptive text shown below the field label
         field_tooltip(nullable:true)        // Tooltip text shown on hover over the label
+        field_placeholder(nullable:true)    // Placeholder hint shown inside an empty field; never becomes the saved value unless the user types it
     }
 
     static mapping = {
@@ -53,6 +54,7 @@ class PortalTrackerField {
         field_query type: 'text'
         hyperscript type: 'text'
         field_description type: 'text'  // Store as TEXT for long descriptions
+        field_placeholder type: 'text'  // Store as TEXT for long placeholder hints
         cache true
     }
 
@@ -76,6 +78,7 @@ class PortalTrackerField {
     Boolean suppress_follow_link
     String field_description        // Descriptive text displayed below the field label
     String field_tooltip            // Tooltip text shown on hover over the label
+    String field_placeholder        // Placeholder hint shown inside an empty field (HTML placeholder attribute)
 
     String toString() {
         return name
