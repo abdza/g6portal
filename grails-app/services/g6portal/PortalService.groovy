@@ -695,7 +695,7 @@ class PortalService {
         def trace = []
         int dfound = -1
         for(int d = 0; d <= dmax && dfound < 0; d++) {
-            trace << (int[])v.clone()
+            trace << java.util.Arrays.copyOf(v, v.length)
             for(int k = -d; k <= d; k += 2) {
                 int x
                 if(k == -d || (k != d && v[offset + k - 1] < v[offset + k + 1])) {

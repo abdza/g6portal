@@ -888,8 +888,8 @@ class PortalTracker {
         def curstatus = row_status(datasource,params.id)
         def maxid = null
         def attachment = null
+        def sql = new Sql(datasource)
         if(tracker_type=='Tracker') {
-            def sql = new Sql(datasource)
             if(params.uploadfile){
                 def uploadedfile = request?.getFile('uploadfile');
                 def apath = PortalSetting.findByName(module + "_" + slug + '_attachment_path')
@@ -916,7 +916,7 @@ class PortalTracker {
                                     name: uploadedfile.originalFilename,
                                     path: copytarget,
                                     module: module,
-                                    slug: slug+'_'+params.id+'_'+(new Date()).format('yyyyMMddHHmm'),
+                                    slug: slug+'_'+params.id+'_'+new java.text.SimpleDateFormat('yyyyMMddHHmm').format(new Date()),
                                     tracker_data_id: params?.id,
                                     tracker_id: this.id,
                                     size: (int) uploadedfile.size  // ADD THIS LINE
@@ -955,7 +955,7 @@ class PortalTracker {
             qparams['updater_id'] = curuser?.id
             qparams['status'] = params?.record_status
             qparams['allowedroles'] = updateallowedroles
-            def curdate = new Date()
+            def curdate = new java.sql.Timestamp(System.currentTimeMillis())
             qparams['update_date'] = curdate
             def trailTableName = validateIdentifier(trail_table())
             if(config.dataSource.url.contains("jdbc:postgresql")) {
@@ -1717,7 +1717,7 @@ class PortalTracker {
                                                             name: sanitizedFilename,
                                                             path: thetarget,
                                                             module: module,
-                                                            slug: key+'_'+curdatas['id']+'_'+(new Date()).format('yyyyMMddHHmm'),
+                                                            slug: key+'_'+curdatas['id']+'_'+new java.text.SimpleDateFormat('yyyyMMddHHmm').format(new Date()),
                                                             tracker_data_id: params.id,
                                                             tracker_id: this.id,
                                                             size: (int) uploadedfile.size

@@ -622,6 +622,7 @@ class PortalModuleController {
           flash.message = "Module imported"
       } catch(Exception e) {
           println "Error importing module: " + e
+          e.printStackTrace()
           flash.message = "Error importing module: " + e.message
       }
       redirect action:"show", method:"GET", id:id
