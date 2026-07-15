@@ -697,12 +697,14 @@ class UserController {
         }
         if(!user){
             println "User " + params.username + " not found"
-            flash.message = "Sorry, Username ${params.username} does not exist."
+            flash.message = "Invalid username or password."
             redirect(controller:"user",action:"login")
             return false
         }
         if(user && user.isActive==false){
-            flash.message = "Sorry, Username ${params.username} is not an active user anymore."
+            // Same generic message as "user not found" - a distinct message here would let
+            // an attacker enumerate which usernames exist/are active (WA-33).
+            flash.message = "Invalid username or password."
             redirect(controller:"user",action:"login")
             return false
         }
@@ -806,7 +808,7 @@ class UserController {
                     flash.message = "Sorry, ${user}. Please login using your LAN ID " + user.lanid + " password"
                 }
                 else{
-                    flash.message = "Sorry, ${params.username}. Please try again."
+                    flash.message = "Invalid username or password."
                 }
             }
             else{
@@ -814,22 +816,15 @@ class UserController {
                     flash.message = "Sorry, ${params.username}. You have tried to login more than 3 times. Do make sure that you use the correct password for your LAN ID ${user.lanid}. If you have forgotten it, please apply to reset it"
                 }
                 else {
+                    // Previously this branch silently reset the account's password to a new
+                    // random value and emailed it, triggered by nothing more than 3 wrong
+                    // password guesses - an attacker who knew a valid username could lock a
+                    // victim out of their own account at will, with no verification beyond
+                    // "does this username exist" (WA-35). Just report the attempt count now;
+                    // the account's current password is left untouched.
                     session.removeAttribute('logintry')
                     session.removeAttribute('previd')
-                    flash.message = "Sorry, ${params.username}. You have tried to login more than 3 times. Your password has been reset and e-mail notification of your new password has been sent"
-                    def newPw = UUID.randomUUID().toString().replace('-','').substring(0,8);
-                    user.hashPassword(newPw)
-                    user.resetPassword=true
-                    if(user.save()){
-                        def reset_email_password = PortalPage.findByModuleAndSlug('portal','reset_email_password')
-                        if(reset_email_password) {
-                            sendMail {
-                            to user.email
-                            subject reset_email_password.title
-                            text reset_email_password.evalcontent([user:user])
-                            }
-                        }
-                    }
+                    flash.message = "Invalid username or password. You have tried to login more than 3 times."
                 }
             }
             redirect(controller:"user",action:"login")

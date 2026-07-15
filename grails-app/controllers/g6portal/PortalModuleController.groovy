@@ -524,8 +524,18 @@ class PortalModuleController {
                       } 
                   }
               }
-          } catch (ValidationException e) {
+          } catch (Exception e) {
               println "Got error importing module. " + e
+              e.printStackTrace()
+              def rootcause = e
+              def chain = []
+              while(rootcause != null) {
+                  chain << rootcause.class.name + ': ' + rootcause.message
+                  rootcause = rootcause.cause == rootcause ? null : rootcause.cause
+              }
+              def chainmsg = chain.join(' <- ')
+              flash.error = "Error importing module: " + chainmsg
+              PortalErrorLog.record(params, session.curuser, 'portalModule', 'importform', chainmsg)
               return
           }
       }
@@ -623,7 +633,15 @@ class PortalModuleController {
       } catch(Exception e) {
           println "Error importing module: " + e
           e.printStackTrace()
-          flash.message = "Error importing module: " + e.message
+          def rootcause = e
+          def chain = []
+          while(rootcause != null) {
+              chain << rootcause.class.name + ': ' + rootcause.message
+              rootcause = rootcause.cause == rootcause ? null : rootcause.cause
+          }
+          def chainmsg = chain.join(' <- ')
+          flash.message = "Error importing module: " + chainmsg
+          PortalErrorLog.record(params, curuser, 'portalModule', 'confirmimport', chainmsg, null, module.name)
       }
       redirect action:"show", method:"GET", id:id
   }

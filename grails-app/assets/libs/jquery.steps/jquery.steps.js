@@ -231,9 +231,9 @@ function destroy(wizard, options)
     var eventNamespace = getEventNamespace(wizard);
 
     // Remove virtual data objects from the wizard
-    wizard.unbind(eventNamespace).removeData("uid").removeData("options")
+    wizard.off(eventNamespace).removeData("uid").removeData("options")
         .removeData("state").removeData("steps").removeData("eventNamespace")
-        .find(".actions a").unbind(eventNamespace);
+        .find(".actions a").off(eventNamespace);
 
     // Remove attributes and CSS classes from the wizard
     wizard.removeClass(options.clearFixCssClass + " vertical");
@@ -908,20 +908,20 @@ function registerEvents(wizard, options)
 {
     var eventNamespace = getEventNamespace(wizard);
 
-    wizard.bind("canceled" + eventNamespace, options.onCanceled);
-    wizard.bind("contentLoaded" + eventNamespace, options.onContentLoaded);
-    wizard.bind("finishing" + eventNamespace, options.onFinishing);
-    wizard.bind("finished" + eventNamespace, options.onFinished);
-    wizard.bind("init" + eventNamespace, options.onInit);
-    wizard.bind("stepChanging" + eventNamespace, options.onStepChanging);
-    wizard.bind("stepChanged" + eventNamespace, options.onStepChanged);
+    wizard.on("canceled" + eventNamespace, options.onCanceled);
+    wizard.on("contentLoaded" + eventNamespace, options.onContentLoaded);
+    wizard.on("finishing" + eventNamespace, options.onFinishing);
+    wizard.on("finished" + eventNamespace, options.onFinished);
+    wizard.on("init" + eventNamespace, options.onInit);
+    wizard.on("stepChanging" + eventNamespace, options.onStepChanging);
+    wizard.on("stepChanged" + eventNamespace, options.onStepChanged);
 
     if (options.enableKeyNavigation)
     {
-        wizard.bind("keyup" + eventNamespace, keyUpHandler);
+        wizard.on("keyup" + eventNamespace, keyUpHandler);
     }
 
-    wizard.find(".actions a").bind("click" + eventNamespace, paginationClickHandler);
+    wizard.find(".actions a").on("click" + eventNamespace, paginationClickHandler);
 }
 
 /**
@@ -1170,7 +1170,7 @@ function renderTitle(wizard, options, state, header, index)
     }
 
     // Register click event
-    stepItem.children("a").bind("click" + getEventNamespace(wizard), stepClickHandler);
+    stepItem.children("a").on("click" + getEventNamespace(wizard), stepClickHandler);
 }
 
 /**

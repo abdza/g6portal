@@ -852,13 +852,13 @@ class TrackerTagLib {
                         if(field.field_type in ['Date','DateTime']) {
                             def filterid = 'date_filter_type_' + field.name?.trim()
                             out << "<input type='hidden' name='${field.name?.trim()}' id='${field.name?.trim()}'/>"
-                            out << "<select class='datefilter' id='${filterid}' name='${filterid}' value='${params[filterid]}'>"
+                            out << "<select class='datefilter' id='${filterid}' name='${filterid}' value='${params[filterid]?.toString()?.encodeAsHTML()}'>"
                             out << "<option ${if(params[filterid]=='Before'){ 'selected' }}>Before</option>"
                             out << "<option ${if(params[filterid]=='After'){ 'selected' }}>After</option>"
                             out << "<option ${if(params[filterid]=='Between'){ 'selected' }}>Between</option>"
                             out << "</select>"
-                            out << " <input type='date' class='${field.name?.trim()}_date' id='${field.name?.trim()}_first' name='${field.name?.trim()}_first' value='${params[field.name?.trim() + '_first']}'/>"
-                            out << " <span id='${field.name?.trim()}_second_span'>- <input class='${field.name?.trim()}_date' type='date' id='${field.name?.trim()}_second' name='${field.name?.trim()}_second' value='${params[field.name?.trim() + '_second']}'/></span>"
+                            out << " <input type='date' class='${field.name?.trim()}_date' id='${field.name?.trim()}_first' name='${field.name?.trim()}_first' value='${params[field.name?.trim() + '_first']?.toString()?.encodeAsHTML()}'/>"
+                            out << " <span id='${field.name?.trim()}_second_span'>- <input class='${field.name?.trim()}_date' type='date' id='${field.name?.trim()}_second' name='${field.name?.trim()}_second' value='${params[field.name?.trim() + '_second']?.toString()?.encodeAsHTML()}'/></span>"
                             out << asset.script() { """
                                 \$('#${filterid}').on('change',function() {
                                     var df = \$('#${filterid}').val();
@@ -871,14 +871,19 @@ class TrackerTagLib {
                                 });
                                 \$('.${field.name?.trim()}_date').on('change',function() {
                                     var df = \$('#${filterid}').val();
+                                    var first = \$('#${field.name?.trim()}_first').val();
+                                    var second = \$('#${field.name?.trim()}_second').val();
                                     if(df=='Before') {
-                                        \$('#${field.name?.trim()}').val('<' + \$('#${field.name?.trim()}_first').val());
+                                        \$('#${field.name?.trim()}').val('<' + first);
+                                        if(first) { \$('#trackfilter').submit(); }
                                     }
                                     else if(df=='After') {
-                                        \$('#${field.name?.trim()}').val('>' + \$('#${field.name?.trim()}_first').val());
+                                        \$('#${field.name?.trim()}').val('>' + first);
+                                        if(first) { \$('#trackfilter').submit(); }
                                     }
                                     else {
-                                        \$('#${field.name?.trim()}').val('between_' + \$('#${field.name?.trim()}_first').val() + '_' + \$('#${field.name?.trim()}_second').val());
+                                        \$('#${field.name?.trim()}').val('between_' + first + '_' + second);
+                                        if(first && second) { \$('#trackfilter').submit(); }
                                     }
                                 });
                                 ${if(params[filterid]!='Between'){

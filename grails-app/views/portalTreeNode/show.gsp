@@ -202,7 +202,7 @@ function switchclick(data) {
     window.location = data
 }
 
-$('#delete_user_button').bind("click",function(event){
+$('#delete_user_button').on("click",function(event){
     if(confirm('Delete user?')) {
         $('#nodeaction').val('delete')
         $('#user_form').submit()
@@ -211,8 +211,8 @@ $('#delete_user_button').bind("click",function(event){
     return false
 })
 $('div.jstree')
-.bind("move_node.jstree",function(event, mdata) {        
-    if($("#enablemove").prop('checked')){        
+.on("move_node.jstree",function(event, mdata) {
+    if($("#enablemove").prop('checked')){
         console.log(mdata);
         $.ajax({
         url: "<g:createLink controller="portalTreeNode" action="movenode"/>",
@@ -220,7 +220,7 @@ $('div.jstree')
         });
     }
 })
-.bind("select_node.jstree",function(e,data){
+.on("select_node.jstree",function(e,data){
     console.log(data);
     console.log(data.node.id);
     var selectedid = data.node.id; 

@@ -668,6 +668,7 @@ class PortalModule {
             [table: 'portal_tracker_field',     column: 'field_description'],
             [table: 'portal_tracker_field',     column: 'field_tooltip'],
             [table: 'portal_tracker_field',     column: 'field_placeholder'],
+            [table: 'portal_tracker_field',     column: 'field_type'],
             [table: 'portal_tracker_transition', column: 'enabledcondition'],
         ]
         println "ensureColumnSizes: checking ${columnsToExpand.size()} column(s)"
