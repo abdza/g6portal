@@ -624,12 +624,30 @@ class PortalTrackerController {
                             def fieldval = field.fieldval(row[field.name])
                             if(field.field_type=='Date'){
                                 if(fieldval){
-                                    cell.setCellValue(fieldval.toLocalDate().toString())
+                                    if(field.field_format){
+                                        try {
+                                            cell.setCellValue(new java.text.SimpleDateFormat(field.field_format).format(fieldval))
+                                        } catch(Exception fmtEx) {
+                                            cell.setCellValue(fieldval.toLocalDate().toString())
+                                        }
+                                    }
+                                    else {
+                                        cell.setCellValue(fieldval.toLocalDate().toString())
+                                    }
                                 }
                             }
                             else if(field.field_type=='DateTime'){
                                 if(fieldval){
-                                    cell.setCellValue(fieldval.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime().toString().replace('T',' ').substring(0,16))
+                                    if(field.field_format){
+                                        try {
+                                            cell.setCellValue(new java.text.SimpleDateFormat(field.field_format).format(fieldval))
+                                        } catch(Exception fmtEx) {
+                                            cell.setCellValue(fieldval.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime().toString().replace('T',' ').substring(0,16))
+                                        }
+                                    }
+                                    else {
+                                        cell.setCellValue(fieldval.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime().toString().replace('T',' ').substring(0,16))
+                                    }
                                 }
                             }
                             else if(field.field_type=='BelongsTo'){
@@ -1072,7 +1090,9 @@ setTimeout(check,2000);
 
                 if(params.submit){
                     /* this is the part where we actually create or update the data */
-                    datas = tracker.updaterecord(params,request,session,sql,defaultfields)
+                    // editfields are passed as clearfields: an empty submitted value on an
+                    // editable field clears the column instead of being silently ignored
+                    datas = tracker.updaterecord(params,request,session,sql,defaultfields,editfields*.name)
                     datas = tracker.getdatas(datas['id'],sql)
                     if(!datas && session['datas']) {
                         datas = session['datas']
@@ -1815,5 +1835,62 @@ setTimeout(check,2000);
         datafile.write(JsonOutput.toJson(datas))
         flash.message = "Data for " + tracker + " exported"
         redirect tracker
+    }
+
+    def workflow_graph(Long id) {
+        def tracker = portalTrackerService.get(id)
+        if (!tracker) {
+            notFound()
+            return
+        }
+
+        // Build nodes (statuses)
+        def nodes = []
+        tracker.statuses.each { status ->
+            nodes << [
+                id: status.id.toString(),
+                label: status.name,
+                updateable: status.updateable ?: false,
+                attachable: status.attachable ?: false,
+                flow: status.flow
+            ]
+        }
+
+        // Build edges (transitions)
+        def edges = []
+        tracker.transitions.each { transition ->
+            // Handle transitions with multiple previous statuses
+            if (transition.prev_status && transition.prev_status.size() > 0) {
+                transition.prev_status.each { prevStatus ->
+                    edges << [
+                        id: transition.id.toString() + '_' + prevStatus.id.toString(),
+                        from: prevStatus.id.toString(),
+                        to: transition.next_status?.id?.toString(),
+                        label: transition.name,
+                        roles: transition.roles*.name.join(', '),
+                        displayName: transition.display_name ?: transition.name
+                    ]
+                }
+            } else {
+                // Transition to initial status (new record)
+                edges << [
+                    id: transition.id.toString(),
+                    from: null,
+                    to: transition.next_status?.id?.toString(),
+                    label: transition.name,
+                    roles: transition.roles*.name.join(', '),
+                    displayName: transition.display_name ?: transition.name,
+                    isNew: true
+                ]
+            }
+        }
+
+        [
+            tracker: tracker,
+            nodes: nodes,
+            edges: edges,
+            nodesJson: JsonOutput.toJson(nodes),
+            edgesJson: JsonOutput.toJson(edges)
+        ]
     }
 }

@@ -576,6 +576,13 @@ class TrackerTagLib {
                     if(attrs.field.field_type in ['Integer','Number'] && attrs.field.field_format){
                         out << formatNumber(number:attrs.field.fieldval(attrs.value,sql),format:attrs.field.field_format)
                     }
+                    else if(attrs.field.field_type in ['Date','DateTime'] && attrs.field.field_format && attrs.value != null){
+                        try {
+                            out << attrs.value.format(attrs.field.field_format)
+                        } catch(Exception e) {
+                            out << attrs.field.fieldval(attrs.value,sql)
+                        }
+                    }
                     else if(attrs.field.field_type=='File'){
                         def fl = attrs.field.fieldval(attrs.value,sql)
                         // added in case file upload is optional

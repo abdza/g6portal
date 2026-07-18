@@ -29,7 +29,7 @@
             </section>
             <section class="row">
                 <div id="show-portalFileManager" class="col-12 content scaffold-show" role="main">
-                    <h1>Explore ${this.portalFileManager.name}</h1>
+                    <h1>Explore ${this.portalFileManager?.name}</h1>
                     <g:if test="${flash.message}">
                     <div class="message" role="status">${flash.message}</div>
                     </g:if>
@@ -89,18 +89,18 @@
                           <td>${i+1}</td>
                           <g:if test="${params.fname}">
                             <g:if test="${curfile.isFile()}">
-                              <td id="td_${i+1}" data-url="<g:createLink action="download" id="${this.portalFileManager.id}" params="[fname:params.fname + '/' + curfile.name]"/>" onclick="filedownload(this)">
+                              <td id="td_${i+1}" data-url="<g:createLink action="download" id="${this.portalFileManager.id}" params="[fname:params.fname + '/' + curfile?.name]"/>" onclick="filedownload(this)">
                             </g:if>
                             <g:else>
-                              <td id="td_${i+1}" hx-target="#explorepage" hx-get="<g:createLink action="explorepage" id="${this.portalFileManager.id}" params="[fname:params.fname + curfile.name]"/>">
+                              <td id="td_${i+1}" hx-target="#explorepage" hx-get="<g:createLink action="explorepage" id="${this.portalFileManager.id}" params="[fname:params.fname + curfile?.name]"/>">
                             </g:else>
                           </g:if>
                           <g:else>
                             <g:if test="${curfile.isFile()}">
-                              <td id="td_${i+1}" data-url="<g:createLink action="download" id="${this.portalFileManager.id}" params="[fname:curfile.name]"/>" onclick="filedownload(this)">
+                              <td id="td_${i+1}" data-url="<g:createLink action="download" id="${this.portalFileManager.id}" params="[fname:curfile?.name]"/>" onclick="filedownload(this)">
                             </g:if>
                             <g:else>
-                              <td id="td_${i+1}" hx-target="#explorepage" hx-get="<g:createLink action="explorepage" id="${this.portalFileManager.id}" params="[fname:curfile.name]"/>">
+                              <td id="td_${i+1}" hx-target="#explorepage" hx-get="<g:createLink action="explorepage" id="${this.portalFileManager.id}" params="[fname:curfile?.name]"/>">
                             </g:else>
                           </g:else>
                             <g:if test="${curfile.isFile()}">
@@ -110,14 +110,14 @@
                                 <span class="bi bi-folder"></span>    
                             </g:else>
                             &nbsp; 
-                            ${curfile.name}
+                            ${curfile?.name}
                           </td>
                           <td>
                             <g:formatDate date="${curfile.lastModified()}" format="dd/MM/yyyy HH:mm:ss"/>
                           </td>
                           <td>
-                            <button hx-target="#td_${i+1}" hx-swap="outerHTML" hx-get="<g:createLink action="rename" id="${this.portalFileManager.id}" params="[fname:params.fname?params.fname + curfile.name:curfile.name]"/>" class="btn btn-secondary">Rename</button>
-                            <button hx-target="#explorepage" hx-get="<g:createLink action="deletefm" id="${this.portalFileManager.id}" params="[fname:params.fname?params.fname + '/' + curfile.name:curfile.name]"/>" class="btn btn-danger" hx-confirm="Confirm delete this file?">Delete</button>
+                            <button hx-target="#td_${i+1}" hx-swap="outerHTML" hx-get="<g:createLink action="rename" id="${this.portalFileManager.id}" params="[fname:params.fname?params.fname + curfile?.name:curfile?.name]"/>" class="btn btn-secondary">Rename</button>
+                            <button hx-target="#explorepage" hx-get="<g:createLink action="deletefm" id="${this.portalFileManager.id}" params="[fname:params.fname?params.fname + '/' + curfile?.name:curfile?.name]"/>" class="btn btn-danger" hx-confirm="Confirm delete this file?">Delete</button>
                           </td>
                         </tr>
                       </g:each>
@@ -169,37 +169,63 @@
         if($('#createfilelink').prop('checked')) {
             formData.append("createfilelink",1);
         }
+
+        // Show uploading indicator
+        $('#uploadform').css('border-color', 'orange').text('Uploading...');
+
         xhr.onload = function() {
-            if(xhr.status == 200) {
-                var uploadform = document.getElementById("uploadform");
-                uploadform.style.borderColor = "green";
-                try {
-                    var response = JSON.parse(xhr.responseText);
-                    if(response.error) {
-                        uploadform.style.borderColor = "red";
-                        uploadform.innerHTML = "<span style='color:red'>" + response.error + "</span>";
-                    }
-                }
-                catch(e) {
-                    // Response is not JSON, likely HTML redirect - that's fine
-                }
-                // Refresh the file list
-                htmx.ajax('GET', window.curpath.replace("upload","explorepage"), '#explorepage');
-            }
-            else {
-                var uploadform = document.getElementById("uploadform");
-                uploadform.style.borderColor = "red";
-                uploadform.innerHTML = "<span style='color:red'>Upload failed: " + xhr.statusText + "</span>";
-            }
+          $('#uploadform').css('border-color', 'green').text('');
+
+          // Check response for error messages (flash.message from server)
+          var parser = new DOMParser();
+          var responseDoc = parser.parseFromString(xhr.responseText, 'text/html');
+          var flashMsg = responseDoc.querySelector('.message');
+
+          // Get or create message div
+          var msgDiv = document.getElementById('upload-message');
+          if(!msgDiv) {
+            msgDiv = document.createElement('div');
+            msgDiv.id = 'upload-message';
+            document.getElementById('uploadform').after(msgDiv);
+          }
+
+          var msgText = flashMsg ? flashMsg.textContent.toLowerCase() : '';
+          var isError = msgText.includes('fail') || msgText.includes('cannot') || msgText.includes('error');
+          if(flashMsg && isError) {
+            // Show error message from server
+            msgDiv.className = 'message errors';
+            msgDiv.textContent = flashMsg.textContent;
+            msgDiv.style.display = 'block';
+            $('#uploadform').css('border-color', 'red');
+          } else if(xhr.status >= 400) {
+            // Show HTTP error
+            msgDiv.className = 'message errors';
+            msgDiv.textContent = 'Upload failed: ' + xhr.statusText;
+            msgDiv.style.display = 'block';
+            $('#uploadform').css('border-color', 'red');
+          } else {
+            // Success - hide any previous error message
+            msgDiv.style.display = 'none';
+          }
+
+          // Always refresh the file list
+          var refreshUrl = window.curpath.replace("upload", "explorepage");
+          htmx.ajax('GET', refreshUrl, {target: '#explorepage', swap: 'innerHTML'});
         };
+
         xhr.onerror = function() {
-            var uploadform = document.getElementById("uploadform");
-            uploadform.style.borderColor = "red";
-            uploadform.innerHTML = "<span style='color:red'>Upload error occurred</span>";
+          $('#uploadform').css('border-color', 'red').text('');
+          var msgDiv = document.getElementById('upload-message');
+          if(!msgDiv) {
+            msgDiv = document.createElement('div');
+            msgDiv.id = 'upload-message';
+            msgDiv.className = 'message errors';
+            document.getElementById('uploadform').after(msgDiv);
+          }
+          msgDiv.textContent = 'Upload failed: Network error';
+          msgDiv.style.display = 'block';
         };
-        var uploadform = document.getElementById("uploadform");
-        uploadform.style.borderColor = "orange";
-        uploadform.innerHTML = "<span style='color:orange'>Uploading...</span>";
+
         var sent = xhr.send(formData);
         event.detail.path = window.curpath;
       }

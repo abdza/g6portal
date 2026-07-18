@@ -105,6 +105,9 @@ class PortalTrackerEmailController {
 
         def email = PortalTrackerEmail.get(id)
         def tracker = email?.tracker
+        // detach from the tracker's collection first or the cascade re-saves the
+        // deleted email / leaves it in the cached association
+        tracker?.removeFromEmails(email)
         portalTrackerEmailService.delete(id)
 
         request.withFormat {

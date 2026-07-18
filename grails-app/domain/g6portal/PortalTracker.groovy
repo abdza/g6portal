@@ -1363,7 +1363,7 @@ class PortalTracker {
     }
 
     @Transactional()
-    def updaterecord(params,request,session,sql,defaultfields=[]) {
+    def updaterecord(params,request,session,sql,defaultfields=[],clearfields=[]) {
         def fieldnames = []
         def fieldvalues = []
         def deleted = false
@@ -1559,7 +1559,12 @@ class PortalTracker {
                             }
                             else if(pfield.field_type in ['Number']) {
                                 if(value==''){
-                                    validfield = false
+                                    if(pfield.name in clearfields){
+                                        value = null
+                                    }
+                                    else {
+                                        validfield = false
+                                    }
                                 }
                                 else {
                                     try {
@@ -1573,7 +1578,12 @@ class PortalTracker {
                             }
                             else if(pfield.field_type in ['Integer']) {
                                 if(value==''){
-                                    validfield = false
+                                    if(pfield.name in clearfields){
+                                        value = null
+                                    }
+                                    else {
+                                        validfield = false
+                                    }
                                 }
                                 else {
                                     try {
@@ -1624,7 +1634,14 @@ class PortalTracker {
                             }
                             else if(pfield.field_type in ['User','Branch','File','Event','BelongsTo']){
                                 if(!value){
-                                    validfield = false
+                                    // File inputs are always empty unless a new file is chosen,
+                                    // so never clear them from an empty submission
+                                    if(pfield.field_type!='File' && pfield.name in clearfields){
+                                        value = null
+                                    }
+                                    else {
+                                        validfield = false
+                                    }
                                 }
                                 else{
                                     if(pfield.field_type=='File'){

@@ -27,6 +27,9 @@ info:
     # logo_slug: "logo"
     # logo_url: "https://g6portal.abdullahsolutions.com/images/logo.png"
 spring:
+  cache:
+    jcache:
+      config: classpath:ehcache.xml
   jmx:
     unique-names: true
   main:

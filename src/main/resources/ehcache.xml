@@ -1,59 +1,42 @@
-<ehcache xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:noNamespaceSchemaLocation="ehcache.xsd"
-         updateCheck="false">
+<?xml version="1.0" encoding="UTF-8"?>
+<config
+        xmlns="http://www.ehcache.org/v3"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.ehcache.org/v3 http://www.ehcache.org/schema/ehcache-core.xsd">
 
-    <diskStore path="java.io.tmpdir/g6portal-ehcache"/>
+    <!--
+      IMPORTANT:
+      The cache-template named "jsr107-default" is used by the JCache (JSR-107) layer
+      as the default settings for caches that are created dynamically (which Hibernate does).
+    -->
+    <cache-template name="jsr107-default">
+        <expiry>
+            <!-- Your GLOBAL cache timeout -->
+            <ttl unit="minutes">60</ttl>
+        </expiry>
+        <resources>
+            <heap unit="entries">10000</heap>
+        </resources>
+    </cache-template>
 
-    <defaultCache
-        maxEntriesLocalHeap="10000"
-        eternal="false"
-        timeToIdleSeconds="1800"
-        timeToLiveSeconds="3600"
-        overflowToDisk="false"
-        memoryStoreEvictionPolicy="LRU"/>
+    <!-- Optional: Hibernate internal regions (useful if you enable query cache later) -->
+    <cache alias="default-query-results-region" uses-template="jsr107-default">
+        <expiry>
+            <ttl unit="minutes">15</ttl>
+        </expiry>
+        <resources>
+            <heap unit="entries">5000</heap>
+        </resources>
+    </cache>
 
-    <cache name="org.hibernate.cache.internal.StandardQueryCache"
-        maxEntriesLocalHeap="5000"
-        eternal="false"
-        timeToLiveSeconds="3600"/>
+    <cache alias="default-update-timestamps-region" uses-template="jsr107-default">
+        <expiry>
+            <ttl unit="minutes">15</ttl>
+        </expiry>
+        <resources>
+            <heap unit="entries">5000</heap>
+        </resources>
+    </cache>
 
-    <cache name="org.hibernate.cache.spi.UpdateTimestampsCache"
-        maxEntriesLocalHeap="5000"
-        eternal="true"/>
+</config>
 
-    <cache name="g6portal.PortalTracker"
-        maxEntriesLocalHeap="10000"
-        eternal="false"
-        timeToLiveSeconds="3600"/>
-
-    <cache name="g6portal.PortalTrackerField"
-        maxEntriesLocalHeap="10000"
-        eternal="false"
-        timeToLiveSeconds="3600"/>
-
-    <cache name="g6portal.PortalTrackerStatus"
-        maxEntriesLocalHeap="10000"
-        eternal="false"
-        timeToLiveSeconds="3600"/>
-
-    <cache name="g6portal.PortalTrackerTransition"
-        maxEntriesLocalHeap="10000"
-        eternal="false"
-        timeToLiveSeconds="3600"/>
-
-    <cache name="g6portal.PortalPage"
-        maxEntriesLocalHeap="10000"
-        eternal="false"
-        timeToLiveSeconds="3600"/>
-
-    <cache name="g6portal.PortalSetting"
-        maxEntriesLocalHeap="10000"
-        eternal="false"
-        timeToLiveSeconds="3600"/>
-
-    <cache name="g6portal.PortalTrackerEmail"
-        maxEntriesLocalHeap="10000"
-        eternal="false"
-        timeToLiveSeconds="3600"/>
-
-</ehcache>

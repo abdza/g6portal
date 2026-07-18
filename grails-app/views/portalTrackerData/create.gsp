@@ -52,7 +52,7 @@
             <label for="tracker">Tracker</label>
             <g:select name='tracker' from="${trackers}" optionKey="id" optionValue="name"/>
           </div>
-                            <f:all except='isTrackerDeleting,tracker,module,path,date_created,uploaded,send_email,sent_email_date,messages,savedparams,file_link,uploadStatus' bean="portalTrackerData"/>
+                            <f:all except='uploader,isTrackerDeleting,tracker,module,path,date_created,uploaded,send_email,sent_email_date,messages,savedparams,file_link,uploadStatus' bean="portalTrackerData"/>
 			    </g:else>
                         </fieldset>
                         <fieldset class="buttons">

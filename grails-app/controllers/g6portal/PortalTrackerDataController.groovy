@@ -539,11 +539,119 @@ class PortalTrackerDataController {
         update.savedparams = saveparams as JSON
         PortalTrackerData.withTransaction { transaction ->
             update.save(flush:true)
-            if(mailService) {
-              update.update(mailService)
+        }
+        // Process in the background so large files cannot time out the request/proxy
+        // (same approach as the async XLSX report export). Progress and the final
+        // summary are persisted on portal_tracker_data, which uploadsummary polls.
+        launchBackgroundUpload(update.id)
+        redirect action:"uploadsummary", id: update.id
+    }
+
+    private void launchBackgroundUpload(Long updateId) {
+        def bgMailService = mailService
+        Thread.start {
+            try {
+                PortalTrackerData.withNewSession {
+                    PortalTrackerData.withTransaction {
+                        def bgUpdate = PortalTrackerData.get(updateId)
+                        if(bgUpdate && bgMailService) {
+                            bgUpdate.update(bgMailService)
+                        }
+                    }
+                }
+            } catch(Exception e) {
+                // update() has already persisted the error to messages via raw SQL
+                println "Background dataupdate ${updateId} failed: " + e
             }
         }
-        redirect action:"uploadsummary", id: update.id
+    }
+
+    /**
+     * Uploads stuck at "Upload is currently in queue" — their background thread
+     * died before finishing (typically a server restart mid-processing).
+     */
+    private List findStuckUploads() {
+        return PortalTrackerData.createCriteria().list {
+            isNull('uploaded')
+            like('messages', 'Upload is currently in queue')
+            if(!session.enablesuperuser) {
+                'in'('module', session.adminmodules ?: ['__none__'])
+            }
+            order('id', 'desc')
+        }
+    }
+
+    def stuckuploads() {
+        def curuser = session.curuser
+        if(!curuser) { notFound(); return }
+        [stuckUploads: findStuckUploads(), curuser: curuser]
+    }
+
+    /**
+     * Restart one stuck upload: remove the partial rows the interrupted run left
+     * behind, then re-run the load in a fresh background thread.
+     */
+    def requeueupload(Long id) {
+        def curuser = session.curuser
+        def update = portalTrackerDataService.get(id)
+        if(!curuser || !update) { notFound(); return }
+        if(!(session.enablesuperuser || (session.adminmodules && update.module in session.adminmodules))) {
+            flash.message = "You do not have the clearance to restart upload ${id}"
+            redirect action:'stuckuploads'
+            return
+        }
+        if(update.uploaded) {
+            flash.message = "Upload ${id} has already completed - nothing to restart"
+            redirect action:'stuckuploads'
+            return
+        }
+        def problem = requeueOne(update)
+        if(problem) {
+            flash.message = problem
+            redirect action:'stuckuploads'
+        }
+        else {
+            redirect action:'uploadsummary', id: update.id
+        }
+    }
+
+    /** Restart every stuck upload the current user can administer. */
+    def requeueall() {
+        def curuser = session.curuser
+        if(!curuser) { notFound(); return }
+        def restarted = 0
+        def problems = []
+        findStuckUploads().each { upd ->
+            def problem = requeueOne(upd)
+            if(problem) { problems << problem } else { restarted++ }
+        }
+        flash.message = "Restarted ${restarted} upload(s)." + (problems ? " Skipped: " + problems.join('; ') : "")
+        redirect action:'stuckuploads'
+    }
+
+    /**
+     * Clean up partial rows from the interrupted run and relaunch the upload.
+     * Returns null on success, or a message describing why it cannot be restarted.
+     */
+    private String requeueOne(PortalTrackerData update) {
+        if(!update.savedparams) {
+            return "Upload ${update.id} has no saved column mapping - delete it and upload the file again"
+        }
+        if(!update.path || !(new File(update.path).exists())) {
+            return "Upload ${update.id} - the uploaded file is no longer on disk, upload it again"
+        }
+        try {
+            PortalTrackerData.withTransaction {
+                def dataTableName = validateIdentifier(update.tracker.data_table())
+                def sql = new Sql(sessionFactory.currentSession.connection())
+                sql.execute("delete from " + dataTableName + " where dataupdate_id=" + ((long)update.id))
+            }
+        } catch(Exception e) {
+            println "Could not clean partial rows for dataupdate ${update.id}: " + e
+            return "Upload ${update.id} - could not clean up partial rows: ${e.message}"
+        }
+        launchBackgroundUpload(update.id)
+        return null
     }
 
     def uploadsummary(Long id) {

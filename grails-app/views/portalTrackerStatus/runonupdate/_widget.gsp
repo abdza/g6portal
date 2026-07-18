@@ -1,1 +1,1 @@
-<g:select name="${property}" from="${g6portal.PortalPage.findAllByModule(this.portalTrackerStatus?.tracker?.module)}" optionKey="id" value="${value?.id}" noSelection="['':'Please select']"/>
+<g:select name="${property}" from="${g6portal.PortalPage.findAllByModuleAndRunable(this.portalTrackerStatus?.tracker?.module,true)}" optionKey="id" value="${value?.id}" noSelection="['':'Please select']"/>

@@ -20,6 +20,7 @@
                         <li><g:link class="create" action="export_data" id="${this.portalTracker.id}">Export Data</g:link></li>
                         <li><g:link class="create" action="fix_status" id="${this.portalTracker.id}">Fix Status</g:link></li>
                         <li><g:link class="create" action="delete_fields" id="${this.portalTracker.id}">Delete Fields</g:link></li>
+                        <li><g:link class="create" action="workflow_graph" id="${this.portalTracker.id}">Workflow Graph</g:link></li>
                     </ul>
                 </div>
             </section>

@@ -15,6 +15,9 @@ import org.commonmark.node.Node
 import org.commonmark.parser.Parser
 import org.commonmark.renderer.html.HtmlRenderer
 import org.commonmark.ext.gfm.tables.TablesExtension
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 
 class PortalService {
@@ -48,8 +51,85 @@ class PortalService {
         }
     }
 
+    // Parse a date cell from an Excel import: handles d/M/yyyy, yyyy/M/d,
+    // d-M-yyyy, yyyy-M-d and raw Excel serial numbers. Utility for upload
+    // scripts (portalService is in the script bindings).
+    LocalDate convertExcelToDate(excelDate) {
+        if(excelDate) {
+            def fdate = null
+            if(excelDate.lastIndexOf('/')>0){
+                def dtokens = excelDate.tokenize('/')
+                DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy/M/d")
+                if(dtokens[0].size()==4){
+                    fdate = LocalDate.parse(excelDate,dtf)
+                }
+                else {
+                    dtf = DateTimeFormatter.ofPattern("d/M/yyyy")
+                    fdate = LocalDate.parse(excelDate,dtf)
+                }
+                return fdate
+            }
+            else if(excelDate.lastIndexOf('-')>0){
+                def dtokens = excelDate.tokenize('-')
+                DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-M-d")
+                if(dtokens[0].size()==4){
+                    fdate = LocalDate.parse(excelDate,dtf)
+                }
+                else {
+                    dtf = DateTimeFormatter.ofPattern("d-M-yyyy")
+                    fdate = LocalDate.parse(excelDate,dtf)
+                }
+                return fdate
+            }
+            else {
+                fdate = excelDate.toInteger()
+                // Excel's epoch date (accounting for the leap year bug)
+                LocalDate excelEpoch = LocalDate.of(1899, 12, 30)
+                return excelEpoch.plusDays((long)fdate)
+            }
+        }
+        return null
+    }
+
+    LocalDateTime convertExcelToDateTime(excelDate) {
+        if(excelDate) {
+            def fdate = null
+            if(excelDate.lastIndexOf('/')>0){
+                def dtokens = excelDate.tokenize('/')
+                DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy/M/d HH:mm:ss")
+                if(dtokens[0].size()==4){
+                    fdate = LocalDateTime.parse(excelDate,dtf)
+                }
+                else {
+                    dtf = DateTimeFormatter.ofPattern("d/M/yyyy HH:mm:ss")
+                    fdate = LocalDateTime.parse(excelDate,dtf)
+                }
+                return fdate
+            }
+            else if(excelDate.lastIndexOf('-')>0){
+                def dtokens = excelDate.tokenize('-')
+                DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-M-d HH:mm:ss")
+                if(dtokens[0].size()==4){
+                    fdate = LocalDateTime.parse(excelDate,dtf)
+                }
+                else {
+                    dtf = DateTimeFormatter.ofPattern("d-M-yyyy HH:mm:ss")
+                    fdate = LocalDateTime.parse(excelDate,dtf)
+                }
+                return fdate
+            }
+            else {
+                fdate = excelDate.toInteger()
+                // Excel's epoch date (accounting for the leap year bug)
+                LocalDateTime excelEpoch = LocalDate.of(1899, 12, 30).atStartOfDay()
+                return excelEpoch.plusDays((long)fdate)
+            }
+        }
+        return null
+    }
+
     public yesno(yndata,defaultdata='No') {
-        if(yndata.size()) {
+        if(yndata && yndata.size()) {
             if(yndata.toLowerCase()[0]=='n') {
                 return 'No'
             }

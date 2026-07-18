@@ -212,7 +212,13 @@ class PortalTrackerData {
                         def tableName = validateTableName(this.tracker.data_table())
                         // Plain String, not GString — GString expressions become bound
                         // parameters, which turns the table name into "[?]" and fails
-                        def countRow = sql.firstRow(("SELECT COUNT(*) AS cnt FROM [" + tableName + "] WHERE dataupdate_id = " + ((long)this.id)) as String)
+                        def countQuery
+                        if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")) {
+                            countQuery = "SELECT COUNT(*) AS cnt FROM \"" + tableName + "\" WHERE dataupdate_id = " + ((long)this.id)
+                        } else {
+                            countQuery = "SELECT COUNT(*) AS cnt FROM [" + tableName + "] WHERE dataupdate_id = " + ((long)this.id)
+                        }
+                        def countRow = sql.firstRow(countQuery as String)
                         uploadedCount = countRow?.cnt ?: 0
                     } catch(Exception ce) {
                         println "Could not count uploaded rows for dataupdate ${this.id}: ${ce}"
@@ -242,8 +248,14 @@ class PortalTrackerData {
                     try {
                         def rawDs2 = Holders.applicationContext.getBean('dataSource')
                         def rawSql2 = new Sql(rawDs2)
-                        rawSql2.execute("UPDATE portal_tracker_data SET uploaded = 1, upload_status = ?, messages = ? WHERE id = ?",
-                                        [finalStatus, finalMessages, (long)this.id])
+                        if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")) {
+                            // uploaded is a boolean column on PostgreSQL/H2
+                            rawSql2.execute("UPDATE portal_tracker_data SET uploaded = true, upload_status = ?, messages = ? WHERE id = ?",
+                                            [finalStatus, finalMessages, (long)this.id])
+                        } else {
+                            rawSql2.execute("UPDATE portal_tracker_data SET uploaded = 1, upload_status = ?, messages = ? WHERE id = ?",
+                                            [finalStatus, finalMessages, (long)this.id])
+                        }
                         rawSql2.close()
                     } catch(Exception rawE) {
                         println "Could not update upload status via raw SQL: ${rawE}"

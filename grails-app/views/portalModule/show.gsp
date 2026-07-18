@@ -24,12 +24,14 @@
                 <div id="show-portalModule" class="col-12 content scaffold-show" role="main">
                     <g:form useToken="true" resource="${this.portalModule}" method="DELETE">
                         <fieldset class="buttons">
-                            <g:if test='${curuser?.isAdmin}'>
+                            <g:if test="${curuser?.isAdmin || curuser?.modulerole(this.portalModule.name)?.contains('Developer')}">
                                 <label for='files'>Files:</label><input type="checkbox" name="files" id="files" />
                                 <label for='user'>user:</label><input type="checkbox" name="user" id="user" />
                                 <g:link class="edit" action="edit" resource="${this.portalModule}"><g:message code="default.button.edit.label" default="Edit" /></g:link>
-                                <input class="delete" type="submit" name="op" value="Delete" onclick="return confirm('Delete module ${this.portalModule.name}?');" />
                                 <input class="delete" type="submit" name="op" value="Export" onclick="return confirm('Export module ${this.portalModule.name}?');" />
+                            </g:if>
+                            <g:if test='${curuser?.isAdmin}'>
+                                <input class="delete" type="submit" name="op" value="Delete" onclick="return confirm('Delete module ${this.portalModule.name}?');" />
                                 <input class="delete" type="submit" name="op" value="Import" onclick="return confirm('Import module ${this.portalModule.name}?');" />
                             </g:if>
                             <g:link class="save" controller="userRole" action="create" params="[module:this.portalModule.name,role:'Admin']">Add Admin</g:link>
@@ -227,12 +229,14 @@ ${role.user.name}
                     <br/>
                     <g:form useToken="true" resource="${this.portalModule}" method="DELETE">
                         <fieldset class="buttons">
-                            <g:if test='${curuser?.isAdmin}'>
+                            <g:if test="${curuser?.isAdmin || curuser?.modulerole(this.portalModule.name)?.contains('Developer')}">
                                 <label for='files'>Files:</label><input type="checkbox" name="files" id="files" />
                                 <label for='user'>User:</label><input type="checkbox" name="user" id="user" />
                                 <g:link class="edit" action="edit" resource="${this.portalModule}"><g:message code="default.button.edit.label" default="Edit" /></g:link>
-                                <input class="delete" type="submit" name="op" value="Delete" onclick="return confirm('Delete module ${this.portalModule.name}?');" />
                                 <input class="delete" type="submit" name="op" value="Export" onclick="return confirm('Export module ${this.portalModule.name}?');" />
+                            </g:if>
+                            <g:if test='${curuser?.isAdmin}'>
+                                <input class="delete" type="submit" name="op" value="Delete" onclick="return confirm('Delete module ${this.portalModule.name}?');" />
                                 <input class="delete" type="submit" name="op" value="Import" onclick="return confirm('Import module ${this.portalModule.name}?');" />
                             </g:if>
                             <g:link class="save" controller="userRole" action="create" params="[module:this.portalModule.name,role:'Admin']">Add Admin</g:link>

@@ -14,6 +14,9 @@
                     <ul>
                         <li><a class="home" href="${createLink(uri: '/')}"><g:message code="default.home.label"/></a></li>
                         <li><g:link class="create" action="create">New Data Update</g:link></li>
+                        <g:if test="${session.enablesuperuser || session.adminmodules}">
+                            <li><g:link class="list" action="stuckuploads">Stuck Uploads</g:link></li>
+                        </g:if>
                     </ul>
                 </div>
             </section>
