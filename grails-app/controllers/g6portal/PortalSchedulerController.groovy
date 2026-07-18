@@ -22,7 +22,7 @@ class PortalSchedulerController {
         def curweekday = now.day
         def curmonthday = now.date 
         def curmonth = now.month + 1
-        def curweek = now.format("W")
+        def curweek = new java.text.SimpleDateFormat("W").format(now)
         println "Now:" + curhour
         println "Day:" + curweekday
         println "Date:" + curmonthday
