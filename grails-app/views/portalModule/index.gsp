@@ -31,6 +31,17 @@
                         <g:if test="${curuser?.isAdmin || session['developermodules']}">
                             <li><g:link class="list" action="importlogs">Import Logs</g:link></li>
                         </g:if>
+                        <%-- Portal super admins only. The page itself is reachable by anyone
+                             holding the module_usage Admin role, so this link is narrower than
+                             the page's own allowedroles rather than wider - it can never show a
+                             link that then refuses to open.
+
+                             Also gated on the target existing: module_usage is an optional
+                             module and is not installed on every portal, so without this the
+                             link would render as a dead end wherever it is absent. --%>
+                        <g:if test="${curuser?.isAdmin && g6portal.PortalPage.countByModuleAndSlugAndPublished('module_usage','usage_dashboard',true)}">
+                            <li><a class="list" href="${createLink(uri:'/view/module_usage/usage_dashboard')}">Usage Dashboard</a></li>
+                        </g:if>
                     </ul>
                 </div>
             </section>

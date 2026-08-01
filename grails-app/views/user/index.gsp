@@ -30,6 +30,14 @@
                         <g:if test='${curuser?.isAdmin}'>
                         <li><g:link class="create" action="create"><g:message code="default.new.label" args="[entityName]" /></g:link></li>
                         </g:if>
+                        <%-- Gated on the user_management Admin module role, matching the
+                             allowedroles="Admin" the interceptor applies to the page itself,
+                             so the link only appears to users who can actually open it.
+                             That also makes it self-hiding where user_management is not
+                             installed: nobody can hold a role in a module that is absent. --%>
+                        <g:if test='${curuser && "Admin" in curuser.modulerole("user_management")}'>
+                        <li><a class="list" href="${createLink(uri:'/view/user_management/dashboard')}">User Management Dashboard</a></li>
+                        </g:if>
                     </ul>
                 </div>
             </section>

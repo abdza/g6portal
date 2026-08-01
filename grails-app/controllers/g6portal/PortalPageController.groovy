@@ -85,6 +85,19 @@ class PortalPageController {
             }
         }
         if(page){
+            // Running a page executes its Groovy server-side, so allowedroles has to be
+            // checked against the page that was actually resolved. SecurityInterceptor does
+            // check it, but only from params.module/params.slug - a request that names the
+            // page by id instead (/portalPage/runpage?id=N) arrives with no module, and the
+            // interceptor's "developer of any module" shortcut lets it straight through to
+            // here. That would let a Developer of one module run any runable page in any
+            // module. Re-checking against the resolved page closes that, and also survives
+            // anyone adding portalPage.runpage to the portal.whitelist setting.
+            if(!runAllowed(page, curuser)) {
+                flash.message = "You do not have the rights to run that page"
+                redirect(controller: "portalPage", action: "home")
+                return
+            }
             if(page && page.published){
                 if(curuser?.isAdmin || (page.runable && (!page.requirelogin || curuser))){
 
@@ -850,5 +863,54 @@ setTimeout(check,2000);
             }
             '*'{ render status: NOT_FOUND }
         }
+    }
+
+    /**
+     * Whether curuser may run this page, judged against the page object itself rather than
+     * the module/slug in the URL.
+     *
+     * Deliberately mirrors the allowedroles rules in SecurityInterceptor's portalPage
+     * branch, so a page is not runnable on terms different from the ones on which it is
+     * viewable. Keep the two in step if either changes.
+     *
+     * @param page    the resolved page, never null
+     * @param curuser the session user, may be null for an anonymous request
+     * @return true when the page carries no role restriction or curuser satisfies it
+     */
+    private boolean runAllowed(PortalPage page, def curuser) {
+        // No restriction recorded: requirelogin (checked by the caller) is the only gate.
+        if(!page.allowedroles) {
+            return true
+        }
+        def testroles = page.allowedroles.tokenize(',')*.trim().findAll { it }
+        // An allowedroles of "" or "," restricts nothing - same reading as the interceptor.
+        if(!testroles || 'All' in testroles) {
+            return true
+        }
+        if(!curuser) {
+            return false
+        }
+        try {
+            if(curuser.isAdmin) {
+                return true
+            }
+            // Developer of the page's OWN module, matching the interceptor's shortcut.
+            // Scoped to that module: being a developer elsewhere must not carry over.
+            if(page.module && page.module in (curuser.developerlist() ?: [])) {
+                return true
+            }
+            if(page.module && testroles.any { tr -> tr in (curuser.modulerole(page.module) ?: []) }) {
+                return true
+            }
+            if(curuser.currentrole()?.role in testroles) {
+                return true
+            }
+        }
+        catch(Exception e) {
+            // A role lookup that blows up must deny, never fall through to running the page.
+            println "Error checking run rights for ${page.module}:${page.slug} - ${e}"
+            return false
+        }
+        return false
     }
 }
