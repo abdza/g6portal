@@ -34,7 +34,8 @@ G6 Portal
 <g:set var="curuser" value="${g6portal.User.get(session?.userid)}"/>
     <g:if test="${flash.message}">
       <asset:script>
-        alert("${flash.message}");
+        <%-- JavaScript codec, not the default HTML one - see the same block in main.gsp. --%>
+        alert("${raw(flash.message.toString().encodeAsJavaScript())}");
       </asset:script>
     </g:if>
 <g:layoutBody/>

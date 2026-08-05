@@ -125,7 +125,7 @@ class PortalTrackerData {
         }
     }
 
-    def update(mailService) {
+    def update(mailService, boolean validateRows=false) {
         def debug_dataupdate = PortalSetting.namedefault('debug_dataupdate',1)
         if(debug_dataupdate){
             println 'in update ' + this.tracker
@@ -187,11 +187,17 @@ class PortalTrackerData {
                     if(this.data_end && this.data_end>this.data_row){
                         poiExcel.dataend = this.data_end
                     }
+                    def validateFieldNames = (validateRows && this.tracker.row_validation_fields) ?
+                        this.tracker.row_validation_fields.tokenize(',')*.trim() : []
                     def statementfields = []
                     def gotupdate = false
                     this.tracker.fields.each { field->
                         if(savedparams.optString('datasource_' + field.id)!='ignore'){
-                            statementfields << ['id':field.id,'name':field.name,'type':field.field_type]
+                            def fieldmap = ['id':field.id,'name':field.name,'type':field.field_type]
+                            if(field.name in validateFieldNames && field.row_validation_regex){
+                                fieldmap['validate_regex'] = field.row_validation_regex
+                            }
+                            statementfields << fieldmap
                             if(savedparams.optString('update_' + field.id)){
                                 gotupdate = true
                             }
@@ -225,13 +231,24 @@ class PortalTrackerData {
                         // Fall back to the loader's own failure tally instead of assuming success
                         uploadedCount = rowcount - poiExcel.failedcount
                     }
-                    def rejectedCount = rowcount - uploadedCount
+                    // Rows that were never real data - either entirely blank (poiExcel.blankcount,
+                    // pre-existing behavior for every caller) or non-blank but failed a configured
+                    // row_validation_regex (poiExcel.skippedcount, only ever nonzero when
+                    // validateRows was true). Kept separate from rejectedCount so blank/formatting
+                    // rows don't get mislabeled as failures and a working upload doesn't look like
+                    // it partially failed.
+                    def skippedCount = poiExcel.skippedcount + poiExcel.blankcount
+                    def rejectedCount = rowcount - uploadedCount - skippedCount
                     // If rows were present in the file but none loaded, the file format is wrong
                     if (rowcount > 0 && uploadedCount == 0) {
                         throw new RuntimeException("Upload failed: ${rowcount} row(s) were received but none could be imported. The file may be using an incorrect column format — please verify and re-upload.")
                     }
                     def uploadFilename = this.path ? this.path.tokenize('/')[-1] : 'Unknown'
-                    def finalMessages = "File: ${uploadFilename}\nStatus: Completed\nRecords Received: ${rowcount}\nRecords Uploaded: ${uploadedCount}\nRecords Rejected: ${rejectedCount}".toString()
+                    def finalMessages = "File: ${uploadFilename}\nStatus: Completed\nRecords Received: ${rowcount}\nRecords Uploaded: ${uploadedCount}".toString()
+                    if (skippedCount > 0) {
+                        finalMessages += "\nRecords Skipped (non-data rows): ${skippedCount}"
+                    }
+                    finalMessages += "\nRecords Rejected: ${rejectedCount}"
                     if (rejectedCount > 0) {
                         def failDetails = ''
                         try { failDetails = poiExcel.failureSummary() } catch(Exception ignore) {}

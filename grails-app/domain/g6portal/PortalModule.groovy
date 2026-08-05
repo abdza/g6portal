@@ -300,6 +300,7 @@ class PortalModule {
                     curtracker.excelfields = itracker.excelfields
                     curtracker.filterfields = itracker.filterfields
                     curtracker.searchfields = itracker.searchfields
+                    curtracker.row_validation_fields = itracker.row_validation_fields
                     curtracker.postprocess = PortalPage.findByModuleAndSlug(itracker.module,itracker.postprocess)
                     curtracker.sqlfieldnames = itracker.sqlfieldnames
                     curtracker.sqlvalues = itracker.sqlvalues
@@ -357,6 +358,7 @@ class PortalModule {
                             curfield.is_encrypted=ifield.is_encrypted
                             curfield.role_query=ifield.role_query
                             curfield.encode_exception=ifield.encode_exception
+                            curfield.row_validation_regex=ifield.row_validation_regex
                             curfield.suppress_follow_link=ifield.suppress_follow_link
                             curfield.field_description=ifield.field_description
                             curfield.field_tooltip=ifield.field_tooltip
@@ -893,6 +895,7 @@ class PortalModule {
                         field_description: field.field_description,
                         field_tooltip: field.field_tooltip,
                         field_placeholder: field.field_placeholder,
+                        row_validation_regex: field.row_validation_regex,
                         error_checks: errorarray
                     ]
                 }
@@ -999,6 +1002,7 @@ class PortalModule {
                     excelfields: tracker.excelfields,
                     filterfields: tracker.filterfields,
                     searchfields: tracker.searchfields,
+                    row_validation_fields: tracker.row_validation_fields,
                     postprocess: tracker.postprocess?.slug,
                     initial_status: tracker.initial_status?.name,
                     defaultfield: tracker.defaultfield?.name,

@@ -33,7 +33,12 @@ G6 Portal
 	<g:set var="curuser" value="${g6portal.User.get(session?.userid)}"/>
     <g:if test="${flash.message}">
       <asset:script>
-        alert("${flash.message}");
+        <%-- JavaScript codec, not the default HTML one: this is a JS string literal, not
+             markup. Under the HTML codec an '&' in the message reached the user as the
+             literal '&amp;' (e.g. "FMO - International &amp; Domestic"), and a double
+             quote broke the whole script block. raw() keeps the default codec from
+             re-encoding what encodeAsJavaScript already escaped. --%>
+        alert("${raw(flash.message.toString().encodeAsJavaScript())}");
       </asset:script>
     </g:if>
 

@@ -54,6 +54,7 @@ class PortalTracker {
         excelfields(nullable:true,widget:'textarea')
         searchfields(nullable:true,widget:'textarea')
         filterfields(nullable:true,widget:'textarea')
+        row_validation_fields(nullable:true,widget:'textarea')
         allowadd(nullable:true)
         downloadexcel(nullable:true)
         excel_audit(nullable:true)
@@ -134,6 +135,7 @@ class PortalTracker {
         filterfields type: 'text'       // Store as TEXT for large field lists
         searchfields type: 'text'       // Store as TEXT for large field lists
         hiddenlistfields type: 'text'   // Store as TEXT for large field lists
+        row_validation_fields type: 'text'  // Store as TEXT for large field lists
         cache true                      // Enable second-level caching
     }
 
@@ -158,6 +160,7 @@ class PortalTracker {
     String hiddenlistfields             // Fields to hide in list view
     String excelfields                  // Fields to include in Excel export
     String filterfields                 // Fields available for filtering
+    String row_validation_fields        // Comma-separated field names; ALL must match their row_validation_regex (bulk upload) for a row to be treated as real data
     String searchfields                 // Fields searchable via search box
     String defaultsort                  // Default sorting column
     Integer defaultlimit                // Default number of records to show

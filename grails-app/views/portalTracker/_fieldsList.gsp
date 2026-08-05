@@ -9,6 +9,10 @@
 	<li><g:link class="create" controller="portalTrackerField" action="createIndex" id="${params.id}">Create Index</g:link></li>
 	<li><g:link class="create" controller="portalTracker" action="fix_file_links" id="${params.id}">Fix FileLinks</g:link></li>
 	<li><g:link class="create" controller="portalTracker" action="fix_trail_file_links" id="${params.id}">Fix Trail FileLinks</g:link></li>
+	<%-- Rewrites every row of each converted column and rebuilds the table, so unlike the
+	     other actions here its cost scales with the table size - hence the warning. --%>
+	<li><g:link class="create" controller="portalTracker" action="convert_text_columns" id="${params.id}"
+	            onclick="return confirm('Convert this tracker\\'s text columns to varchar(max)?\\n\\nEvery row of each Text Area column is rewritten and the table is rebuilt, so this can take a while and write a lot of transaction log on a large tracker. Values are preserved.');">Text &rarr; varchar(max)</g:link></li>
     </ul>
 </div>
 </section>

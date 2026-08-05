@@ -169,6 +169,124 @@ class PortalTrackerController {
         }
     }
 
+    /**
+     * Converts every legacy `text`/`ntext` column on this tracker's data table to
+     * varchar(max)/nvarchar(max). Opt-in per tracker, because the rewrite is proportional to
+     * the table size and only pays off where Text Area columns are actually read a lot.
+     *
+     * Why bother: text is deprecated by Microsoft, and a text column cannot be compared with
+     * '=', sorted, grouped, selected DISTINCT, passed to len()/left(), or used as an index
+     * INCLUDE column - so a Text Area field can never be filtered or sorted while it stays
+     * text. varchar(max) also stores values in-row when they fit instead of always paying for
+     * a LOB page lookup.
+     *
+     * THREE steps are required, and skipping any of them makes this pointless:
+     *   1. ALTER COLUMN  - metadata only. Measured on 120,721 rows: 494ms, and neither the
+     *                      storage nor the scan time moved at all, because every existing
+     *                      value stays in the LOB pages it was already in.
+     *   2. UPDATE t SET c = c - rewrites each value so it lands in-row. This is what actually
+     *                      buys the speed (scan 632ms -> 408ms on that table), and it is the
+     *                      expensive part: every row is written, and written to the log.
+     *   3. ALTER TABLE REBUILD - releases the now-empty LOB pages. Without it the table is
+     *                      LARGER than before (155MB vs 67MB); with it, 48MB.
+     * End state on that table: 632ms -> 388ms, 67.6MB -> 48.4MB, values byte-identical.
+     *
+     * Postgres is left alone: its `text` is the idiomatic unlimited type with none of the
+     * restrictions above, and varchar(max) is not valid syntax there.
+     */
+    def convert_text_columns(Long id) {
+        def tracker = portalTrackerService.get(id)
+        if(!tracker) {
+            flash.message = "Tracker not found"
+            redirect controller: 'portalTracker', action: 'index'
+            return
+        }
+        if(grails.util.Holders.config.dataSource.url?.toString()?.contains("jdbc:postgresql")) {
+            flash.message = "Nothing to do on Postgres: text is the correct type there, and varchar(max) does not exist."
+            redirect tracker
+            return
+        }
+
+        def sql = new Sql(sessionFactory.currentSession.connection())
+        def tableName = tracker.data_table()
+        // Identifier comes from tracker config rather than a request parameter, but it is
+        // still interpolated into DDL - validate it the same way the rest of this class does.
+        if(!(tableName ==~ /^[a-zA-Z_][a-zA-Z0-9_]*$/)) {
+            flash.message = "Refusing to alter an unexpected table name: ${tableName}"
+            redirect tracker
+            return
+        }
+
+        def sizeMb = {
+            sql.firstRow("""select cast(sum(a.total_pages)*8.0/1024 as decimal(10,1)) as mb
+                            from sys.partitions p join sys.allocation_units a on a.container_id = p.partition_id
+                            where p.object_id = object_id(:t)""".toString(), [t: tableName])?.mb
+        }
+        def before = sizeMb()
+
+        def cols = sql.rows("""select COLUMN_NAME, DATA_TYPE, IS_NULLABLE
+                               from INFORMATION_SCHEMA.COLUMNS
+                               where TABLE_NAME = :t and DATA_TYPE in ('text','ntext')""".toString(),
+                            [t: tableName])
+        if(!cols) {
+            flash.message = "No text columns on ${tableName} - nothing to convert."
+            redirect tracker
+            return
+        }
+
+        def converted = []
+        def failed = []
+        cols.each { col ->
+            def cname = col.COLUMN_NAME?.toString()
+            if(!(cname ==~ /^[a-zA-Z_][a-zA-Z0-9_]*$/)) { failed << "${cname} (unsafe column name)"; return }
+            // ntext is the unicode flavour, so it has to land on nvarchar(max) or every
+            // non-ASCII character in the column is destroyed by the conversion.
+            def newtype = (col.DATA_TYPE?.toString() == 'ntext') ? 'nvarchar(max)' : 'varchar(max)'
+            def nullclause = (col.IS_NULLABLE?.toString() == 'NO') ? 'NOT NULL' : 'NULL'
+            try {
+                sql.execute("alter table [${tableName}] alter column [${cname}] ${newtype} ${nullclause}".toString())
+                // Step 2: without this the conversion is metadata-only and changes nothing.
+                sql.executeUpdate("update [${tableName}] set [${cname}] = [${cname}]".toString())
+                converted << "${cname} (${col.DATA_TYPE} -> ${newtype})"
+            } catch(Exception e) {
+                failed << "${cname}: ${e.message}"
+                PortalErrorLog.record(params, session.curuser, 'tracker', 'convert_text_columns',
+                                      e.toString(), tracker.slug, tracker.module)
+            }
+        }
+
+        // Step 3: one rebuild for the whole table, after every column has been rewritten.
+        def rebuilt = true
+        if(converted) {
+            try { sql.execute("alter table [${tableName}] rebuild".toString()) }
+            catch(Exception e) {
+                rebuilt = false
+                PortalErrorLog.record(params, session.curuser, 'tracker', 'convert_text_columns rebuild',
+                                      e.toString(), tracker.slug, tracker.module)
+            }
+        }
+        def after = sizeMb()
+
+        def msg = new StringBuilder()
+        msg << "Converted ${converted.size()} column(s) on ${tableName}"
+        if(converted) msg << ": " + converted.join(', ')
+        msg << ". Table ${before ?: '?'}MB -> ${after ?: '?'}MB"
+        if(!rebuilt) msg << " (rebuild failed - the freed LOB pages are still allocated)"
+        if(failed) msg << ". FAILED: " + failed.join('; ')
+        // The trail table is a separate table with its own text columns; converting it is not
+        // part of "the tracker's fields", but the developer should know it is there.
+        try {
+            def trailText = sql.firstRow("""select count(*) as c from INFORMATION_SCHEMA.COLUMNS
+                                            where TABLE_NAME = :t and DATA_TYPE in ('text','ntext')""".toString(),
+                                         [t: tracker.trail_table()])?.c ?: 0
+            if(trailText) msg << ". Note: ${tracker.trail_table()} still has ${trailText} text column(s), not touched by this action."
+        } catch(Exception e) { }
+
+        flash.message = msg.toString()
+        redirect tracker
+        return
+    }
+
     @Transactional
     def fix_file_links(Long id) {
         def tracker = portalTrackerService.get(id)

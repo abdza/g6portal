@@ -88,6 +88,12 @@ public class PoiExcel {
 	public int dataend=-1;
 	// Per-load failure diagnostics: filled by loadData, read via failureSummary()
 	public int failedcount = 0;
+	// Rows that had real (non-blank) data but failed a configured row-validation regex -
+	// counted separately from failedcount (SQL errors) and from blank-row skips.
+	public int skippedcount = 0;
+	// Rows with no data at all in any mapped column - never inserted, and distinct from
+	// both failedcount (SQL errors) and skippedcount (non-blank rows that failed validation).
+	public int blankcount = 0;
 	private LinkedHashMap<String,Integer> failColumns = new LinkedHashMap<String,Integer>();      // column -> failing row count
 	private LinkedHashMap<String,Integer> failColumnLimit = new LinkedHashMap<String,Integer>();  // column -> max allowed length
 	private LinkedHashMap<String,Integer> failColumnMaxLen = new LinkedHashMap<String,Integer>(); // column -> longest value seen
@@ -364,6 +370,8 @@ public class PoiExcel {
 		// Load varchar length limits of the target table so failed inserts can be
 		// traced back to the offending column in failureSummary()
 		failedcount = 0;
+		skippedcount = 0;
+		blankcount = 0;
 		failColumns.clear();
 		failColumnLimit.clear();
 		failColumnMaxLen.clear();
@@ -509,6 +517,7 @@ public class PoiExcel {
 						boolean firstone = true;
 						boolean firstcompare = true;
 						boolean nodata = true;
+						boolean rowValid = true;
 						String torun = "select 1";
 						for(Object field:statementfields) {
 							HashMap<String,Object> cfield = (HashMap<String,Object>) field;
@@ -525,6 +534,17 @@ public class PoiExcel {
 								curdata = currow.get(Integer.parseInt(datasource));
 								if(curdata!=null){
 									nodata = false;
+								}
+							}
+
+							// Opt-in row-content validation (PortalTracker.row_validation_fields):
+							// if this field carries a validate_regex, the raw cell value must fully
+							// match it or the whole row is treated as non-data (not inserted, not
+							// counted as a failure - see skippedcount).
+							Object validateRegexObj = cfield.get("validate_regex");
+							if (validateRegexObj != null) {
+								if (curdata == null || !curdata.toString().matches((String) validateRegexObj)) {
+									rowValid = false;
 								}
 							}
 
@@ -603,7 +623,7 @@ public class PoiExcel {
 							}
 						}
 						try {
-							if(!nodata){
+							if(!nodata && rowValid){
 								qparam.put("dataupdate_id",this.dataupdate_id);
 								if(!gotupdate){
 									if(this.gotBatch){
@@ -631,6 +651,12 @@ public class PoiExcel {
 										}
 									}
 								}
+							}
+							else if(!nodata && !rowValid){
+								skippedcount += 1;
+							}
+							else if(nodata){
+								blankcount += 1;
 							}
 						}
 						catch(SQLException e){
