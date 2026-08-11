@@ -235,6 +235,50 @@ class PortalModule {
         }
     }
 
+    /**
+     * Repoint file attachments at a tracker that was just deleted and recreated by the importer.
+     *
+     * FileLink.tracker_id is a loose Integer rather than a real association, so a module import
+     * used to leave every existing attachment pointing at a dead id - or worse, at whatever
+     * unrelated tracker had since been handed that id. Both the download access check
+     * (FileLinkController.download / SecurityInterceptor) and any query that keys attachments by
+     * tracker_id then read the wrong record, because tracker_data_id is only unique per tracker.
+     *
+     * Runs on the Hibernate session connection (raw_execute) so it sees the uncommitted delete and
+     * insert, and so it does not self-block on a second JDBC connection.
+     *
+     * @param oldTrackerIds ids the tracker held before it was deleted
+     * @param newtracker    the freshly saved replacement
+     */
+    def remapfilelinks(oldTrackerIds,newtracker) {
+        if(!oldTrackerIds || !newtracker?.id){
+            return 0
+        }
+        // ids come straight from portal_tracker.id, so inlining them is safe and avoids the
+        // MSSQL driver's "conversion from UNKNOWN to UNKNOWN" failure on bound IN lists.
+        def idlist = oldTrackerIds.findAll { it != null && it != newtracker.id }.collect { it as Long }
+        if(!idlist){
+            return 0
+        }
+        def inclause = '(' + idlist.join(',') + ')'
+        try {
+            def affected = PortalTracker.raw_rows("select count(*) as c from file_link where tracker_id in " + inclause)
+            def total = affected ? (affected[0]['c'] as Long) : 0L
+            if(total > 0){
+                PortalTracker.raw_execute("update file_link set tracker_id = " + newtracker.id +
+                                          " where tracker_id in " + inclause)
+                println "Remapped ${total} file_link rows from tracker ${idlist} to ${newtracker.id} " +
+                        "(${newtracker.module}/${newtracker.slug})"
+            }
+            return total
+        }
+        catch(Exception e){
+            println "Could not remap file_link rows for tracker ${newtracker.module}/${newtracker.slug}: ${e}"
+            PortalErrorLog.record(null,null,'module','remap filelinks',e.toString(),newtracker.slug,newtracker.module)
+            return 0
+        }
+    }
+
     def importtrackers(migrationfolder,jsonSlurper) {
         println "Importing trackers"
         def trackerfile = new File(migrationfolder + '/trackerlist.json')
@@ -248,8 +292,13 @@ class PortalModule {
                     // Preserve upload records before deleting tracker; savedparams uses field IDs
                     // which change after import, so remap to field names for safe restore.
                     def savedTrackerDatas = []
+                    // file_link.tracker_id is a plain Integer, not a FK, so nothing remaps it when the
+                    // tracker below is deleted and recreated with a fresh id. Remember the outgoing ids
+                    // so the attachments can be repointed at the new tracker after it is saved.
+                    def oldTrackerIds = []
                     if(curtracker.size()>0){
                         curtracker.each { ct->
+                            oldTrackerIds << ct.id
                             def fieldIdToName = [:]
                             ct.fields.each { f -> fieldIdToName[f.id] = f.name }
                             ct.datas.each { ctd->
@@ -335,6 +384,7 @@ class PortalModule {
                         } catch(Exception tbe) {
                             println "Could not create tables for tracker ${curtracker.slug}: ${tbe}"
                         }
+                        remapfilelinks(oldTrackerIds,curtracker)
                         itracker.fields.each { ifield->
                             def curfield = PortalTrackerField.findByTrackerAndName(curtracker,ifield.name)
                             def isNewField = (curfield == null)
