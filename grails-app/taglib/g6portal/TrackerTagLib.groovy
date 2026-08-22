@@ -8,6 +8,52 @@ class TrackerTagLib {
     def sessionFactory
     PortalService portalService
 
+    // Simple cache for dropdown options (tracker_id -> options)
+    private static final Map<String, Map> dropdownCache = [:]
+    private static final Map<String, Long> cacheTimestamps = [:]
+    private static final Long CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
+    
+    /**
+     * Get cached dropdown options for a tracker field
+     */
+    private def getCachedDropdownOptions(othertracker, otherfield, sql) {
+        def cacheKey = "${othertracker.id}_${otherfield}"
+        def now = System.currentTimeMillis()
+        
+        // Check if cache exists and is still valid
+        if (dropdownCache.containsKey(cacheKey) && cacheTimestamps.containsKey(cacheKey)) {
+            def timestamp = cacheTimestamps[cacheKey]
+            if (now - timestamp < CACHE_DURATION) {
+                return dropdownCache[cacheKey]
+            }
+        }
+        
+        // Cache miss or expired, fetch fresh data
+        def options = sql.rows("select id," + PortalTracker.qcol(otherfield) + " from " + othertracker.data_table())
+        
+        // Update cache
+        dropdownCache[cacheKey] = options
+        cacheTimestamps[cacheKey] = now
+        
+        return options
+    }
+    
+    /**
+     * Clear cache for a specific tracker or all caches
+     */
+    private def clearDropdownCache(trackerId = null) {
+        if (trackerId) {
+            def keysToRemove = dropdownCache.keySet().findAll { it.startsWith("${trackerId}_") }
+            keysToRemove.each { key ->
+                dropdownCache.remove(key)
+                cacheTimestamps.remove(key)
+            }
+        } else {
+            dropdownCache.clear()
+            cacheTimestamps.clear()
+        }
+    }
+
     def trackerErrorHandler = { attrs->
         if(attrs.tracker){
             out << "\$('form').on('submit',function() {"
@@ -408,7 +454,7 @@ class TrackerTagLib {
                                                 value = curval['id']
                                             }
                                         }
-                                        def options = sql.rows("select id," + otherfield + " from " + othertracker.data_table())
+                                        def options = getCachedDropdownOptions(othertracker, otherfield, sql)
                                         if(options.size()>10) {
                                             out << select(name:attrs.field.name?.trim(),value:value,from:options,optionKey:"id",optionValue:otherfield,noSelection:['':'Please select'])
                                             out << asset.script() { user_selector(controller:"PortalTracker",action:"dropdownlist",id:attrs.field.id,property:attrs.field.name?.trim(),value:value,parent:'#' + attrs.field.name?.trim() + '_div') }
@@ -1363,6 +1409,132 @@ content: event.description
         }
     }
 
+    def trackerFormJS = { attrs->
+        out << asset.script() { """
+
+        function checkboxArray(field_name) {
+            return \$("[name='" + field_name + "']:checked").map(function() { return this.value }).get();
+        }
+
+        function toggleAll(field_name,value=null) {
+            var inputelement = \$("[name='" + field_name + "']");
+            var dispelement = \$("#" + field_name + "_tr");
+            if(inputelement) {
+                toggleField(inputelement,value);
+            }
+            if(dispelement) {
+                if(value!=null) {
+                    if(value==1) {
+                        dispelement.show();
+                    }
+                    else {
+                        dispelement.hide();
+                    }
+                }
+                else {
+                    if(isElementVisible(dispelement)) {
+                        dispelement.hide();
+                    }
+                    else {
+                        dispelement.show();
+                    }
+                }
+            }
+        }
+
+        function toggleField(\$element,status=null) {
+            if(status!=null) {
+                if(status==1) {
+                    if(\$element.prop('type')!='hidden') {
+                        \$element.closest('div.fieldcontain').show();
+                    }
+                    \$element.prop('disabled',false);
+                    \$element.data('toggle',1);
+                }
+                else {
+                    if(\$element.prop('type')!='hidden') {
+                        \$element.closest('div.fieldcontain').hide();
+                    }
+                    \$element.prop('disabled',true);
+                    \$element.data('toggle',0);
+                }
+            }
+            else {
+                if(\$element.data('toggle') || isElementVisible(\$element)) {
+                    if(\$element.prop('type')!='hidden') {
+                        \$element.closest('div.fieldcontain').hide();
+                    }
+                    \$element.prop('disabled',true);
+                    \$element.data('toggle',0);
+                }
+                else {
+                    if(\$element.prop('type')!='hidden') {
+                        \$element.closest('div.fieldcontain').show();
+                    }
+                    \$element.prop('disabled',false);
+                    \$element.data('toggle',1);
+                }
+            }
+        }
+
+        function isElementVisible(\$element) {
+          // Check if element exists
+          if (!\$element.length) {
+              return false;
+          }
+
+          // Check if the element or any of its parents have display: none
+          if (\$element.css('display') === 'none' || \$element.parents().filter(function() {
+              return \$(this).css('display') === 'none';
+          }).length > 0) {
+              return false;
+          }
+
+          // Check visibility property
+          if (\$element.css('visibility') === 'hidden' || \$element.parents().filter(function() {
+              return \$(this).css('visibility') === 'hidden';
+          }).length > 0) {
+              return false;
+          }
+
+          // Check opacity
+          if (parseFloat(\$element.css('opacity')) === 0) {
+              return false;
+          }
+
+          // Check if element has zero dimensions
+          const rect = \$element[0].getBoundingClientRect();
+          if (rect.width === 0 || rect.height === 0) {
+              return false;
+          }
+
+          return true;
+        }
+
+        function update_submit() {
+          var enablesubmit = true;
+          \$('.fatal_error').each(function() {
+            const \$error = \$(this);
+            if (isElementVisible(\$error)) {
+                enablesubmit = false;
+            } else {
+            }
+          });
+          \$('#submit').prop('disabled',!enablesubmit);
+        }
+
+        function set_readonly(field_name, value) {
+            var inputelement = \$("[name='" + field_name + "']");
+            if(inputelement) {
+                inputelement.val(value);
+                inputelement.prop('readonly',true);
+            }
+        }
+
+        update_submit();
+        """ }
+    }
+
     def trackerForm = { attrs->
         if(attrs.transition){
             def datas = [:]
@@ -1468,128 +1640,8 @@ content: event.description
                     out << asset.script() { """\$(window).on('load',function() { \$('#${attrs.transition.tracker.slug}_form').find('input[type="submit"]').click();});"""}
                 }
             }
-            out << asset.script() { """
-
-            function checkboxArray(field_name) {
-                return \$("[name='" + field_name + "']:checked").map(function() { return this.value }).get();
-            }
-
-            function toggleAll(field_name,value=null) {
-                var inputelement = \$("[name='" + field_name + "']");
-                var dispelement = \$("#" + field_name + "_tr");
-                if(inputelement) {
-                    toggleField(inputelement,value);
-                }
-                if(dispelement) {
-                    if(value!=null) {
-                        if(value==1) {
-                            dispelement.show();
-                        }
-                        else {
-                            dispelement.hide();
-                        }
-                    }
-                    else {
-                        if(isElementVisible(dispelement)) {
-                            dispelement.hide();
-                        }
-                        else {
-                            dispelement.show();
-                        }
-                    }
-                }
-            }
-
-            function toggleField(\$element,status=null) {
-                if(status!=null) {
-                    if(status==1) {
-                        if(\$element.prop('type')!='hidden') {
-                            \$element.closest('div.fieldcontain').show();
-                        }
-                        \$element.prop('disabled',false);
-                        \$element.data('toggle',1);
-                    }
-                    else {
-                        if(\$element.prop('type')!='hidden') {
-                            \$element.closest('div.fieldcontain').hide();
-                        }
-                        \$element.prop('disabled',true);
-                        \$element.data('toggle',0);
-                    }
-                }
-                else {
-                    if(\$element.data('toggle') || isElementVisible(\$element)) {
-                        if(\$element.prop('type')!='hidden') {
-                            \$element.closest('div.fieldcontain').hide();
-                        }
-                        \$element.prop('disabled',true);
-                        \$element.data('toggle',0);
-                    }
-                    else {
-                        if(\$element.prop('type')!='hidden') {
-                            \$element.closest('div.fieldcontain').show();
-                        }
-                        \$element.prop('disabled',false);
-                        \$element.data('toggle',1);
-                    }
-                }
-            }
-
-            function isElementVisible(\$element) {
-              // Check if element exists
-              if (!\$element.length) {
-                  return false;
-              }
-
-              // Check if the element or any of its parents have display: none
-              if (\$element.css('display') === 'none' || \$element.parents().filter(function() {
-                  return \$(this).css('display') === 'none';
-              }).length > 0) {
-                  return false;
-              }
-
-              // Check visibility property
-              if (\$element.css('visibility') === 'hidden' || \$element.parents().filter(function() {
-                  return \$(this).css('visibility') === 'hidden';
-              }).length > 0) {
-                  return false;
-              }
-
-              // Check opacity
-              if (parseFloat(\$element.css('opacity')) === 0) {
-                  return false;
-              }
-
-              // Check if element has zero dimensions
-              const rect = \$element[0].getBoundingClientRect();
-              if (rect.width === 0 || rect.height === 0) {
-                  return false;
-              }
-
-              return true;
-            }
-
-            function update_submit() {
-              var enablesubmit = true;
-              \$('.fatal_error').each(function() {
-                const \$error = \$(this);
-                if (isElementVisible(\$error)) {
-                    enablesubmit = false;
-                } else {
-                }
-              });
-              \$('#submit').prop('disabled',!enablesubmit);
-            }
-
-            function set_readonly(field_name, value) {
-                var inputelement = \$("[name='" + field_name + "']");
-                if(inputelement) {
-                    inputelement.val(value);
-                    inputelement.prop('readonly',true);
-                }
-            }
-            """ }
         }
+        out << trackerFormJS()
     }
 
     def trackerFieldRow = { attrs->

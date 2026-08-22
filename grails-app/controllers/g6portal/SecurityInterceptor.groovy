@@ -10,6 +10,10 @@ class SecurityInterceptor {
         .except(controller:'user', action:'authenticate')
         .except(controller:'googleOAuth', action:'initiate')
         .except(controller:'googleOAuth', action:'callback')
+        // Module-owned raw endpoints authenticate themselves, per PortalEndpoint
+        // row (Basic / Token / Session / None). A protocol client cannot follow a
+        // redirect to the login form, so this interceptor must not see them.
+        .except(controller:'portalEndpoint')
     }
 
     boolean before() { 
@@ -48,6 +52,29 @@ class SecurityInterceptor {
         else if(session.realuserid) {
             realuser = User.get(session?.realuserid)
             session['realuser'] = realuser
+        }
+    }
+
+    // Single-session-per-account enforcement, ported from g5portal. Skipped
+    // entirely while an admin is impersonating a user (session.adminlink set) -
+    // during impersonation curuser is the *target* user, so this must not
+    // touch/steal the target's claim, and the admin's own impersonation session
+    // must never be treated as a concurrent login.
+    //
+    // Inert unless `server.enforce_single_session: true` is set (see
+    // User.allowConcurrentSessions).
+    if(curuser && !session.adminlink) {
+        if(!curuser.validateSession(session.id)) {
+            flash.message = "You have been logged out because this account was logged in from another browser or device."
+            session.userid = null
+            session.curuser = null
+            session.realuser = null
+            session.realuserid = null
+            session.adminlink = null
+            session.chosenrole = null
+            try { session.invalidate() } catch(Exception e) {}
+            redirect(controller:'user', action:'login')
+            return false
         }
     }
 		if(params.slug) {

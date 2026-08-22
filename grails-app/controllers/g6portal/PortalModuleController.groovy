@@ -594,7 +594,18 @@ class PortalModuleController {
           redirect action:"show", method:"GET", id:id
           return
       }
-      respond module, view:'importpreview', model:[curuser:curuser, diff:difftext, file_on:file_on, staff_on:staff_on]
+      // Settings get their own comparison on top of the raw diff. The diff shows that
+      // settinglist.json differs; this says which setting, what it holds here now, and lets
+      // the operator keep it - the raw text alone cannot be acted on setting by setting.
+      def settings = []
+      try {
+          settings = module.previewsettings()
+      } catch(Exception e) {
+          println "Error building settings preview: " + e
+          flash.message = "Could not read settinglist.json: ${e.message}"
+      }
+      respond module, view:'importpreview', model:[curuser:curuser, diff:difftext,
+              file_on:file_on, staff_on:staff_on, settings:settings]
   }
 
   def confirmimport(Long id) {
@@ -620,16 +631,35 @@ class PortalModuleController {
       }
       def file_on = (params.files ? true : false) && migrationHasFiles(module)
       def staff_on = (params.staff ? true : false) && migrationHasStaff(module)
+      // Per-setting decisions from the preview form. Each row posts its key in a hidden
+      // settingkey_<n> alongside its radio settingchoice_<n>, so the pairing travels with the
+      // submission and does not depend on the settings file still being in the same order.
+      def settingchoices = [:]
+      params.each { k, v ->
+          def pname = k?.toString()
+          if(pname?.startsWith('settingkey_')) {
+              def choice = params['settingchoice_' + pname.substring('settingkey_'.length())]
+              if(choice) settingchoices[v.toString()] = choice.toString()
+          }
+      }
+      def kept = settingchoices.findAll { it.value == 'keep' }.keySet().sort()
       try {
           // regenerate the diff at import time so the log records exactly
           // what changed even if the module was modified after the preview
           def difftext = generateimportdiff(module, file_on, staff_on)
-          portalService.import_module(id, file_on, staff_on)
+          // Record the settings deliberately not taken, so the log explains why the imported
+          // module does not match its migration files.
+          if(kept) {
+              difftext = "Settings kept at their existing values (not imported):\n" +
+                         kept.collect { "  " + it }.join("\n") + "\n\n" + (difftext ?: '')
+          }
+          portalService.import_module(id, file_on, staff_on, settingchoices)
           PortalModuleImportLog.withTransaction {
               new PortalModuleImportLog(module:module.name, staffid:curuser?.staffID,
                   staffname:curuser?.name, remarks:params.remarks, diff:difftext).save(flush:true)
           }
-          flash.message = "Module imported"
+          flash.message = kept ? "Module imported (${kept.size()} setting${kept.size()==1?'':'s'} kept at existing value${kept.size()==1?'':'s'})"
+                              : "Module imported"
       } catch(Exception e) {
           println "Error importing module: " + e
           e.printStackTrace()

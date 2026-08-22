@@ -346,6 +346,14 @@ class PortalTrackerDataController {
                 render(view: 'create')
                 return
             }
+            // Validate file security before processing
+            def filemanagermax = PortalSetting.namedefault('filemanager_max_' + session.curuser?.userID,50000000)
+            def validationResult = FileSecurityValidator.validateFile(f,null,filemanagermax)
+            if (!validationResult.valid) {
+                flash.message = "File upload failed: ${validationResult.errors.join(', ')}"
+                render(view: 'create')
+                return
+            }
             def fileName = f.originalFilename
             def curfolder = System.getProperty("user.dir")
             def folderbase = PortalSetting.namedefault('uploadfolder',curfolder + '/uploads')
@@ -674,6 +682,14 @@ class PortalTrackerDataController {
         try {
             def f = request.getFile('fileupload')
             if (!f.empty) {
+                // Same validation as the create path
+                def filemanagermax = PortalSetting.namedefault('filemanager_max_' + session.curuser?.userID,50000000)
+                def validationResult = FileSecurityValidator.validateFile(f,null,filemanagermax)
+                if (!validationResult.valid) {
+                    flash.message = "File upload failed: ${validationResult.errors.join(', ')}"
+                    respond portalTrackerData, view:'edit'
+                    return
+                }
                 def fileName = f.originalFilename
                 def curfolder = System.getProperty("user.dir")
                 def folderbase = PortalSetting.namedefault('uploadfolder',curfolder + '/uploads')

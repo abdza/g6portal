@@ -495,6 +495,22 @@ class PortalTracker {
         return toret
     }
 
+    /**
+     * Quote a column identifier for the active database. A tracker field whose
+     * column name is mixed case must be quoted or the query fails; unquoted it
+     * is folded to lower case on Postgres and can collide on SQL Server.
+     * Anything that is not a bare identifier is passed through untouched.
+     */
+    def static qcol(identifier) {
+        if(identifier == null) return identifier
+        def id = identifier.toString().trim()
+        if(!id.matches(/^[a-zA-Z_][a-zA-Z0-9_]*$/)) return id
+        if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")) {
+            return '"' + id + '"'
+        }
+        return '[' + id + ']'
+    }
+
     def data_table() {
         if(datatable){
             return datatable
@@ -1087,34 +1103,35 @@ class PortalTracker {
             }
             else {
                 def gotq = false
+                def qcolkey = qcol(qpkey)
                 if(qpval instanceof String || qpval instanceof GString) {
                     if(qpval.indexOf('%')>-1) {
                         if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
-                            qq << " " + qpkey + " ilike :" + qpkey + " "
+                            qq << " " + qcolkey + " ilike :" + qpkey + " "
                         }
                         else {
-                            qq << " " + qpkey + " like :" + qpkey + " "
+                            qq << " " + qcolkey + " like :" + qpkey + " "
                         }
                         gotq = true
                     }
                     else if(qpval.size() > 0 && qpval[0] in ['<','>']) {
                         if(qpval[1]=='=') {
-                            qq << " " + qpkey + " " + qpval[0] + "= :" + qpkey + " "
+                            qq << " " + qcolkey + " " + qpval[0] + "= :" + qpkey + " "
                             qpval = qpval[2..-1]
                         }
                         else {
-                            qq << " " + qpkey + " " + qpval[0] + " :" + qpkey + " "
+                            qq << " " + qcolkey + " " + qpval[0] + " :" + qpkey + " "
                             qpval = qpval[1..-1]
                         }
                         gotq = true
                     }
                     else if(qpval.size() > 0 && qpval[0] in ['!']) {
-                        qq << " " + qpkey + " != :" + qpkey + " "
+                        qq << " " + qcolkey + " != :" + qpkey + " "
                         qpval = qpval[1..-1]
                         gotq = true
                     }
                     else if(qpval==null) {
-                        qq << " " + qpkey + " is null "
+                        qq << " " + qcolkey + " is null "
                     }
                 }
                 else if(qpval instanceof List) {
@@ -1122,30 +1139,30 @@ class PortalTracker {
                     def posp = 1
                     qpval.each { arval->
                         if(arval==null) {
-                            dp << qpkey + " is null"
+                            dp << qcolkey + " is null"
                         }
                         else {
                             def ddkey = qpkey + '_' + posp.toString()
                             if(arval.indexOf('%')>-1) {
                                 if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
-                                    dp << " " + qpkey + " ilike :" + ddkey + " "
+                                    dp << " " + qcolkey + " ilike :" + ddkey + " "
                                 }
                                 else {
-                                    dp << " " + qpkey + " like :" + ddkey + " "
+                                    dp << " " + qcolkey + " like :" + ddkey + " "
                                 }
                             }
                             else if(arval.size() > 0 && arval[0] in ['<','>']) {
                                 if(arval[1]=='=') {
-                                    dp << " " + qpkey + " " + arval[0] + "= :" + ddkey + " "
+                                    dp << " " + qcolkey + " " + arval[0] + "= :" + ddkey + " "
                                     arval = arval[2..-1]
                                 }
                                 else {
-                                    dp << " " + qpkey + " " + arval[0] + " :" + ddkey + " "
+                                    dp << " " + qcolkey + " " + arval[0] + " :" + ddkey + " "
                                     arval = arval[1..-1]
                                 }
                             }
                             else {
-                                dp << qpkey + "=:" + ddkey
+                                dp << qcolkey + "=:" + ddkey
                             }
                             posp += 1
                             finalparams[ddkey] = arval
@@ -1164,30 +1181,30 @@ class PortalTracker {
                                 def inposp = 1
                                 inval.each { iv->
                                     if(iv==null) {
-                                        inp << qpkey + " is null"
+                                        inp << qcolkey + " is null"
                                     }
                                     else {
                                         def ddkey = qpkey + '_in_' + inposp.toString()
                                         if(iv.indexOf('%')>-1) {
                                             if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
-                                                inp << " " + qpkey + " ilike :" + ddkey + " "
+                                                inp << " " + qcolkey + " ilike :" + ddkey + " "
                                             }
                                             else {
-                                                inp << " " + qpkey + " like :" + ddkey + " "
+                                                inp << " " + qcolkey + " like :" + ddkey + " "
                                             }
                                         }
                                         else if(iv.size() > 0 && iv[0] in ['<','>']) {
                                             if(iv[1]=='=') {
-                                                inp << " " + qpkey + " " + iv[0] + "= :" + ddkey + " "
+                                                inp << " " + qcolkey + " " + iv[0] + "= :" + ddkey + " "
                                                 iv = iv[2..-1]
                                             }
                                             else {
-                                                inp << " " + qpkey + " " + iv[0] + " :" + ddkey + " "
+                                                inp << " " + qcolkey + " " + iv[0] + " :" + ddkey + " "
                                                 iv = iv[1..-1]
                                             }
                                         }
                                         else {
-                                            inp << qpkey + "=:" + ddkey
+                                            inp << qcolkey + "=:" + ddkey
                                         }
                                         inposp += 1
                                         finalparams[ddkey] = iv
@@ -1206,11 +1223,11 @@ class PortalTracker {
                     qpval = null
                 }
                 else if(qpval==null) {
-                    qq << " " + qpkey + " is null "
+                    qq << " " + qcolkey + " is null "
                     gotq = true
                 }
                 if(!gotq) {
-                    qq << " " + qpkey + "=:" + qpkey + " "
+                    qq << " " + qcolkey + "=:" + qpkey + " "
                 }
                 if(qpval) {
                     finalparams[qpkey] = qpval
@@ -1925,10 +1942,10 @@ class PortalTracker {
                                 def formatField = validateIdentifier(tfield.field_format)
                                 def searchParamKey = "search_belongsto_" + tfield.name
                                 if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
-                                    likequery << fieldName + " in (select id from \"${tableName}\" where \"${formatField}\" ilike :" + searchParamKey + ")"
+                                    likequery << qcol(fieldName) + " in (select id from \"${tableName}\" where \"${formatField}\" ilike :" + searchParamKey + ")"
                                 }
                                 else {
-                                    likequery << fieldName + " in (select id from [${tableName}] where [${formatField}] like :" + searchParamKey + ")"
+                                    likequery << qcol(fieldName) + " in (select id from [${tableName}] where [${formatField}] like :" + searchParamKey + ")"
 
                                 }
                                 qparams[searchParamKey] = '%' + searchTerm + '%'
@@ -1937,20 +1954,20 @@ class PortalTracker {
                         else if(tfield.field_type=='User'){
                             def userSearchKey = "search_user_" + tfield.name
                             if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
-                                likequery << fieldName + " in (select id from portal_user where name ilike :" + userSearchKey + " or StaffId ilike :" + userSearchKey + " or EMAIL ilike :" + userSearchKey + ")"
+                                likequery << qcol(fieldName) + " in (select id from portal_user where name ilike :" + userSearchKey + " or StaffId ilike :" + userSearchKey + " or EMAIL ilike :" + userSearchKey + ")"
                             }
                             else {
-                                likequery << fieldName + " in (select id from portal_user where name like :" + userSearchKey + " or StaffId like :" + userSearchKey + " or EMAIL like :" + userSearchKey + ")"
+                                likequery << qcol(fieldName) + " in (select id from portal_user where name like :" + userSearchKey + " or StaffId like :" + userSearchKey + " or EMAIL like :" + userSearchKey + ")"
 
                             }
                             qparams[userSearchKey] = '%' + searchTerm + '%'
                         }
                         else{
                             if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
-                                likequery << fieldName + " ilike :" + tfield.name + " "
+                                likequery << qcol(fieldName) + " ilike :" + tfield.name + " "
                             }
                             else {
-                                likequery << fieldName + " like :" + tfield.name + " "
+                                likequery << qcol(fieldName) + " like :" + tfield.name + " "
                             }
                             qparams[tfield.name] = '%' + searchTerm + '%'
 

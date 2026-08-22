@@ -11,7 +11,7 @@ class UserController {
 
     UserService userService
 
-    static allowedMethods = [save: "POST", update: "PUT", delete: "DELETE"]
+    static allowedMethods = [save: "POST", update: "PUT", delete: "DELETE", clearsession: "POST"]
 
     def completelist = {
         def dparam = '%' + params.q?.trim().replace(' ','%') + '%'
@@ -432,6 +432,11 @@ class UserController {
     }
 
     def logout = {
+
+        // Only releases the single-session claim if this session owns it.
+
+        try { User.get(session.userid)?.releaseSession(session.id) } catch(Exception e) {}
+
         if(session.userid){
             // def user = User.get(session.userid)
             def user = session.curuser
@@ -893,4 +898,20 @@ class UserController {
         redirect(action: "show",id: user.id)
     }
     
+
+    def clearsession = {
+        if(!session.curuser?.isAdmin){
+            flash.message = "Need to be admin"
+            redirect(controller:'portalPage',action:'home')
+            return
+        }
+        def user = User.get(params.id)
+        if(user){
+            user.activeSessionId = null
+            user.activeSessionUpdated = null
+            User.withTransaction { user.save(flush:true,validate:false) }
+            flash.message = "Session lock cleared for ${user.name}"
+        }
+        redirect(controller:'user',action:'show',id:user?.id)
+    }
 }

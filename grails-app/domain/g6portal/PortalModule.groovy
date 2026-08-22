@@ -133,12 +133,96 @@ class PortalModule {
         }
     }
 
-    def importsettings(migrationfolder,jsonSlurper) {
+    // Canonical form of a setting's value, used both to decide whether an incoming
+    // setting actually differs from the stored one and to show it on the preview.
+    // Every value-bearing column takes part, so a change of type or datum_type counts
+    // as a change even when the visible value is unchanged.
+    static final String SETTING_DATE_FORMAT = "yyyy-MM-dd'T'HH:mm:ss"
+
+    static String settingcanon(type, text, number, date_value, datum_type) {
+        return [type, text, number, date_value, datum_type]
+                 .collect { it == null ? '' : it.toString() }.join('\u0001')
+    }
+
+    // The single value worth showing a human, chosen by the setting's own type.
+    static String settingdisplay(type, text, number, date_value) {
+        if(type == 'Number') return number == null ? '' : number.toString()
+        if(type == 'Date')   return date_value == null ? '' : date_value.toString()
+        return text == null ? '' : text.toString()
+    }
+
+    // Compares settinglist.json against what this server already holds, WITHOUT writing
+    // anything, so the import preview can list the settings an import would touch and let
+    // the operator decide one by one. Settings are the one part of a module that is
+    // routinely environment-specific - mail boxes, folder paths, scheduler URLs - so
+    // silently overwriting them on import is how a production server ends up pointing at a
+    // development mailbox.
+    //
+    // Each entry carries a status:
+    //   'new'     - nothing of that module+name here yet; the import will create it
+    //   'changed' - it exists with a different value; the operator gets a choice
+    //   'same'    - it exists and already matches, so importing it changes nothing
+    def previewsettings(migrationfolder = null, jsonSlurper = null) {
+        if(migrationfolder == null) {
+            def curfolder = System.getProperty("user.dir")
+            migrationfolder = PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration') + '/' + this.name
+        }
+        if(jsonSlurper == null) jsonSlurper = new JsonSlurper()
+        def out = []
+        def settingfile = new File(migrationfolder + '/settinglist.json')
+        if(!settingfile.exists()) return out
+        def settingarray = jsonSlurper.parseText(settingfile.text)
+        settingarray.each { isetting ->
+            def cursetting = PortalSetting.findByModuleAndName(isetting.module,isetting.name)
+            def incomingcanon = settingcanon(isetting.type, isetting.text, isetting.number,
+                                             isetting.date_value, isetting.datum_type)
+            def currentcanon = null
+            if(cursetting) {
+                // date_value is a string in the JSON and a Date in the database; format the
+                // stored one the same way the importer parses the incoming one, or every
+                // Date setting would read as changed on every import.
+                def curdate = cursetting.date_value ? cursetting.date_value.format(SETTING_DATE_FORMAT) : null
+                currentcanon = settingcanon(cursetting.type, cursetting.text, cursetting.number,
+                                            curdate, cursetting.datum_type)
+            }
+            def status = !cursetting ? 'new' : (incomingcanon == currentcanon ? 'same' : 'changed')
+            out << [
+                key      : settingkey(isetting.module, isetting.name),
+                module   : isetting.module,
+                name     : isetting.name,
+                type     : isetting.type,
+                status   : status,
+                incoming : settingdisplay(isetting.type, isetting.text, isetting.number, isetting.date_value),
+                current  : cursetting ? settingdisplay(cursetting.type, cursetting.text, cursetting.number,
+                                                       cursetting.date_value) : null
+            ]
+        }
+        // Changed first - those are the ones needing a decision - then new, then the
+        // no-ops, so the operator reads the table top-down in order of consequence.
+        def rank = ['changed':0, 'new':1, 'same':2]
+        return out.sort { a,b -> (rank[a.status] <=> rank[b.status]) ?: ((a.name ?: '') <=> (b.name ?: '')) }
+    }
+
+    static String settingkey(module, name) {
+        return (module ?: '') + '::' + name
+    }
+
+    // settingchoices maps the key built by settingkey() to 'keep' or 'import'. A key that is
+    // absent - and a null map altogether, which is what every non-interactive caller passes -
+    // means import, so the behaviour without an explicit choice is exactly what it always was.
+    // 'keep' is only ever honoured for a setting that already exists; there is nothing to keep
+    // for one that does not.
+    def importsettings(migrationfolder,jsonSlurper,settingchoices = null) {
         def settingfile = new File(migrationfolder + '/settinglist.json')
         if(settingfile.exists()){
             def settingarray = jsonSlurper.parseText(settingfile.text)
             settingarray.each { isetting->
                 def cursetting = PortalSetting.findByModuleAndName(isetting.module,isetting.name)
+                if(cursetting && settingchoices &&
+                   settingchoices[settingkey(isetting.module,isetting.name)] == 'keep') {
+                    println "importsettings: keeping existing value for " + settingkey(isetting.module,isetting.name)
+                    return
+                }
                 if(!cursetting){
                   cursetting = new PortalSetting()
                 }
@@ -762,7 +846,7 @@ class PortalModule {
         }
     }
 
-    def importmodule(file_on,staff_on) {
+    def importmodule(file_on,staff_on,settingchoices = null) {
         def curfolder = System.getProperty("user.dir")
         def migrationfolder = PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration') + '/' + this.name
         def jsonSlurper = new JsonSlurper()
@@ -776,7 +860,7 @@ class PortalModule {
             if(staff_on) {
               importuserroles(migrationfolder,jsonSlurper)
             }
-            importsettings(migrationfolder,jsonSlurper)
+            importsettings(migrationfolder,jsonSlurper,settingchoices)
             importpages(migrationfolder,jsonSlurper)
             importtrackers(migrationfolder,jsonSlurper)
         }

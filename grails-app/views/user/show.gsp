@@ -18,6 +18,13 @@
                             <li><g:link class="create" action="create"><g:message code="default.new.label" args="[entityName]" /></g:link></li>
                             <li><g:link class="list" action="updatelanid" id="${this.user.id}">Update LAN ID</g:link></li>
                         </g:if>
+                        <g:if test='${curuser?.isAdmin && this.user.activeSessionId}'>
+                            <li>
+                                <g:form useToken="true" controller="user" action="clearsession" params="[id:this.user.id]" style="display:inline">
+                                    <input type="submit" class="list" value="Clear Session Lock"/>
+                                </g:form>
+                            </li>
+                        </g:if>
                         <g:if test='${curuser?.switchable() && !session.realuser}'>
                         <li><g:link class="list" action="switchuser" id="${this.user.userID}">Switch</g:link></li>
                         </g:if>

@@ -51,6 +51,7 @@ dependencies {
     implementation "org.grails:grails-plugin-services"
     implementation "org.grails:grails-plugin-url-mappings"
     implementation "org.grails:grails-web-boot"
+    implementation "org.grails.plugins:async"
     implementation "org.grails.plugins:gsp"
     implementation "org.grails.plugins:hibernate5"
     implementation "org.grails.plugins:scaffolding"

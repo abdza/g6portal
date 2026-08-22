@@ -83,6 +83,18 @@ class UrlMappings {
         }
     }
 
+	// Module-owned raw HTTP endpoints. Everything after the slug belongs to
+	// the handler, so the protocol keeps its own path space.
+	"/svc/$module/$slug/**" {
+        controller = "portalEndpoint"
+        action = "serve"
+    }
+
+	"/svc/$module/$slug" {
+        controller = "portalEndpoint"
+        action = "serve"
+    }
+
 	"/view/$module/$slug" {
         controller = "portalPage"
         action = "display"

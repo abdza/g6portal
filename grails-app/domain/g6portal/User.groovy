@@ -41,6 +41,8 @@ class User {
         state(nullable:true)
         date_joined(nullable:true)
         lanid(nullable:true)
+        activeSessionId(nullable:true)
+        activeSessionUpdated(nullable:true)
         treesdate(nullable:true)
         lastUpdated(nullable:true)
         lastInfoUpdate(nullable:true)
@@ -75,6 +77,8 @@ class User {
     String emergency_contact
     String emergency_name
     String lanid
+    String  activeSessionId
+    Date    activeSessionUpdated
     Date treesdate
     Date lastUpdated
     Date lastInfoUpdate
@@ -429,6 +433,95 @@ class User {
         def urole = UserRole.findAllByUserAndRole(this,'Developer',[cache:true])
         def toret = urole*.module
         return toret.unique()
+        }
+    }
+
+
+    static final int CONCURRENT_SESSION_TIMEOUT_MINUTES_DEFAULT = 15
+    static final int CONCURRENT_SESSION_HEARTBEAT_MINUTES = 5
+
+    // Override via `server.concurrent_session_timeout_minutes` in application.yml
+    static int concurrentSessionTimeoutMinutes() {
+        try {
+            def v = config.server?.concurrent_session_timeout_minutes
+            return v ? (v as int) : CONCURRENT_SESSION_TIMEOUT_MINUTES_DEFAULT
+        }
+        catch(Exception e){
+            return CONCURRENT_SESSION_TIMEOUT_MINUTES_DEFAULT
+        }
+    }
+
+    def concurrentSessionStaleCutoff() {
+        new Date(System.currentTimeMillis() - (concurrentSessionTimeoutMinutes() * 60 * 1000))
+    }
+
+    // OPT-IN in g6: enforcement is OFF unless `server.enforce_single_session: true`
+    // is set in application.yml. Ported from g6portal, where the default is the
+    // opposite; left permissive here so migrating the code changes no behaviour
+    // until it is deliberately switched on.
+    static boolean allowConcurrentSessions() {
+        config.server?.enforce_single_session != true
+    }
+
+    // Bulk HQL update rather than instance.save() - `this` may be the cross-request
+    // cached session.curuser, effectively a detached entity; re-saving it drags in
+    // lazy association checks (e.g. profilepic) that blow up with no Hibernate
+    // session backing them. A targeted update sidesteps that entirely.
+    private def _persistSessionClaim(sessionId, timestamp) {
+        User.withTransaction {
+            User.executeUpdate("update User u set u.activeSessionId=:sid, u.activeSessionUpdated=:upd where u.id=:id",
+                [sid: sessionId, upd: timestamp, id: id])
+        }
+    }
+
+    // Called only at real login time (authenticate/connexion). Returns false
+    // if another browser/device already owns this account and hasn't gone stale yet.
+    def claimSession(sessionId) {
+        if(allowConcurrentSessions()){
+            return true
+        }
+        if(activeSessionId && activeSessionId != sessionId && activeSessionUpdated?.after(concurrentSessionStaleCutoff())){
+            return false
+        }
+        def now = new Date()
+        _persistSessionClaim(sessionId, now)
+        activeSessionId = sessionId
+        activeSessionUpdated = now
+        return true
+    }
+
+    // Called on every authenticated request (SecurityInterceptor). Returns
+    // false if this session has been superseded by a fresher login elsewhere.
+    def validateSession(sessionId) {
+        if(allowConcurrentSessions()){
+            return true
+        }
+        if(!activeSessionId || activeSessionId == sessionId){
+            // heartbeat, throttled so we don't write on literally every request
+            if(!activeSessionUpdated || activeSessionUpdated.before(new Date(System.currentTimeMillis() - CONCURRENT_SESSION_HEARTBEAT_MINUTES*60*1000))){
+                def now = new Date()
+                _persistSessionClaim(sessionId, now)
+                activeSessionId = sessionId
+                activeSessionUpdated = now
+            }
+            return true
+        }
+        if(!activeSessionUpdated?.after(concurrentSessionStaleCutoff())){
+            def now = new Date()
+            _persistSessionClaim(sessionId, now)
+            activeSessionId = sessionId
+            activeSessionUpdated = now
+            return true
+        }
+        return false
+    }
+
+    // Called at logout — only releases the lock if this session actually owns it.
+    def releaseSession(sessionId) {
+        if(activeSessionId == sessionId){
+            _persistSessionClaim(null, null)
+            activeSessionId = null
+            activeSessionUpdated = null
         }
     }
 
