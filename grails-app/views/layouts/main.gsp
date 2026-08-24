@@ -346,6 +346,18 @@ G6 Portal
     </g:link>
       </li><!-- End Tree Nav -->
 
+    <g:if test="${curuser?.isAdmin}">
+        <%-- Superusers only: an endpoint's target is a program the server executes, so
+             editing one is running anything as the portal's account. SecurityInterceptor
+             enforces the same restriction; this only keeps the link out of sight. --%>
+        <li class="nav-item">
+    <g:link controller='portalEndpoint' action='index' class='nav-link collapsed'>
+            <i class="bi bi-hdd-network"></i>
+            <span>Endpoint</span>
+    </g:link>
+      </li><!-- End Endpoint Nav -->
+    </g:if>
+
         <li class="nav-item">
     <g:link controller='portalEmail' action='index' class='nav-link collapsed'>
             <i class="bi bi-mailbox"></i>

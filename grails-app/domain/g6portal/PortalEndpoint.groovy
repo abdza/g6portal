@@ -85,5 +85,36 @@ class PortalEndpoint {
         return PortalEndpoint.findByModuleAndSlugAndEnabled(module, slug, true)
     }
 
+    /**
+     * Splits a CGI `target` into argv on spaces, honouring double quotes.
+     *
+     * Splitting on bare spaces is what lets an interpreter be named ahead of a
+     * script ("python.exe hgweb.cgi"), which is how a CGI runs where there is no
+     * shebang - i.e. Windows. But it also shreds every stock Windows install path,
+     * e.g. C:\Program Files\Git\...\git-http-backend.exe. Quote such a target and
+     * it is passed through as one argument.
+     */
+    static List<String> argv(String target) {
+        def out = []
+        def cur = new StringBuilder()
+        def quoted = false
+        def has = false          // distinguishes "" (an empty argument) from no argument
+        (target ?: '').trim().each { String c ->
+            if(c == '"') {
+                quoted = !quoted
+                has = true
+            }
+            else if(c == ' ' && !quoted) {
+                if(has) { out << cur.toString(); cur = new StringBuilder(); has = false }
+            }
+            else {
+                cur.append(c)
+                has = true
+            }
+        }
+        if(has) out << cur.toString()
+        return out
+    }
+
     String toString() { "${module}/${slug}" }
 }

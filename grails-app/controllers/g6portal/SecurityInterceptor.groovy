@@ -18,7 +18,12 @@ class SecurityInterceptor {
         // Module-owned raw endpoints authenticate themselves, per PortalEndpoint
         // row (Basic / Token / Session / None). A protocol client cannot follow a
         // redirect to the login form, so this interceptor must not see them.
-        .except(controller:'portalEndpoint')
+        //
+        // ONLY serve() is exempt. The maintenance screens live in the same controller
+        // and must NOT be: an endpoint's `target` is a program this server executes, so
+        // an unauthenticated edit is remote code execution. They are handled by the
+        // superuser-only branch in before().
+        .except(controller:'portalEndpoint', action:'serve')
     }
 
     boolean before() { 
@@ -349,6 +354,60 @@ class SecurityInterceptor {
         redirect(controller: "portalPage", action: "home")
         return false
 		}
+		else if(controllerName=='portalEndpoint') {
+        // serve() is exempt from this interceptor entirely (it authenticates itself per
+        // PortalEndpoint row); everything else here is the maintenance UI. An endpoint's
+        // `target` is a program the server execs and `env_json` its environment, so being
+        // able to edit one is being able to run anything as the portal's account. That is
+        // strictly above "admin of some module" - the generic fallback below would grant
+        // it to any module admin - so it is superusers only, deliberately.
+        if(curuser?.isAdmin) {
+            return true
+        }
+        if(curuser) {
+            flash.message = "Endpoints can only be managed by a system administrator"
+            redirect(controller: "portalPage", action: "home")
+            return false
+        }
+        session['redirectAfterLogin'] = [ controller: controllerName, action: actionName, params: params ]
+        flash.message = "You need to login to access that functionality"
+        redirect(controller: "user", action: "login")
+        return false
+		}
+		else if(controllerName=='userRole') {
+        // A UserRole grants a user Admin/Developer/etc access to a whole module, so
+        // this needs its own object-aware check rather than falling into the generic
+        // "admin of any module" fallback below - otherwise being Admin/Developer of
+        // ANY one module would let someone view/edit/delete/create UserRole rows for
+        // every module, including granting themselves new roles anywhere.
+        if(curuser?.isAdmin) {
+            return true
+        }
+        if(curuser) {
+            if(actionName=='index' && curuser.adminlist()?.size()>0) {
+                return true
+            }
+            object = params.id ? UserRole.get(params.id) : null
+            if(actionName=='show' && object?.user?.id==curuser.id) {
+                // users may always view (read-only) their own role assignments
+                return true
+            }
+            def targetmodule = object?.module ?: params.module
+            if(targetmodule && targetmodule in curuser.adminlist()) {
+                // only Admin/Developer of the role's OWN module - not any module
+                return true
+            }
+            flash.message = "You need admin rights to access that functionality"
+            redirect(controller: "portalPage", action: "home")
+            return false
+        }
+        else {
+            session['redirectAfterLogin'] = [ controller: controllerName, action: actionName, params: params ]
+            flash.message = "You need to login to access that functionality"
+            redirect(controller: "user", action: "login")
+            return false
+        }
+		}
 		else {
         if(curuser) {
             if(actionName in ['api_list']) {
@@ -359,9 +418,6 @@ class SecurityInterceptor {
             }
             else if(controllerName=='user' && actionName in ['edit','update'] && params.id!=curuser.id && !curuser?.isAdmin) {
                 return false
-            }
-            else if(controllerName=='userRole' && curuser?.isAdmin) {
-                return true
             }
             else if((!module || module=='All') && curuser.adminlist()?.size()>0) {   // if module is not specified, then can access as long as they are admin of something
                 return true

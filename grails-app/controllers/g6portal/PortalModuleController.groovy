@@ -13,6 +13,7 @@ class PortalModuleController {
 
   PortalModuleService portalModuleService
   PortalService portalService
+  def fileLinkUpdateService
 
   static allowedMethods = [save: "POST", update: "PUT", delete: "DELETE", importUserRoles: "POST", importSettings: "POST", deleteAllUserRoles: "POST", deleteAllSettings: "POST", confirmimport: "POST"]
 
@@ -318,9 +319,24 @@ class PortalModuleController {
     def pages = PortalPage.findAllByModule(module.name,[sort:'slug'])
     def trackers = PortalTracker.findAllByModule(module.name,[sort:'slug'])
     def settings = PortalSetting.findAllByModule(module.name,[sort:'name'])
+    def trees = PortalTree.findAllByModule(module.name,[sort:'name'])
+    // Counted per tree rather than reading tree.nodes.size(): that association is lazy and
+    // some trees run to thousands of nodes, so touching it would load every one of them just
+    // to print a number.
+    def treenodecounts = [:]
+    trees.each { t -> treenodecounts[t.id] = PortalTreeNode.countByTree(t) }
+    def endpoints = PortalEndpoint.findAllByModule(module.name,[sort:'slug'])
+
+    // Disk usage for this module's uploaded files. Done in the service so the SUM can
+    // cast to bigint - an int SUM overflows for any module holding more than 2GB.
+    def filestats = fileLinkUpdateService.moduleFileStats(module.name)
+    def filesize = filestats.size
+    def filecount = filestats.count
+    // Rows with no recorded size would silently understate the total, so surface them.
+    def fileunsized = filestats.unsized
     def importlogs = PortalModuleImportLog.findAllByModule(module.name,[sort:'dateCreated',order:'desc',max:20])
 
-    respond module,model:[curuser:curuser,admins:admins,developers:developers,pages:pages,trackers:trackers,settings:settings,roles:roles,importlogs:importlogs]
+    respond module,model:[curuser:curuser,admins:admins,developers:developers,pages:pages,trackers:trackers,settings:settings,roles:roles,importlogs:importlogs,trees:trees,treenodecounts:treenodecounts,endpoints:endpoints,filesize:filesize,filecount:filecount,fileunsized:fileunsized]
   }
 
   def create() {

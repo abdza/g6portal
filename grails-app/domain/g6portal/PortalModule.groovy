@@ -858,6 +858,72 @@ class PortalModule {
         }
     }
 
+    // Endpoints (/svc/{module}/{slug}) are module structure - a module that serves a
+    // protocol is not deployable without them, which is what made the scm module
+    // un-importable onto a fresh server. But they are NOT like pages and trackers:
+    // target/working_dir/env_json are absolute paths belonging to one machine, and
+    // auth_token is a shared secret. So the rules here are deliberately narrow:
+    //
+    //   - an endpoint that already exists is NEVER overwritten. Its paths were tuned
+    //     for this server; a re-import must not undo that.
+    //   - auth_token is not exported at all, so a Token endpoint arrives without its
+    //     secret and stays disabled until someone sets one.
+    //   - a new endpoint whose CGI target does not exist on this machine is created
+    //     DISABLED. Enabling it would make the module's own health check report
+    //     "endpoint present" while every request failed on a missing binary; disabled
+    //     keeps the diagnosis honest and leaves the scaffolding (handler, auth mode,
+    //     env keys, header mapping) for the admin to point at local paths.
+    def importendpoints(migrationfolder,jsonSlurper) {
+        def endpointfile = new File(migrationfolder + '/endpointlist.json')
+        if(endpointfile.exists()){
+            def endpointarray = jsonSlurper.parseText(endpointfile.text)
+            endpointarray.each { iendpoint->
+                def curendpoint = PortalEndpoint.findByModuleAndSlug(iendpoint.module,iendpoint.slug)
+                if(curendpoint){
+                    println "importendpoints: keeping the existing " + iendpoint.module + "/" + iendpoint.slug + " (its target is local to this server)"
+                    return
+                }
+                curendpoint = new PortalEndpoint()
+                curendpoint.module = iendpoint.module
+                curendpoint.slug = iendpoint.slug
+                curendpoint.name = iendpoint.name
+                curendpoint.description = iendpoint.description
+                curendpoint.handler_type = iendpoint.handler_type
+                curendpoint.target = iendpoint.target
+                curendpoint.working_dir = iendpoint.working_dir
+                curendpoint.env_json = iendpoint.env_json
+                curendpoint.header_env_json = iendpoint.header_env_json
+                curendpoint.auth_mode = iendpoint.auth_mode
+                curendpoint.allowed_roles = iendpoint.allowed_roles
+                curendpoint.realm = iendpoint.realm
+                curendpoint.timeout_seconds = iendpoint.timeout_seconds
+                curendpoint.max_body_mb = iendpoint.max_body_mb
+                def why = null
+                if(iendpoint.handler_type == 'CGI') {
+                    def prog = PortalEndpoint.argv(iendpoint.target)[0]
+                    if(!prog || !(new File(prog).exists())) {
+                        why = "its target is not on this machine: " + (prog ?: '(empty)')
+                    }
+                }
+                if(!why && iendpoint.auth_mode == 'Token' && iendpoint.had_auth_token) {
+                    why = "it needs a token, and secrets are not carried in module packages"
+                }
+                curendpoint.enabled = why ? false : (iendpoint.enabled == null ? true : iendpoint.enabled)
+                if(curendpoint.save(flush:true)) {
+                    if(why) {
+                        println "importendpoints: created " + iendpoint.module + "/" + iendpoint.slug + " DISABLED - " + why
+                    }
+                    else {
+                        println "importendpoints: created " + iendpoint.module + "/" + iendpoint.slug
+                    }
+                }
+                else {
+                    println "importendpoints: error saving " + iendpoint.module + "/" + iendpoint.slug + ": " + curendpoint.errors.allErrors
+                }
+            }
+        }
+    }
+
     def importmodule(file_on,staff_on,tree_on = false,settingchoices = null) {
         def curfolder = System.getProperty("user.dir")
         def migrationfolder = PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration') + '/' + this.name
@@ -873,6 +939,7 @@ class PortalModule {
               importuserroles(migrationfolder,jsonSlurper)
             }
             importsettings(migrationfolder,jsonSlurper,settingchoices)
+            importendpoints(migrationfolder,jsonSlurper)
             importpages(migrationfolder,jsonSlurper)
             importtrackers(migrationfolder,jsonSlurper)
             if(tree_on) {
@@ -1194,6 +1261,39 @@ class PortalModule {
         }
     }
 
+    // auth_token is deliberately absent - a module package travels through git and
+    // zip files, and a shared secret has no business in either. Only whether one was
+    // set travels, so the import can say why it left the endpoint disabled.
+    def exportendpoints(migrationfolder) {
+        def endpoints = PortalEndpoint.findAllByModule(this.name).sort { it.slug }
+        if(endpoints.size()){
+            def endpointfile = new File(migrationfolder + '/endpointlist.json')
+            def endpointarray = []
+            endpoints.each { endpoint->
+                println "Exporting endpoint:" + endpoint
+                endpointarray << [
+                    module: endpoint.module,
+                    slug: endpoint.slug,
+                    name: endpoint.name,
+                    description: endpoint.description,
+                    handler_type: endpoint.handler_type,
+                    target: endpoint.target,
+                    working_dir: endpoint.working_dir,
+                    env_json: endpoint.env_json,
+                    header_env_json: endpoint.header_env_json,
+                    auth_mode: endpoint.auth_mode,
+                    had_auth_token: endpoint.auth_token ? true : false,
+                    allowed_roles: endpoint.allowed_roles,
+                    realm: endpoint.realm,
+                    enabled: endpoint.enabled,
+                    timeout_seconds: endpoint.timeout_seconds,
+                    max_body_mb: endpoint.max_body_mb
+                ]
+            }
+            endpointfile.write(formatExportJson(endpointarray))
+        }
+    }
+
     def exportmodule(file_on,staff_on,tree_on = false,targetfolder = null) {
         def curfolder = System.getProperty("user.dir")
         def migrationfolder = targetfolder ?: (PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration') + '/' + this.name)
@@ -1217,6 +1317,7 @@ class PortalModule {
               new File(migrationfolder + '/treelist.json').delete()
             }
             exportsettings(migrationfolder)
+            exportendpoints(migrationfolder)
             exportpages(migrationfolder)
             exporttrackers(migrationfolder)
         }

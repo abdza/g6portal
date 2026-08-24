@@ -1,7 +1,9 @@
 package g6portal
 
+import grails.validation.ValidationException
 import groovy.json.JsonSlurper
 import java.util.concurrent.TimeUnit
+import static org.springframework.http.HttpStatus.*
 
 /**
  * Serves PortalEndpoint rows at /svc/{module}/{slug}/...
@@ -11,7 +13,8 @@ import java.util.concurrent.TimeUnit
  */
 class PortalEndpointController {
 
-    static allowedMethods = [:]      // a wire protocol picks its own verbs
+    // serve() is deliberately absent: a wire protocol picks its own verbs.
+    static allowedMethods = [save: "POST", update: "PUT", delete: "DELETE"]
 
     def serve() {
         // NOTE: do not touch `params` anywhere on this path. Reading it makes
@@ -49,6 +52,138 @@ class PortalEndpointController {
             if(!response.committed) return fail(500, "Endpoint error")
         }
         return null
+    }
+
+    // ------------------------------------------------------- maintenance UI
+    // Superuser-only, enforced in SecurityInterceptor (see the portalEndpoint branch).
+
+    def index(Integer max) {
+        params.max = Math.min(max ?: 25, 100)
+        def endpoints = PortalEndpoint.list(params)
+        respond endpoints, model:[curuser: session.curuser,
+                                  portalEndpointCount: PortalEndpoint.count(),
+                                  params: params]
+    }
+
+    def show(Long id) {
+        def endpoint = PortalEndpoint.get(id)
+        if(!endpoint) { notFound(); return }
+        respond endpoint, model:[curuser: session.curuser, checks: checkTarget(endpoint)]
+    }
+
+    def create() {
+        respond new PortalEndpoint(params), model:[curuser: session.curuser]
+    }
+
+    def save(PortalEndpoint portalEndpoint) {
+        if(portalEndpoint == null) { notFound(); return }
+        try {
+            PortalEndpoint.withTransaction { tstatus ->
+                portalEndpoint.save(flush:true, failOnError:true)
+            }
+        }
+        catch(ValidationException e) {
+            respond portalEndpoint.errors, view:'create', model:[curuser: session.curuser]
+            return
+        }
+        println "portalEndpoint: ${session.curuser?.staffID} created ${portalEndpoint}"
+        flash.message = "Endpoint ${portalEndpoint} created"
+        redirect action:"show", id:portalEndpoint.id
+    }
+
+    def edit(Long id) {
+        def endpoint = PortalEndpoint.get(id)
+        if(!endpoint) { notFound(); return }
+        respond endpoint, model:[curuser: session.curuser]
+    }
+
+    def update(PortalEndpoint portalEndpoint) {
+        if(portalEndpoint == null) { notFound(); return }
+        try {
+            PortalEndpoint.withTransaction { tstatus ->
+                portalEndpoint.save(flush:true, failOnError:true)
+            }
+        }
+        catch(ValidationException e) {
+            respond portalEndpoint.errors, view:'edit', model:[curuser: session.curuser]
+            return
+        }
+        println "portalEndpoint: ${session.curuser?.staffID} updated ${portalEndpoint}"
+        flash.message = "Endpoint ${portalEndpoint} updated"
+        redirect action:"show", id:portalEndpoint.id
+    }
+
+    def delete(Long id) {
+        if(id == null) { notFound(); return }
+        def endpoint = PortalEndpoint.get(id)
+        if(!endpoint) { notFound(); return }
+        def label = endpoint.toString()
+        PortalEndpoint.withTransaction { tstatus ->
+            endpoint.delete(flush:true)
+        }
+        println "portalEndpoint: ${session.curuser?.staffID} deleted ${label}"
+        flash.message = "Endpoint ${label} deleted"
+        redirect action:"index", method:"GET"
+    }
+
+    /**
+     * What this row would actually do if a request arrived now - the thing that is
+     * invisible in a form full of paths. A module package can only carry the shape of
+     * an endpoint, never one machine's paths, so "the target is not on this server" is
+     * the normal state of a freshly imported row rather than an exotic failure.
+     */
+    private Map checkTarget(PortalEndpoint endpoint) {
+        def out = [problems: [], notes: []]
+        if(endpoint.handler_type == 'CGI') {
+            def argv = PortalEndpoint.argv(endpoint.target)
+            if(!argv) {
+                out.problems << "No target set."
+            }
+            else {
+                out.notes << "Runs: " + argv.collect { "[" + it + "]" }.join(' ')
+                def prog = new File(argv[0])
+                if(!prog.exists()) {
+                    out.problems << "Program not found on this server: ${argv[0]}" +
+                        (endpoint.target.contains(' ') && !endpoint.target.contains('"')
+                            ? " - the target contains a space and is split into arguments; quote the path if it is one program."
+                            : "")
+                }
+                else if(!prog.canExecute()) {
+                    out.problems << "Program is not executable by the portal's account: ${argv[0]}"
+                }
+                else {
+                    out.notes << "Program exists and is executable."
+                }
+            }
+            if(endpoint.working_dir && !(new File(endpoint.working_dir).isDirectory())) {
+                out.problems << "Working directory does not exist: ${endpoint.working_dir}"
+            }
+        }
+        else if(endpoint.handler_type == 'Proxy') {
+            out.notes << "Forwards to ${endpoint.target}"
+        }
+        ['env_json', 'header_env_json'].each { String f ->
+            def v = endpoint."${f}"
+            if(v?.trim()) {
+                try { new JsonSlurper().parseText(v) }
+                catch(Exception e) { out.problems << "${f} is not valid JSON: ${e.message}" }
+            }
+        }
+        if(endpoint.auth_mode == 'Token' && !endpoint.auth_token) {
+            out.problems << "Auth mode is Token but no token is set - every request will be refused."
+        }
+        if(endpoint.auth_mode == 'None') {
+            out.notes << "Anyone who can reach the URL can use this endpoint (auth mode None)."
+        }
+        if(!endpoint.enabled) {
+            out.notes << "Disabled - PortalEndpoint.find() ignores it, so nothing is served."
+        }
+        return out
+    }
+
+    protected void notFound() {
+        flash.message = "Endpoint not found"
+        redirect action:"index", method:"GET"
     }
 
     // ---------------------------------------------------------------- auth
@@ -147,7 +282,7 @@ class PortalEndpointController {
      * memory.
      */
     private runCgi(PortalEndpoint endpoint, String pathInfo, String who) {
-        def argv = endpoint.target.trim().tokenize(' ').findAll { it }
+        def argv = PortalEndpoint.argv(endpoint.target)
         def pb = new ProcessBuilder(argv)
         if(endpoint.working_dir) {
             def d = new File(endpoint.working_dir)
