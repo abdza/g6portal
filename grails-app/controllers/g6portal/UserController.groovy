@@ -742,61 +742,110 @@ class UserController {
             userService.save(user)
         } 
         def loggedin = false
-        println "Disable lan_id:" + disable_lanid
+        def adenabled = PortalSetting.namedefault("adenable",0)
+        // Explain up front whether AD will even be tried, and why not, since a silent skip
+        // here is the single most common reason "AD login doesn't work" reports turn out to
+        // be nothing to do with AD at all - disable_lanid true means it is never attempted.
         if(disable_lanid) {
-          println "Enforcer"
+            println "AD login for " + user.userID + ": skipped - server.disable_lanid is true, local password only"
         }
-        if(!disable_lanid && !loggedin && user.lanid && PortalSetting.namedefault("adenable",0)){
-           	println "Trying ad"
+        else if(!user.lanid) {
+            println "AD login for " + user.userID + ": skipped - no lanid on record (use Update LAN ID first)"
+        }
+        else if(!adenabled) {
+            println "AD login for " + user.userID + ": skipped - the adenable setting is off"
+        }
+        if(!disable_lanid && !loggedin && user.lanid && adenabled){
+            println "AD login for " + user.userID + " (lanid " + user.lanid + "): attempting primary domain"
+            def connection = null
             try{
-                LdapConnection connection = new LdapNetworkConnection(PortalSetting.namedefault("adserver","defaultadserver"), PortalSetting.namedefault("adport",636), PortalSetting.namedefault("adsecure",true) )
-                connection.bind(PortalSetting.namedefault("addn","defaultdn"),PortalSetting.namedefault("adpassword","defaultpass"))
+                def adserver = PortalSetting.namedefault("adserver","defaultadserver")
+                def adport = PortalSetting.namedefault("adport",636)
+                def adsecure = PortalSetting.namedefault("adsecure",true)
+                def addn = PortalSetting.namedefault("addn","defaultdn")
+                def topdn = PortalSetting.namedefault("topdn","defaulttopdn")
+                println "AD login (primary): connecting to " + adserver + ":" + adport + " (ssl=" + adsecure + ")"
+                connection = new LdapNetworkConnection(adserver, adport, adsecure)
+                connection.bind(addn, PortalSetting.namedefault("adpassword","defaultpass"))
+                println "AD login (primary): bound as service account " + addn
                 def usersearch = "(sAMAccountName=" + user.lanid + ")"
-                def cursor = connection.search(PortalSetting.namedefault("topdn","defaulttopdn"),usersearch,SearchScope.SUBTREE,"*")
-                println "Trying to login ad"
+                println "AD login (primary): searching base " + topdn + " filter " + usersearch
+                def cursor = connection.search(topdn,usersearch,SearchScope.SUBTREE,"*")
+                def found = false
                 while(cursor.next() && !loggedin){
+                    found = true
+                    def entry = cursor.get()
+                    println "AD login (primary): found entry " + entry.dn + ", attempting user bind"
                     try{
-                        def entry = cursor.get()
-                        println entry
                         connection.bind(entry.dn,params.password)
                         loggedin = true
-                        user.lanhash = lanhash
-                        user.save()
+                        println "AD login (primary): succeeded for " + user.lanid
                     }
                     catch(Exception exp){
-                        println "Wrong password for the user:" + user.lanid
+                        println "AD login (primary): user bind failed for " + user.lanid + " - " + exp.class.simpleName + ": " + exp.message
                     }
-                }	
+                }
+                if(!found) {
+                    println "AD login (primary): no entry found for filter " + usersearch
+                }
             }
             catch(Exception exp){
-                println "Error connecting to ldap server :" + exp.toString()
+                println "AD login (primary): error connecting/searching - " + exp.class.name + ": " + exp.message
+                exp.printStackTrace()
                 PortalErrorLog.record(params,user,"user","authenticate","Error connecting to ldap server :" + exp.toString())
             }
+            finally {
+                if(connection) {
+                    try { connection.close() } catch(Exception ce) { println "AD login (primary): error closing connection - " + ce.message }
+                }
+            }
             if(!loggedin){
+                println "AD login for " + user.userID + " (lanid " + user.lanid + "): primary did not succeed, attempting secondary domain"
+                def connection2 = null
                 try{
-                    LdapConnection connection2 = new LdapNetworkConnection(PortalSetting.namedefault("adserver2","defaultserver2"), PortalSetting.namedefault("adport2",636), PortalSetting.namedefault("adsecure2",true))
-                    connection2.bind(PortalSetting.namedefault("addn2","defaultad2"),PortalSetting.namedefault("adpassword2",'defaultpass2'))
+                    def adserver2 = PortalSetting.namedefault("adserver2","defaultserver2")
+                    def adport2 = PortalSetting.namedefault("adport2",636)
+                    def adsecure2 = PortalSetting.namedefault("adsecure2",true)
+                    def addn2 = PortalSetting.namedefault("addn2","defaultad2")
+                    def topdn2 = PortalSetting.namedefault("topdn2","defaulttopdn2")
+                    println "AD login (secondary): connecting to " + adserver2 + ":" + adport2 + " (ssl=" + adsecure2 + ")"
+                    connection2 = new LdapNetworkConnection(adserver2, adport2, adsecure2)
+                    connection2.bind(addn2, PortalSetting.namedefault("adpassword2",'defaultpass2'))
+                    println "AD login (secondary): bound as service account " + addn2
                     def usersearch2 = "(sAMAccountName=" + user.lanid + ")"
-                    def cursor2 = connection2.search(PortalSetting.namedefault("topdn2","defaulttopdn2"),usersearch2,SearchScope.SUBTREE,"*")
+                    println "AD login (secondary): searching base " + topdn2 + " filter " + usersearch2
+                    def cursor2 = connection2.search(topdn2,usersearch2,SearchScope.SUBTREE,"*")
+                    def found2 = false
                     while(cursor2.next() && !loggedin){
+                        found2 = true
+                        def entry = cursor2.get()
+                        println "AD login (secondary): found entry " + entry.dn + ", attempting user bind"
                         try{
-                            def entry = cursor2.get()
                             connection2.bind(entry.dn,params.password)
                             loggedin = true
-                            user.lanhash = lanhash
-                            user.save()
+                            println "AD login (secondary): succeeded for " + user.lanid
                         }
                         catch(Exception exp){
-                            println "Wrong password for the user:" + user.lanid
+                            println "AD login (secondary): user bind failed for " + user.lanid + " - " + exp.class.simpleName + ": " + exp.message
                         }
-                    }	
+                    }
+                    if(!found2) {
+                        println "AD login (secondary): no entry found for filter " + usersearch2
+                    }
                 }
                 catch(Exception exp){
-                    println "Error connecting to ldap server:" + exp.toString()
+                    println "AD login (secondary): error connecting/searching - " + exp.class.name + ": " + exp.message
+                    exp.printStackTrace()
                     PortalErrorLog.record(params,user,"user","authenticate","Error connecting to ldap server:" + exp.toString())
+                }
+                finally {
+                    if(connection2) {
+                        try { connection2.close() } catch(Exception ce) { println "AD login (secondary): error closing connection - " + ce.message }
+                    }
                 }
             }
         }
+        println "AD login for " + user.userID + ": " + (loggedin ? "succeeded via Active Directory" : "did not succeed via Active Directory, falling back to local password check")
         // An account with no LAN ID has nothing to authenticate against Active Directory
         // with, so its own password is the only credential it has: checking it must not depend
         // on server.disable_lanid, or an instance where that key is unset cannot be logged into
@@ -873,59 +922,116 @@ class UserController {
         def usersearch = "(employeeID=" + user.userID + ")"
         def gotupdate = false
         def gotupdate2 = false
+        println "Update LAN ID for " + user.userID + " (" + user.name + "): attempting primary domain, filter " + usersearch
+        def connection = null
         try{
-            LdapConnection connection = new LdapNetworkConnection(PortalSetting.namedefault("adserver","defaultserver"), PortalSetting.namedefault("adport",636), PortalSetting.namedefault("adsecure",true) )
-            connection.bind(PortalSetting.namedefault("addn","defaultdn"),PortalSetting.namedefault("adpassword","defaultpass"))
-            def cursor = connection.search(PortalSetting.namedefault("topdn","defaulttopdn"),usersearch,SearchScope.SUBTREE,"*")
+            def adserver = PortalSetting.namedefault("adserver","defaultserver")
+            def adport = PortalSetting.namedefault("adport",636)
+            def adsecure = PortalSetting.namedefault("adsecure",true)
+            def addn = PortalSetting.namedefault("addn","defaultdn")
+            def topdn = PortalSetting.namedefault("topdn","defaulttopdn")
+            println "Update LAN ID (primary): connecting to " + adserver + ":" + adport + " (ssl=" + adsecure + ")"
+            connection = new LdapNetworkConnection(adserver, adport, adsecure)
+            connection.bind(addn, PortalSetting.namedefault("adpassword","defaultpass"))
+            println "Update LAN ID (primary): bound as service account " + addn
+            println "Update LAN ID (primary): searching base " + topdn + " filter " + usersearch
+            def cursor = connection.search(topdn,usersearch,SearchScope.SUBTREE,"*")
+            def found = false
             while(cursor.next() && !gotupdate){
+                found = true
                 try{
                     def entry = cursor.get()
-                    println "User LAN ID is :" + entry.sAMAccountName.toString()[16..-1]
-                    user.lanid = entry.sAMAccountName.toString()[16..-1]
-                    user.save(flush:true)
-                    flash.message = "Updated user LAN ID to " + entry.sAMAccountName.toString()[16..-1]
+                    println "Update LAN ID (primary): found entry " + entry.dn + ", sAMAccountName=" + entry.sAMAccountName.toString()
+                    def newlanid = entry.sAMAccountName.toString()[16..-1]
+                    // A raw save() outside a transaction throws TransactionRequiredException on
+                    // a packaged build - every other save() in this controller already goes
+                    // through withTransaction, these two never did.
+                    User.withTransaction { tstatus ->
+                        user.lanid = newlanid
+                        user.save(flush:true)
+                    }
+                    flash.message = "Updated user LAN ID to " + newlanid
+                    println "Update LAN ID (primary): saved lanid=" + newlanid + " for " + user.userID
                     gotupdate = true
                 }
                 catch(Exception exp){
-                    println "Can't get info for user:" + user + " exp:" + exp
+                    println "Update LAN ID (primary): could not read entry for " + user.userID + " - " + exp.class.simpleName + ": " + exp.message
                 }
-            }	
+            }
+            if(!found) {
+                println "Update LAN ID (primary): no entry found for filter " + usersearch
+            }
             if(!gotupdate){
                 flash.message = "Fail to update the LAN ID for " + user
             }
         }
         catch(Exception exp){
-            println "Error connecting to ldap server: " + exp.toString()
-            PortalErrorLog.record(params,user,"user","authenticate","Error connecting to ldap server:" + exp.toString())
+            println "Update LAN ID (primary): error connecting/searching for " + user.userID + " - " + exp.class.name + ": " + exp.message
+            exp.printStackTrace()
+            PortalErrorLog.record(params,user,"user","updatelanid","Error connecting to ldap server:" + exp.toString())
+        }
+        finally {
+            if(connection) {
+                try { connection.close() } catch(Exception ce) { println "Update LAN ID (primary): error closing connection - " + ce.message }
+            }
         }
 
-        try{
-            println "Will now try with Server 2"
-            LdapConnection connection2 = new LdapNetworkConnection(PortalSetting.namedefault("adserver2","defaultserver2"), PortalSetting.namedefault("adport2",636), PortalSetting.namedefault("adsecure2",true))
-            connection2.bind(PortalSetting.namedefault("addn2","defaultdn2"),PortalSetting.namedefault("adpassword2",'defaultpass'))
-            def cursor2 = connection2.search(PortalSetting.namedefault("topdn2","defaulttopdn2"),usersearch,SearchScope.SUBTREE,"*")
-            while(cursor2.next() && !gotupdate2){
-                try{
-                    println "Looking in server 2 for:" + usersearch
-                    def entry = cursor2.get()
-                    println "User LAN ID is :" + entry.sAMAccountName.toString()[16..-1]
-                    user.lanid = entry.sAMAccountName.toString()[16..-1]
-                    user.save(flush:true)
-                    flash.message = "Updated user LAN ID to " + entry.sAMAccountName.toString()[16..-1]
-                    gotupdate2 = true
+        def connection2 = null
+        if(!gotupdate) {
+            println "Update LAN ID for " + user.userID + ": attempting secondary domain"
+            try{
+                def adserver2 = PortalSetting.namedefault("adserver2","defaultserver2")
+                def adport2 = PortalSetting.namedefault("adport2",636)
+                def adsecure2 = PortalSetting.namedefault("adsecure2",true)
+                def addn2 = PortalSetting.namedefault("addn2","defaultdn2")
+                def topdn2 = PortalSetting.namedefault("topdn2","defaulttopdn2")
+                println "Update LAN ID (secondary): connecting to " + adserver2 + ":" + adport2 + " (ssl=" + adsecure2 + ")"
+                connection2 = new LdapNetworkConnection(adserver2, adport2, adsecure2)
+                connection2.bind(addn2, PortalSetting.namedefault("adpassword2",'defaultpass'))
+                println "Update LAN ID (secondary): bound as service account " + addn2
+                println "Update LAN ID (secondary): searching base " + topdn2 + " filter " + usersearch
+                def cursor2 = connection2.search(topdn2,usersearch,SearchScope.SUBTREE,"*")
+                def found2 = false
+                while(cursor2.next() && !gotupdate2){
+                    found2 = true
+                    try{
+                        def entry = cursor2.get()
+                        println "Update LAN ID (secondary): found entry " + entry.dn + ", sAMAccountName=" + entry.sAMAccountName.toString()
+                        def newlanid = entry.sAMAccountName.toString()[16..-1]
+                        User.withTransaction { tstatus ->
+                            user.lanid = newlanid
+                            user.save(flush:true)
+                        }
+                        flash.message = "Updated user LAN ID to " + newlanid
+                        println "Update LAN ID (secondary): saved lanid=" + newlanid + " for " + user.userID
+                        gotupdate2 = true
+                    }
+                    catch(Exception exp){
+                        println "Update LAN ID (secondary): could not read entry for " + user.userID + " - " + exp.class.simpleName + ": " + exp.message
+                    }
                 }
-                catch(Exception exp){
-                    println "Can't get info for user:" + user + " exp:" + exp
+                if(!found2) {
+                    println "Update LAN ID (secondary): no entry found for filter " + usersearch
                 }
-            }	
+            }
+            catch(Exception exp){
+                println "Update LAN ID (secondary): error connecting/searching for " + user.userID + " - " + exp.class.name + ": " + exp.message
+                exp.printStackTrace()
+                PortalErrorLog.record(params,user,"user","updatelanid","Error connecting to ldap server:" + exp.toString())
+            }
+            finally {
+                if(connection2) {
+                    try { connection2.close() } catch(Exception ce) { println "Update LAN ID (secondary): error closing connection - " + ce.message }
+                }
+            }
         }
-        catch(Exception exp){
-            println "Error connecting to ldap server: " + exp.toString()
-            PortalErrorLog.record(params,user,"user","authenticate","Error connecting to ldap server:" + exp.toString())
+        else {
+            println "Update LAN ID for " + user.userID + ": already resolved via the primary domain, skipping the secondary"
         }
         if(!gotupdate && !gotupdate2){
             flash.message = "Fail to update the LAN ID for " + user
         }
+        println "Update LAN ID for " + user.userID + ": " + ((gotupdate || gotupdate2) ? "final result lanid=" + user.lanid : "final result - could not resolve a LAN ID")
         redirect(action: "show",id: user.id)
     }
     

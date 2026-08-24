@@ -173,36 +173,68 @@ class User {
         return toreturn.verified
     }
 
+    // Not called anywhere in this codebase - UserController.updatelanid (wired to the
+    // "Update LAN ID" button) is the code path actually in use. Kept as a reusable
+    // domain-level equivalent and brought up to the same standard, rather than left with
+    // defaults that would misfire the moment something did call it: it pointed at a
+    // hardcoded host on plaintext port 389 while every other AD caller here defaults to
+    // 636 with SSL, and its error path referenced ErrorLog, which does not exist in this
+    // codebase and would have thrown NoClassDefFoundError on top of the original failure.
     def updatelanid() {
         def retmsg
         def gotupdate = false
+        println "User.updatelanid for " + this.userID + ": attempting primary domain"
+        def connection = null
         try{
-            LdapConnection connection = new LdapNetworkConnection(PortalSetting.namedefault("adserver","10.0.0.1"), PortalSetting.namedefault("adport",389) )
-            connection.bind(PortalSetting.namedefault("addn","defaultdn"),PortalSetting.namedefault("adpassword","defaultpass"))
+            def adserver = PortalSetting.namedefault("adserver","defaultserver")
+            def adport = PortalSetting.namedefault("adport",636)
+            def adsecure = PortalSetting.namedefault("adsecure",true)
+            def addn = PortalSetting.namedefault("addn","defaultdn")
+            def topdn = PortalSetting.namedefault("topdn","defaulttopdn")
+            println "User.updatelanid (primary): connecting to " + adserver + ":" + adport + " (ssl=" + adsecure + ")"
+            connection = new LdapNetworkConnection(adserver, adport, adsecure)
+            connection.bind(addn, PortalSetting.namedefault("adpassword","defaultpass"))
+            println "User.updatelanid (primary): bound as service account " + addn
             def usersearch = "(employeeID=" + this.userID + ")"
-            def cursor = connection.search(PortalSetting.namedefault("topdn","defaulttopdn"),usersearch,SearchScope.SUBTREE,"*")
+            println "User.updatelanid (primary): searching base " + topdn + " filter " + usersearch
+            def cursor = connection.search(topdn,usersearch,SearchScope.SUBTREE,"*")
+            def found = false
             while(cursor.next()){
+                found = true
                 try{
-                    print "Looking for:" + usersearch
                     def entry = cursor.get()
-                    print "User LAN ID is :" + entry.sAMAccountName.toString()[16..-1]
-                    this.lanid = entry.sAMAccountName.toString()[16..-1]
-                    this.save(flush:true)
-                    retmsg = "Updated user LAN ID to " + entry.sAMAccountName.toString()[16..-1]
+                    println "User.updatelanid (primary): found entry " + entry.dn + ", sAMAccountName=" + entry.sAMAccountName.toString()
+                    def newlanid = entry.sAMAccountName.toString()[16..-1]
+                    User.withTransaction { tstatus ->
+                        this.lanid = newlanid
+                        this.save(flush:true)
+                    }
+                    retmsg = "Updated user LAN ID to " + newlanid
+                    println "User.updatelanid (primary): saved lanid=" + newlanid + " for " + this.userID
                     gotupdate = true
                 }
                 catch(Exception exp){
-                    println "Can't get info for user:" + this + " exp:" + exp
+                    println "User.updatelanid (primary): could not read entry for " + this.userID + " - " + exp.class.simpleName + ": " + exp.message
                 }
+            }
+            if(!found) {
+                println "User.updatelanid (primary): no entry found for filter " + usersearch
             }
             if(!gotupdate){
                 retmsg = "Fail to update the LAN ID for " + this
             }
         }
         catch(Exception exp){
-            println "Error connecting to ldap server:" + exp.toString()
-            ErrorLog.record(null,this,"user","authenticate","Error connecting to ldap server:" + exp.toString())
+            println "User.updatelanid (primary): error connecting/searching for " + this.userID + " - " + exp.class.name + ": " + exp.message
+            exp.printStackTrace()
+            PortalErrorLog.record(null,this,"user","updatelanid","Error connecting to ldap server:" + exp.toString())
         }
+        finally {
+            if(connection) {
+                try { connection.close() } catch(Exception ce) { println "User.updatelanid (primary): error closing connection - " + ce.message }
+            }
+        }
+        println "User.updatelanid for " + this.userID + ": " + (gotupdate ? "succeeded, lanid=" + this.lanid : "failed")
         return gotupdate
     }
 
