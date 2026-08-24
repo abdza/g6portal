@@ -140,7 +140,7 @@ class PortalTreeNode {
                 }
             }
             catch(Exception e){
-                PortalErrorLog.record(null,null,"PortalTreeNode Domain","getdomain",e.toString(),this.id)
+                PortalErrorLog.record(null,null,"PortalTreeNode Domain","getdomain",e,this.id)
             }
         }
         return null

@@ -210,7 +210,7 @@ class PortalTrackerData {
                         rowcount = poiExcel.loadData(this.path,this.excel_password,sql,savedparams,statementfields,this.tracker.data_table(),(int)this.id,gotupdate)
                     }
                     catch(Exception exp){
-                        PortalErrorLog.record(null,null,'data update','data update - updating ',exp.toString(),this.tracker.slug,this.tracker.module)
+                        PortalErrorLog.record(null,null,'data update','data update - updating ',exp,this.tracker.slug,this.tracker.module)
                         throw new RuntimeException("Upload failed while reading file data: ${exp.getMessage() ?: exp.getClass().getSimpleName()}", exp)
                     }
                     def uploadedCount = 0
@@ -251,7 +251,14 @@ class PortalTrackerData {
                     finalMessages += "\nRecords Rejected: ${rejectedCount}"
                     if (rejectedCount > 0) {
                         def failDetails = ''
-                        try { failDetails = poiExcel.failureSummary() } catch(Exception ignore) {}
+                        // Losing this silently is the worst case of all: the user is told
+                        // "Records Rejected: N" and the explanation of WHY simply vanishes.
+                        try { failDetails = poiExcel.failureSummary() }
+                        catch(Exception ignore) {
+                            PortalErrorLog.capture(ignore, "upload ${this.module}:${this.tracker?.slug} could not build the rejected-row summary (${rejectedCount} rejected rows have no explanation)",
+                                                   [controller: 'portalTrackerData', action: 'failureSummary',
+                                                    module: this.module, slug: this.tracker?.slug])
+                        }
                         if (failDetails) {
                             finalMessages += "\n\n=== Rejected Row Details ===\n" + failDetails
                         }
@@ -300,7 +307,7 @@ class PortalTrackerData {
                             log.error "Security violation updating status for tracker ${this.tracker}: ${se.message}"
                             throw se
                         } catch(Exception e){
-                            PortalErrorLog.record(null,null,'data update','data update - setting initial status',e.toString(),this.tracker?.slug,this.tracker?.module)
+                            PortalErrorLog.record(null,null,'data update','data update - setting initial status',e,this.tracker?.slug,this.tracker?.module)
                             log.error "Error updating to default status for tracker ${this.tracker} to default ${this.tracker?.initial_status?.name}: ${e.message}"
                             // Don't rethrow - allow processing to continue
                         }
@@ -322,7 +329,7 @@ class PortalTrackerData {
                         }
                         catch(Exception e){
                             println "Error postprocessing for tracker " + this.tracker + " with " + this.tracker.postprocess.content + " error:" + e
-                            PortalErrorLog.record(null,null,'data update','data update - postprocess',e.toString(),this.tracker.slug,this.tracker.module)
+                            PortalErrorLog.record(null,null,'data update','data update - postprocess',e,this.tracker.slug,this.tracker.module)
                         }
                         if(updatesetting){
                             updatesetting.text = "Done statement " + this.tracker
@@ -336,7 +343,7 @@ class PortalTrackerData {
             }
             catch(Exception e){
                 println "Got error uploading data:" + e
-                PortalErrorLog.record(null,null,'data update','data update - general',e.toString(),this.tracker.slug,this.tracker.module)
+                PortalErrorLog.record(null,null,'data update','data update - general',e,this.tracker.slug,this.tracker.module)
                 // Persist error to PortalTrackerData.messages via raw SQL — Hibernate session
                 // may be in a bad state so GORM saves are not safe here.
                 try {

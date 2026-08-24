@@ -118,7 +118,7 @@ class TrackerTagLib {
                     }
                     catch(Exception e){
                         println("Taglib Error with default value of " + attrs.field + " :" + e)
-                        // PortalErrorLog.record(params,curuser,'tracker','updaterecord',e.toString(),attrs.field.tracker.slug,attrs.field.tracker.module)
+                        // PortalErrorLog.record(params,curuser,'tracker','updaterecord',e,attrs.field.tracker.slug,attrs.field.tracker.module)
                         defaultval = -1
                     }
                 }
@@ -1264,7 +1264,7 @@ content: event.description
                 catch(Exception e){
                     println "Got error with query: " + query['query']
                     println "Got error with qparams: " + query['qparams']
-                    PortalErrorLog.record(null,null,'tracker','trackerlist',e.toString() + " query: " + query,attrs.tracker.slug,attrs.tracker.module)
+                    PortalErrorLog.record(null,null,'tracker','trackerlist',PortalErrorLog.describe(e) + " query: " + query,attrs.tracker.slug,attrs.tracker.module)
                 }
             }
             else {
@@ -1273,7 +1273,7 @@ content: event.description
                 }
                 catch(Exception e){
                     println "Got error with query: " + query
-                    PortalErrorLog.record(null,null,'tracker','trackerlist',e.toString() + " query: " + query,attrs.tracker.slug,attrs.tracker.module)
+                    PortalErrorLog.record(null,null,'tracker','trackerlist',PortalErrorLog.describe(e) + " query: " + query,attrs.tracker.slug,attrs.tracker.module)
                 }
             }
             rows.each { row->

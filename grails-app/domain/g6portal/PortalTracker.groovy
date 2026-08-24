@@ -286,7 +286,7 @@ class PortalTracker {
                         sql.execute(query)
                     }
                     catch(Exception e){
-                        PortalErrorLog.record(null,null,'tracker','create index',e.toString() + " query: " + query,slug,module)
+                        PortalErrorLog.record(null,null,'tracker','create index',PortalErrorLog.describe(e) + " query: " + query,slug,module)
                     }
                 }
             }
@@ -314,7 +314,7 @@ class PortalTracker {
                         sql.execute(query)
                     }
                     catch(Exception e){
-                        PortalErrorLog.record(null,null,'tracker','create index',e.toString() + " query: " + query,slug,module)
+                        PortalErrorLog.record(null,null,'tracker','create index',PortalErrorLog.describe(e) + " query: " + query,slug,module)
                     }
                 }
             }
@@ -334,7 +334,7 @@ class PortalTracker {
                 sql.execute(query)
             }
             catch(Exception e){
-                PortalErrorLog.record(null,null,'tracker','create total index',e.toString() + " query: " + query,slug,module)
+                PortalErrorLog.record(null,null,'tracker','create total index',PortalErrorLog.describe(e) + " query: " + query,slug,module)
             }
         }
     }
@@ -479,7 +479,7 @@ class PortalTracker {
                 return shell.evaluate(this.rowclassval)
             }
             catch(Exception e){
-                PortalErrorLog.record(null,null,'tracker','rowclass',e.toString())
+                PortalErrorLog.record(null,null,'tracker','rowclass',e)
             }
         }
         return ''
@@ -701,7 +701,7 @@ class PortalTracker {
                 sql.execute(query,qparams)
             }
             catch(Exception e){
-                PortalErrorLog.record(datas,null,'tracker','updaterow',e.toString() + ' query:' + query + ' qparams:' + qparams,this.slug)
+                PortalErrorLog.record(datas,null,'tracker','updaterow',PortalErrorLog.describe(e) + ' query:' + query + ' qparams:' + qparams,this.slug)
             }
         }
         else{
@@ -731,7 +731,7 @@ class PortalTracker {
                     maxid = sql.firstRow(query,qparams)
                 }
                 catch(Exception e){
-                    PortalErrorLog.record(datas,null,'tracker','updaterow',e.toString() + ' query:' + query + ' qparams:' + qparams,this.slug)
+                    PortalErrorLog.record(datas,null,'tracker','updaterow',PortalErrorLog.describe(e) + ' query:' + query + ' qparams:' + qparams,this.slug)
                 }
             }
             else if(config.dataSource.url.contains("jdbc:h2")){
@@ -739,7 +739,7 @@ class PortalTracker {
                     maxid = ['id':sql.executeInsert(query,qparams)[0][0]]
                 }
                 catch(Exception e){
-                    PortalErrorLog.record(datas,null,'tracker','updaterow',e.toString() + ' query:' + query + ' qparams:' + qparams,this.slug)
+                    PortalErrorLog.record(datas,null,'tracker','updaterow',PortalErrorLog.describe(e) + ' query:' + query + ' qparams:' + qparams,this.slug)
                 }
             }
             else {
@@ -748,7 +748,7 @@ class PortalTracker {
                 }
                 catch(Exception e){
                     println "Got exception:" + e
-                    PortalErrorLog.record(datas,null,'tracker','updaterow',e.toString() + ' query:' + query + ' qparams:' + qparams,this.slug)
+                    PortalErrorLog.record(datas,null,'tracker','updaterow',PortalErrorLog.describe(e) + ' query:' + query + ' qparams:' + qparams,this.slug)
                 }
             }
             if(maxid){
@@ -992,7 +992,7 @@ class PortalTracker {
                     maxid = sql.firstRow(query,qparams)
                 }
                 catch(Exception e){
-                    PortalErrorLog.record(params,curuser,'tracker','updatetrail',e.toString() + ' query:' + query + ' qparams:' + qparams,this.slug)
+                    PortalErrorLog.record(params,curuser,'tracker','updatetrail',PortalErrorLog.describe(e) + ' query:' + query + ' qparams:' + qparams,this.slug)
                 }
             }
             else if(config.dataSource.url.contains("jdbc:h2")){
@@ -1009,7 +1009,7 @@ class PortalTracker {
                     maxid = ['id':sql.executeInsert(query,qparams)[0][0]]
                 }
                 catch(Exception e){
-                    PortalErrorLog.record(params,curuser,'tracker','updatetrail',e.toString() + ' query:' + query + ' qparams:' + qparams,this.slug)
+                    PortalErrorLog.record(params,curuser,'tracker','updatetrail',PortalErrorLog.describe(e) + ' query:' + query + ' qparams:' + qparams,this.slug)
                 }
             }
             else {
@@ -1027,7 +1027,7 @@ class PortalTracker {
                 }
                 catch(Exception e){
                     println "Error :" + e
-                    PortalErrorLog.record(params,curuser,'tracker','updatetrail',e.toString() + ' query:' + query + ' qparams:' + qparams,this.slug)
+                    PortalErrorLog.record(params,curuser,'tracker','updatetrail',PortalErrorLog.describe(e) + ' query:' + query + ' qparams:' + qparams,this.slug)
                 }
             }
         }
@@ -1545,7 +1545,7 @@ class PortalTracker {
                             }
                             catch(Exception e){
                                 println("Error with default value of " + pfield + " :" + e)
-                                // PortalErrorLog.record(params,curuser,'tracker','updaterecord',e.toString(),pfield.tracker.slug,pfield.tracker.module)
+                                // PortalErrorLog.record(params,curuser,'tracker','updaterecord',e,pfield.tracker.slug,pfield.tracker.module)
                                 defaultval = -1
                             }
                         }
@@ -1799,7 +1799,7 @@ class PortalTracker {
                 }
                 catch(Exception e){
                     println("Error with default value of " + pfield + " :" + e)
-                    PortalErrorLog.record(curdatas,curuser,'tracker','updaterecord',e.toString(),this.slug,this.module)
+                    PortalErrorLog.record(curdatas,curuser,'tracker','updaterecord',e,this.slug,this.module)
                 }
             }
         }
@@ -1868,7 +1868,7 @@ class PortalTracker {
                 println("Error query:" + query)
                 println("Error qprams:" + qparams)
                 println("Error:" + e)
-                PortalErrorLog.record(curdatas,curuser,'tracker','updaterecord',e.toString() + ' query:' + query + ' qparams:' + qparams,this.slug,this.module)
+                PortalErrorLog.record(curdatas,curuser,'tracker','updaterecord',PortalErrorLog.describe(e) + ' query:' + query + ' qparams:' + qparams,this.slug,this.module)
             }
         }
         toreturn['id']=curdatas['id']

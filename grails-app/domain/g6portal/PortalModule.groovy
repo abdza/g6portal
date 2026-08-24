@@ -312,7 +312,7 @@ class PortalModule {
                     }
                     catch(Exception e){
                         println "Error importing page:" + e
-                        PortalErrorLog.record(null,null,'module','import page',e.toString(),ipage.slug,ipage.module)
+                        PortalErrorLog.record(null,null,'module','import page',e,ipage.slug,ipage.module)
                     }
                 }
             }
@@ -358,7 +358,7 @@ class PortalModule {
         }
         catch(Exception e){
             println "Could not remap file_link rows for tracker ${newtracker.module}/${newtracker.slug}: ${e}"
-            PortalErrorLog.record(null,null,'module','remap filelinks',e.toString(),newtracker.slug,newtracker.module)
+            PortalErrorLog.record(null,null,'module','remap filelinks',e,newtracker.slug,newtracker.module)
             return 0
         }
     }

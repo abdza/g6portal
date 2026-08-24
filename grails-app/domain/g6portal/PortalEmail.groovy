@@ -66,7 +66,7 @@ class PortalEmail {
                 this.save(flush:true)
             }
         } catch (ValidationException e) {
-            PortalErrorLog.record(params,null,controllerName,actionName,e.toString(),email.title,email.module)
+            PortalErrorLog.record(params,null,controllerName,actionName,e,email.title,email.module)
             respond portalEmail.errors, view:'create'
             return
         }

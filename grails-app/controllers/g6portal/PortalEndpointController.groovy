@@ -47,7 +47,7 @@ class PortalEndpointController {
         }
         catch(Exception e) {
             log.error("endpoint ${endpoint} failed", e)
-            PortalErrorLog.record([uri: uri], null, controllerName, actionName, e.toString(),
+            PortalErrorLog.record([uri: uri], null, controllerName, actionName, e,
                                   endpoint.slug, endpoint.module)
             if(!response.committed) return fail(500, "Endpoint error")
         }
@@ -398,7 +398,14 @@ class PortalEndpointController {
             def key = line.substring(0, c).trim()
             def val = line.substring(c + 1).trim()
             if(key.equalsIgnoreCase('Status')) {
-                try { response.status = val.tokenize(' ')[0] as int } catch(Exception e) { }
+                // Swallowing this hands the client a 200 for what the CGI called a failure -
+                // a git or hg client would report success on an error.
+                try { response.status = val.tokenize(' ')[0] as int }
+                catch(Exception e) {
+                    PortalErrorLog.capture(e, "endpoint ${endpoint.module}/${endpoint.slug} returned an unreadable Status header: ${val}",
+                                           [controller: 'portalEndpoint', action: 'cgi status header',
+                                            module: endpoint.module, slug: endpoint.slug])
+                }
             }
             else if(key.equalsIgnoreCase('Content-Type')) response.contentType = val
             else response.setHeader(key, val)

@@ -75,7 +75,7 @@ class PortalPage {
                     body '''There was an error in page evaltitle ' + this + ' prosessing title eval: ' + this.title + ':' + e + '''
                 }
             }
-            PortalErrorLog.record(args,null,'page','evaltitle',e.toString())
+            PortalErrorLog.record(args,null,'page','evaltitle',e)
             return ''
         }
         return bodyreturn
@@ -102,7 +102,7 @@ class PortalPage {
                     body '''There was an error in page evalcontent ${this} prosessing content eval: ${this.content} : ${e}'''
                 }
             }
-            PortalErrorLog.record(args,null,'page','evalcontent',e.toString())
+            PortalErrorLog.record(args,null,'page','evalcontent',e)
             return ''
         }
         return bodyreturn

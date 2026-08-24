@@ -171,6 +171,14 @@ class SecurityInterceptor {
             }
         }
         catch(Exception e){
+            // This block both populates session['adminmodules']/['developermodules'] and
+            // performs the impersonation module check that can return false. Swallowing an
+            // exception here means that authorization check silently did not happen, and the
+            // UI gates that read those session keys quietly hide links instead. It runs once
+            // per session, so recording it cannot flood.
+            PortalErrorLog.capture(e, "session setup / impersonation module check failed for ${curuser?.userID ?: 'anonymous'} on ${controllerName}.${actionName}",
+                                   [params: params, user: curuser, controller: controllerName,
+                                    action: 'securityinterceptor session setup', module: module, slug: slug])
         }
     }
     try {

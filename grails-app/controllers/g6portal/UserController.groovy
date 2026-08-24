@@ -17,14 +17,11 @@ class UserController {
         def dparam = '%' + params.q?.trim().replace(' ','%') + '%'
         def cusers = []
         if(params.value){
-          cusers << csdportal.User.get(params.value)
+          cusers << User.get(params.value)
         }
         if(params.role){
-            def usernodes = TreeNodeUser.createCriteria().list() {
+            def usernodes = PortalTreeNodeUser.createCriteria().list() {
                 'in'('role',params.role.decodeURL().tokenize(','))
-                if(params.module) {
-                'eq'('module',params.module)
-                }
                 user {
                     or{
                         'ilike'('name',dparam)
@@ -43,9 +40,6 @@ class UserController {
         }
         else{
             cusers += User.createCriteria().list() {
-            if(params.module) {
-                'eq'('module',params.module)
-            }
                 or{
                     'ilike'('name',dparam)
                     'ilike'('userID',dparam)
@@ -65,7 +59,7 @@ class UserController {
         def dparam = '%' + params.q?.trim().replace(' ','%') + '%'
         def dusers = null
         if(params.role){
-            def usernodes = TreeNodeUser.createCriteria().list() {
+            def usernodes = PortalTreeNodeUser.createCriteria().list() {
                 'in'('role',params.role.decodeURL().tokenize(','))
                 user {
                     or{
@@ -85,7 +79,7 @@ class UserController {
             }
         }
         else{
-            users = User.createCriteria().list() {
+            dusers = User.createCriteria().list() {
                 or{
                     'ilike'('name',dparam)
                     'ilike'('userID',dparam)
@@ -792,7 +786,7 @@ class UserController {
             catch(Exception exp){
                 println "AD login (primary): error connecting/searching - " + exp.class.name + ": " + exp.message
                 exp.printStackTrace()
-                PortalErrorLog.record(params,user,"user","authenticate","Error connecting to ldap server :" + exp.toString())
+                PortalErrorLog.record(params,user,"user","authenticate","Error connecting to ldap server :" + PortalErrorLog.describe(exp))
             }
             finally {
                 if(connection) {
@@ -836,7 +830,7 @@ class UserController {
                 catch(Exception exp){
                     println "AD login (secondary): error connecting/searching - " + exp.class.name + ": " + exp.message
                     exp.printStackTrace()
-                    PortalErrorLog.record(params,user,"user","authenticate","Error connecting to ldap server:" + exp.toString())
+                    PortalErrorLog.record(params,user,"user","authenticate","Error connecting to ldap server:" + PortalErrorLog.describe(exp))
                 }
                 finally {
                     if(connection2) {
@@ -968,7 +962,7 @@ class UserController {
         catch(Exception exp){
             println "Update LAN ID (primary): error connecting/searching for " + user.userID + " - " + exp.class.name + ": " + exp.message
             exp.printStackTrace()
-            PortalErrorLog.record(params,user,"user","updatelanid","Error connecting to ldap server:" + exp.toString())
+            PortalErrorLog.record(params,user,"user","updatelanid","Error connecting to ldap server:" + PortalErrorLog.describe(exp))
         }
         finally {
             if(connection) {
@@ -1017,7 +1011,7 @@ class UserController {
             catch(Exception exp){
                 println "Update LAN ID (secondary): error connecting/searching for " + user.userID + " - " + exp.class.name + ": " + exp.message
                 exp.printStackTrace()
-                PortalErrorLog.record(params,user,"user","updatelanid","Error connecting to ldap server:" + exp.toString())
+                PortalErrorLog.record(params,user,"user","updatelanid","Error connecting to ldap server:" + PortalErrorLog.describe(exp))
             }
             finally {
                 if(connection2) {

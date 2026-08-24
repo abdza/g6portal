@@ -61,7 +61,7 @@ class PortalTrackerEmail {
 Params: ''' + params
                 }
             }
-            PortalErrorLog.record(datas,null,'trackerEmail','evalbody',e.toString(),this.transition.tracker.slug)
+            PortalErrorLog.record(datas,null,'trackerEmail','evalbody',e,this.transition.tracker.slug)
             return ''
         }
 
@@ -85,7 +85,7 @@ Params: ''' + params
 Params: ''' + params
                 }
             }
-            PortalErrorLog.record(datas,null,'trackerEmail','evalbody',e.toString(),this.transition.tracker.slug)
+            PortalErrorLog.record(datas,null,'trackerEmail','evalbody',e,this.transition.tracker.slug)
             return ''
         }
         return ['title':titlereturn,'body':bodyreturn]

@@ -987,7 +987,7 @@ setTimeout(check,2000);
                             Params: ''' + params
                         }
                     }
-                    PortalErrorLog.record(params,curuser,controllerName,actionName,e.toString(),page.slug,page.module)
+                    PortalErrorLog.record(params,curuser,controllerName,actionName,e,page.slug,page.module)
                 }
             }
         }
@@ -1118,7 +1118,7 @@ setTimeout(check,2000);
                         Params: ''' + params
                     }
                 }
-                PortalErrorLog.record(params,curuser,controllerName,actionName,e.toString(),page.slug,page.module)
+                PortalErrorLog.record(params,curuser,controllerName,actionName,e,page.slug,page.module)
             }
         }
         ['portalService':portalService,'tracker':tracker,'datas':datas,'curuser':curuser]
@@ -1250,7 +1250,7 @@ setTimeout(check,2000);
                             }
                             catch(Exception e) {
                                 println "Error running runonupdate for status " + curstatus + " : " + e
-                                PortalErrorLog.record(params,curuser,'tracker','runonupdate',e.toString(),tracker.slug,tracker.module)
+                                PortalErrorLog.record(params,curuser,'tracker','runonupdate',e,tracker.slug,tracker.module)
                             }
                         }
                         if(curstatus && curstatus.emailonupdate) {
@@ -1276,7 +1276,7 @@ setTimeout(check,2000);
                                 }
                             }
                             catch(Exception e) {
-                                PortalErrorLog.record(params,curuser,'tracker','emailonupdate - tosend and toccs',e.toString(),tracker.slug,tracker.module)
+                                PortalErrorLog.record(params,curuser,'tracker','emailonupdate - tosend and toccs',e,tracker.slug,tracker.module)
                             }
                             if(tosend) {
                                 def emailcontent = email.evalbody(curdatas,groovyPagesTemplateEngine,portalService)
@@ -1294,7 +1294,7 @@ setTimeout(check,2000);
                                 }
                                 catch(Exception e) {
                                     println 'Error with sending emailonupdate ' + email.body?.title + ' : ' + e.toString()
-                                    PortalErrorLog.record(params,curuser,'tracker','emailonupdate',e.toString(),tracker.slug,tracker.module)
+                                    PortalErrorLog.record(params,curuser,'tracker','emailonupdate',e,tracker.slug,tracker.module)
                                 }
                             }
                         }
@@ -1321,6 +1321,9 @@ setTimeout(check,2000);
                             }
                             catch(Exception e){
                                 println "Error postprocessing for transition " + ctrans + " with " + ctrans.postprocess.content + " error:" + e
+                                PortalErrorLog.capture(e, "transition ${tracker.module}:${tracker.slug} '${ctrans.name}' postprocess (page ${ctrans.postprocess.slug})",
+                                                       [params: params, user: curuser, controller: 'portalTracker',
+                                                        action: 'transition_submit postprocess', module: tracker.module, slug: tracker.slug])
                                 flash.message = e.getMessage() ?: "An unexpected error occurred during processing. Please check the server log."
                             }
                         }
@@ -1355,7 +1358,7 @@ setTimeout(check,2000);
                                 // println "Final Emailto: " + tosend + " CC:" + toccs
                             }
                             catch(Exception e){
-                                PortalErrorLog.record(params,curuser,'tracker','updatetrail - tosend and toccs',e.toString() + "\n\n" + email,tracker.slug,tracker.module)
+                                PortalErrorLog.record(params,curuser,'tracker','updatetrail - tosend and toccs',PortalErrorLog.describe(e) + "\n\n" + email,tracker.slug,tracker.module)
                                 println "Error processing email to: " + e
                             }
                             if(tosend) {
@@ -1387,7 +1390,7 @@ setTimeout(check,2000);
                                             println 'Error sending error notification email: ' + e2.toString()
                                         }
                                     }
-                                    PortalErrorLog.record(params,curuser,'tracker','updatetrail - sending email',e.toString(),tracker.slug,tracker.module)
+                                    PortalErrorLog.record(params,curuser,'tracker','updatetrail - sending email',e,tracker.slug,tracker.module)
                                 }
                             }
                         }
@@ -1560,7 +1563,7 @@ setTimeout(check,2000);
                 Params: ''' + params
                                 }
                             }
-                            PortalErrorLog.record(params,curuser,controllerName,actionName,e.toString(),page.slug,page.module)
+                            PortalErrorLog.record(params,curuser,controllerName,actionName,e,page.slug,page.module)
                         }
                     }
 
@@ -1642,6 +1645,9 @@ setTimeout(check,2000);
                         }
                     } catch (Exception e) {
                         println "Error postprocessing for transition_direct " + ctrans + ": " + e
+                        PortalErrorLog.capture(e, "transition ${tracker.module}:${tracker.slug} '${ctrans.name}' postprocess via direct link (page ${ctrans.postprocess.slug})",
+                                               [params: params, user: curuser, controller: 'portalTracker',
+                                                action: 'transition_direct postprocess', module: tracker.module, slug: tracker.slug])
                         flash.message = e.getMessage() ?: "An unexpected error occurred during processing. Please check the server log."
                     }
                 }
@@ -1673,7 +1679,7 @@ setTimeout(check,2000);
                             }
                         }
                     } catch (Exception e) {
-                        PortalErrorLog.record(params, curuser, 'tracker', 'transition_direct - tosend/toccs', e.toString() + "\n\n" + email, tracker.slug, tracker.module)
+                        PortalErrorLog.record(params, curuser, 'tracker', 'transition_direct - tosend/toccs', PortalErrorLog.describe(e) + "\n\n" + email, tracker.slug, tracker.module)
                     }
                     if (tosend) {
                         def emailcontent = email.evalbody(datas, groovyPagesTemplateEngine, portalService)
@@ -1687,7 +1693,7 @@ setTimeout(check,2000);
                             sendemail.deliveryTime = new Date()
                             sendemail.send(mailService)
                         } catch (Exception e) {
-                            PortalErrorLog.record(params, curuser, 'tracker', 'transition_direct - sending email', e.toString(), tracker.slug, tracker.module)
+                            PortalErrorLog.record(params, curuser, 'tracker', 'transition_direct - sending email', e, tracker.slug, tracker.module)
                         }
                     }
                 }
@@ -1818,7 +1824,7 @@ setTimeout(check,2000);
         Params: ''' + params
                   }
               }
-              PortalErrorLog.record(params,curuser,controllerName,actionName,e.toString(),page.slug,page.module)
+              PortalErrorLog.record(params,curuser,controllerName,actionName,e,page.slug,page.module)
           }
       }
 

@@ -68,7 +68,7 @@ class PortalFileManagerController {
             }
             catch(Exception e) {
                 // def curuser = User.get(session.userid)
-                PortalErrorLog.record(params,session.curuser,controllerName,actionName,e.toString(),filemanager?.name,filemanager?.module)
+                PortalErrorLog.record(params,session.curuser,controllerName,actionName,e,filemanager?.name,filemanager?.module)
             }
         }
         redirect(action:'explorepage',params:params)
@@ -107,7 +107,7 @@ class PortalFileManagerController {
                         catch(Exception exp) {
                             // def curuser = User.get(session.userid)
                             println "Error renaming file: " + exp
-                            PortalErrorLog.record(params,session.curuser,controllerName,actionName,exp.toString(),filemanager?.name,filemanager?.module)
+                            PortalErrorLog.record(params,session.curuser,controllerName,actionName,exp,filemanager?.name,filemanager?.module)
                         }
                     }
                 }
@@ -127,7 +127,7 @@ class PortalFileManagerController {
         catch(Exception e) {
             // def curuser = User.get(session.userid)
             println "Error renaming :" + e
-            PortalErrorLog.record(params,session.curuser,controllerName,actionName,e.toString(),filemanager?.name,filemanager?.module)
+            PortalErrorLog.record(params,session.curuser,controllerName,actionName,e,filemanager?.name,filemanager?.module)
         }
     }
 

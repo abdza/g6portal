@@ -45,6 +45,9 @@ class PortalService {
             return output.toString()
         } catch (Exception e) {
             println "Error including page ${module}:${slug}: ${e}"
+            PortalErrorLog.capture(e, "page ${module}:${slug} included by another page",
+                                   [module: module, slug: slug, controller: 'portalService',
+                                    action: 'includePage'])
             return "<!-- Error including ${module}:${slug} -->"
         } finally {
             stack.remove(pageKey)
@@ -159,7 +162,7 @@ class PortalService {
                             errormsg << shell.evaluate(error.error_msg) + " "
                         }
                         catch(Exception e) {
-                            PortalErrorLog.record(params,curuser,'PortalService','field_error_messages',e.toString(),curfield.tracker.slug,curfield.tracker.module)
+                            PortalErrorLog.record(params,curuser,'PortalService','field_error_messages',e,curfield.tracker.slug,curfield.tracker.module)
                         }
                     }
                     else {
@@ -189,7 +192,7 @@ class PortalService {
                                 errormsg << shell.evaluate(error.error_msg) + " "
                             }
                             catch(Exception e) {
-                                PortalErrorLog.record(params,curuser,'PortalService','field_error_messages',e.toString(),curfield.tracker.slug,curfield.tracker.module)
+                                PortalErrorLog.record(params,curuser,'PortalService','field_error_messages',e,curfield.tracker.slug,curfield.tracker.module)
                             }
                         }
                         else {
@@ -216,7 +219,7 @@ class PortalService {
                                 errormsg << shell.evaluate(error.error_msg) + " "
                             }
                             catch(Exception e) {
-                                PortalErrorLog.record(params,curuser,'PortalService','field_error_messages',e.toString(),curfield.tracker.slug,curfield.tracker.module)
+                                PortalErrorLog.record(params,curuser,'PortalService','field_error_messages',e,curfield.tracker.slug,curfield.tracker.module)
                             }
                         }
                         else {
@@ -243,7 +246,7 @@ class PortalService {
                                 errormsg << shell.evaluate(error.error_msg) + " "
                             }
                             catch(Exception e) {
-                                PortalErrorLog.record(params,curuser,'PortalService','field_error_messages',e.toString(),curfield.tracker.slug,curfield.tracker.module)
+                                PortalErrorLog.record(params,curuser,'PortalService','field_error_messages',e,curfield.tracker.slug,curfield.tracker.module)
                             }
                         }
                         else {
@@ -274,7 +277,7 @@ class PortalService {
                         }
                     }
                     catch(Exception e) {
-                        PortalErrorLog.record(params,curuser,'PortalService','field_error_messages',e.toString(),curfield.tracker.slug,curfield.tracker.module)
+                        PortalErrorLog.record(params,curuser,'PortalService','field_error_messages',e,curfield.tracker.slug,curfield.tracker.module)
                     }
                 }
             }
@@ -331,7 +334,7 @@ class PortalService {
                 hyperscript += shell.evaluate(curfield.hyperscript)
             }
             catch(Exception e) {
-                PortalErrorLog.record(params,curuser,'PortalService','field_error_js',e.toString(),curfield.tracker.slug,curfield.tracker.module)
+                PortalErrorLog.record(params,curuser,'PortalService','field_error_js',e,curfield.tracker.slug,curfield.tracker.module)
             }
         }
         def spanclass = ""
@@ -555,7 +558,7 @@ class PortalService {
                                 }
                                 catch(Exception exp){
                                     println "Tracker download list excel error writing:" + exp
-                                    PortalErrorLog.record(params,null,'PortalService','perform_data_dump',exp.toString())
+                                    PortalErrorLog.record(params,null,'PortalService','perform_data_dump',exp)
                                 }
                             }
                             println "Trying to trigger gc"
@@ -611,7 +614,7 @@ class PortalService {
                     body '''There was an error in evaltext: ${content} : ${e}'''
                 }
             }
-            PortalErrorLog.record(args,null,'page','evalcontent',e.toString())
+            PortalErrorLog.record(args,null,'page','evalcontent',e)
             return ''
         }
         return bodyreturn
@@ -985,7 +988,7 @@ class PortalService {
                   }
               }
             } catch(Exception e) {
-                PortalErrorLog.record(params,curuser,'Module','Update List',e.toString())
+                PortalErrorLog.record(params,curuser,'Module','Update List',e)
                 println "Error:" + e
             }
         }

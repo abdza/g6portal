@@ -227,7 +227,7 @@ class User {
         catch(Exception exp){
             println "User.updatelanid (primary): error connecting/searching for " + this.userID + " - " + exp.class.name + ": " + exp.message
             exp.printStackTrace()
-            PortalErrorLog.record(null,this,"user","updatelanid","Error connecting to ldap server:" + exp.toString())
+            PortalErrorLog.record(null,this,"user","updatelanid","Error connecting to ldap server:" + PortalErrorLog.describe(exp))
         }
         finally {
             if(connection) {

@@ -105,7 +105,7 @@ class PortalSchedulerController {
                         }
                         catch(Exception e){
                             println 'Error running scheduler ' + schedule.name + '-' + script + ' : ' + e.toString()
-                            PortalErrorLog.record(params,null,controllerName,actionName,e.toString(),script,schedule.module)
+                            PortalErrorLog.record(params,null,controllerName,actionName,e,script,schedule.module)
                             def emailpagerror = PortalSetting.findByName("emailpagerror")
                             if(emailpagerror){
                                 sendMail {

@@ -347,7 +347,7 @@ setTimeout(check,2000);
                     }
                     catch(Exception e){
                         println 'Error running page ' + page.title + ' : ' + e.toString()
-                        PortalErrorLog.record(params,curuser,controllerName,actionName,e.toString(),page.slug,page.module)
+                        PortalErrorLog.record(params,curuser,controllerName,actionName,e,page.slug,page.module)
                         def emailpagerror = PortalSetting.findByName("emailpagerror")
                         if(emailpagerror){
                             sendMail {
@@ -623,7 +623,7 @@ setTimeout(check,2000);
             }
             catch(Exception e){
                 println 'Error with page ' + pageInstance.title + ' : ' + e.toString()
-                PortalErrorLog.record(params,curuser,controllerName,actionName,e.toString())
+                PortalErrorLog.record(params,curuser,controllerName,actionName,e)
                 def emailpagerror = PortalSetting.findByName("emailpagerror")
                 if(emailpagerror){
                     sendMail {
@@ -706,7 +706,7 @@ setTimeout(check,2000);
 				Curuser: ''' + curuser
                     }
                 }
-                PortalErrorLog.record(params,curuser,controllerName,actionName,e.toString())
+                PortalErrorLog.record(params,curuser,controllerName,actionName,e)
             }
         }
         [pageInstance:pageInstance,content:output.toString()]

@@ -201,7 +201,7 @@ class PortalTrackerField {
                 }
                 catch(Exception e){
                     println 'There was an error in field updatedb:' + e
-                    PortalErrorLog.record(null,null,'field','updatedb',e.toString(),this.tracker.slug,this.tracker.module)
+                    PortalErrorLog.record(null,null,'field','updatedb',e,this.tracker.slug,this.tracker.module)
                     return ''
                 }
             }
@@ -239,7 +239,7 @@ class PortalTrackerField {
                 // curuser = User.get(session.userid)
                 curuser = session.curuser
             }
-            PortalErrorLog.record(datas,curuser,'trackerField','evaloptions',e.toString(),this.tracker.slug,this.tracker.module)
+            PortalErrorLog.record(datas,curuser,'trackerField','evaloptions',e,this.tracker.slug,this.tracker.module)
         }
     }
 
@@ -264,7 +264,7 @@ class PortalTrackerField {
                 // curuser = User.get(session.userid)
                 curuser = session.curuser
             }
-            PortalErrorLog.record(datas,curuser,'trackerField','evalformat',e.toString(),this.tracker.slug,this.tracker.module)
+            PortalErrorLog.record(datas,curuser,'trackerField','evalformat',e,this.tracker.slug,this.tracker.module)
         }
     }
 
@@ -289,7 +289,7 @@ class PortalTrackerField {
                 // curuser = User.get(session.userid)
                 curuser = session.curuser
             }
-            PortalErrorLog.record(datas,curuser,'trackerField','evalquery',e.toString(),this.tracker.slug,this.tracker.module)
+            PortalErrorLog.record(datas,curuser,'trackerField','evalquery',e,this.tracker.slug,this.tracker.module)
         }
     }
 
@@ -379,7 +379,7 @@ class PortalTrackerField {
                 // println "Tracker objects:" + objects
             }
             catch(Exception e){
-                PortalErrorLog.record(params,curuser,'trackerField','objectlist',e.toString(),this.tracker.slug,this.tracker.module)
+                PortalErrorLog.record(params,curuser,'trackerField','objectlist',e,this.tracker.slug,this.tracker.module)
             }
         }
         else {
@@ -435,7 +435,7 @@ class PortalTrackerField {
                     // curuser = User.get(session.userid)
                     curuser = session.curuser
                 }
-                PortalErrorLog.record(params,curuser,'trackerField','nodeslist',e.toString(),this.tracker.slug,this.tracker.module)
+                PortalErrorLog.record(params,curuser,'trackerField','nodeslist',e,this.tracker.slug,this.tracker.module)
             }
         }
         return nodes
@@ -492,7 +492,7 @@ class PortalTrackerField {
                     // curuser = User.get(session.userid)
                     curuser = session.curuser
                 }
-                PortalErrorLog.record(params,curuser,'trackerField','userlist',e.toString(),this.tracker.slug,this.tracker.module)
+                PortalErrorLog.record(params,curuser,'trackerField','userlist',e,this.tracker.slug,this.tracker.module)
             }
         }
         else {

@@ -77,7 +77,7 @@ class PortalTrackerRole {
 Params: ''' + params
                 }
             }
-            PortalErrorLog.record(datas,curuser,'trackerRole','evalrole',e.toString() + '<br/>' + errormsg)
+            PortalErrorLog.record(datas,curuser,'trackerRole','evalrole',PortalErrorLog.describe(e) + '<br/>' + errormsg)
             return ''
         }
     }

@@ -32,7 +32,7 @@ class PortalTrackerIndex {
                 sql.execute(delquery)
             }
             catch(Exception e){
-                PortalErrorLog.record(null,null,'tracker','create index',e.toString() + " query: " + query,tracker.slug,tracker.module)
+                PortalErrorLog.record(null,null,'tracker','create index',PortalErrorLog.describe(e) + " query: " + query,tracker.slug,tracker.module)
             }
         }
     }
@@ -73,7 +73,7 @@ class PortalTrackerIndex {
                 }
                 catch(Exception e){
                     println "Error running query: " + e
-                    PortalErrorLog.record(null,null,'tracker','create index',e.toString() + " query: " + query,tracker.slug,tracker.module)
+                    PortalErrorLog.record(null,null,'tracker','create index',PortalErrorLog.describe(e) + " query: " + query,tracker.slug,tracker.module)
                 }
             }
         }
