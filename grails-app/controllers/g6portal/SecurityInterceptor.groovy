@@ -8,6 +8,11 @@ class SecurityInterceptor {
         matchAll()
         .except(controller:'user', action:'login')
         .except(controller:'user', action:'authenticate')
+        // First-run setup runs before any account exists, so there is nobody this
+        // interceptor could authorize. SetupController guards itself instead: it does
+        // nothing once the instance has a system administrator, and creating the first one
+        // needs the token file written on the server.
+        .except(controller:'setup')
         .except(controller:'googleOAuth', action:'initiate')
         .except(controller:'googleOAuth', action:'callback')
         // Module-owned raw endpoints authenticate themselves, per PortalEndpoint

@@ -26,7 +26,8 @@
                         <span style="color:#cf222e;">-</span> show the current state that will be replaced,
                         lines starting with <span style="color:#1a7f37;">+</span> show the incoming changes.
                         <br/>Importing files: <strong>${file_on ? 'Yes' : 'No'}</strong>,
-                        staff roles: <strong>${staff_on ? 'Yes' : 'No'}</strong>
+                        staff roles: <strong>${staff_on ? 'Yes' : 'No'}</strong>,
+                        trees: <strong>${tree_on ? 'Yes' : 'No'}</strong><g:if test="${tree_on && !staff_on}"> (structure only, no role holders)</g:if>
                         <g:if test="${settings}">
                             <br/>Settings are listed separately below the diff, where each one that
                             would change can be kept or updated individually.

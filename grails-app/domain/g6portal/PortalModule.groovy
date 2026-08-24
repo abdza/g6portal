@@ -846,7 +846,19 @@ class PortalModule {
         }
     }
 
-    def importmodule(file_on,staff_on,settingchoices = null) {
+    // Trees are read back through PortalTree, which owns the format so that a single tree
+    // can also be moved on its own (portalTree export/import) without touching its module.
+    def importtrees(migrationfolder,jsonSlurper,staff_on) {
+        def treefile = new File(migrationfolder + '/treelist.json')
+        if(treefile.exists()){
+            def treearray = jsonSlurper.parseText(treefile.text)
+            treearray.each { itree->
+                PortalTree.importdata(itree,staff_on)
+            }
+        }
+    }
+
+    def importmodule(file_on,staff_on,tree_on = false,settingchoices = null) {
         def curfolder = System.getProperty("user.dir")
         def migrationfolder = PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration') + '/' + this.name
         def jsonSlurper = new JsonSlurper()
@@ -863,6 +875,11 @@ class PortalModule {
             importsettings(migrationfolder,jsonSlurper,settingchoices)
             importpages(migrationfolder,jsonSlurper)
             importtrackers(migrationfolder,jsonSlurper)
+            if(tree_on) {
+              // trees come in whenever the package carries them; node role holders only when
+              // staff were asked for, since those are people rather than module structure
+              importtrees(migrationfolder,jsonSlurper,staff_on)
+            }
         }
     }
 
@@ -933,7 +950,7 @@ class PortalModule {
             def userrolearray = []
             userroles.each { userrole->
                 userrolearray << [
-                    user: userrole.user.newStaffID, 
+                    user: userrole.user.userID, 
                     module: userrole.module,
                     role: userrole.role
                 ]
@@ -1169,7 +1186,15 @@ class PortalModule {
         }
     }
 
-    def exportmodule(file_on,staff_on,targetfolder = null) {
+    def exporttrees(migrationfolder,staff_on) {
+        def trees = PortalTree.findAllByModule(this.name).sort { it.name }
+        if(trees.size()){
+            def treefile = new File(migrationfolder + '/treelist.json')
+            treefile.write(PortalTree.exportjson(trees,staff_on))
+        }
+    }
+
+    def exportmodule(file_on,staff_on,tree_on = false,targetfolder = null) {
         def curfolder = System.getProperty("user.dir")
         def migrationfolder = targetfolder ?: (PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration') + '/' + this.name)
         if(!(new File(migrationfolder).exists())){
@@ -1182,6 +1207,14 @@ class PortalModule {
             }
             if(staff_on) {
               exportuserroles(migrationfolder)
+            }
+            if(tree_on) {
+              exporttrees(migrationfolder,staff_on)
+            }
+            else {
+              // an unticked export must not smuggle in a treelist.json left behind by an
+              // earlier ticked one
+              new File(migrationfolder + '/treelist.json').delete()
             }
             exportsettings(migrationfolder)
             exportpages(migrationfolder)

@@ -28,6 +28,9 @@
                     <g:form useToken="true" resource="${this.portalTree}" method="DELETE">
                         <fieldset class="buttons">
                             <g:link class="edit" action="edit" resource="${this.portalTree}"><g:message code="default.button.edit.label" default="Edit" /></g:link>
+                            <g:link class="save" action="exporttree" id="${this.portalTree?.id}">Export</g:link>
+                            <g:link class="save" action="exporttree" id="${this.portalTree?.id}" params="[staff:'on']">Export with Role Holders</g:link>
+                            <g:link class="save" action="importtreeform">Import</g:link>
                             <input class="delete" type="submit" value="${message(code: 'default.button.delete.label', default: 'Delete')}" onclick="return confirm('${message(code: 'default.button.delete.confirm.message', default: 'Are you sure?')}');" />
                         </fieldset>
                     </g:form>

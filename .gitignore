@@ -44,3 +44,6 @@
 /g6db.trace.db
 /uploads
 package-lock.json
+
+# first-run setup token, written when an instance has no administrator yet
+setup-token.txt

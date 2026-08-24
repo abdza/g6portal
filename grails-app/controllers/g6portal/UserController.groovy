@@ -362,6 +362,22 @@ class UserController {
                 return
             }
 
+            // isAdmin and roletargetid are bindable:false on the domain, so the edit form's
+            // values do not arrive by data binding - they are applied here, and only for a
+            // superuser. A user editing their own profile cannot promote themselves, and the
+            // anonymous register/save path cannot touch them at all. The hidden _<field>
+            // marker Grails posts alongside each form field tells us the form really carried
+            // it, so an API call that omits the field leaves the stored value alone.
+            def actinguser = session.curuser
+            if(actinguser?.isAdmin) {
+                if(params.containsKey('_isAdmin')) {
+                    user.isAdmin = params.isAdmin ? true : false
+                }
+                if(params.containsKey('roletargetid')) {
+                    user.roletargetid = params.roletargetid ? params.int('roletargetid') : null
+                }
+            }
+
             try {
                 userService.save(user)
             } catch (ValidationException e) {
@@ -713,12 +729,19 @@ class UserController {
             redirect(controller:"user",action:"login")
             return false
         }
-        if(user.password=="") {
+        // Captured before the branch below overwrites it: an account that has never had a
+        // password must not become locally loggable just because someone typed one here.
+        def had_password = user.password ? true : false
+        def disable_lanid = config.server.disable_lanid
+        // Claiming a password on first login only makes sense where local passwords are the
+        // way in at all. With server.disable_lanid off, Active Directory is authoritative, and
+        // an account that never set a local password has to keep not having one - otherwise
+        // anyone who knows a username could set its password here and then log in with it.
+        if(disable_lanid && user.password=="") {
             user.hashPassword(params.password)
             userService.save(user)
         } 
         def loggedin = false
-        def disable_lanid = config.server.disable_lanid
         println "Disable lan_id:" + disable_lanid
         if(disable_lanid) {
           println "Enforcer"
@@ -774,7 +797,15 @@ class UserController {
                 }
             }
         }
-        if(loggedin || (disable_lanid && (!(user.lanid && PortalSetting.namedefault("enforce_lanid",0)) || !PortalSetting.namedefault("enforce_lanid",0)) && user.verifyPassword(params.password))){
+        // An account with no LAN ID has nothing to authenticate against Active Directory
+        // with, so its own password is the only credential it has: checking it must not depend
+        // on server.disable_lanid, or an instance where that key is unset cannot be logged into
+        // at all - including the administrator /setup has just created. Deliberately narrow:
+        // only accounts that ALREADY had a stored password qualify, so the legacy "empty
+        // password is claimed on first login" path stays behind disable_lanid and an account
+        // that never set one still cannot be claimed through here.
+        def localpassword = disable_lanid || (!user.lanid && had_password)
+        if(loggedin || (localpassword && (!(user.lanid && PortalSetting.namedefault("enforce_lanid",0)) || !PortalSetting.namedefault("enforce_lanid",0)) && user.verifyPassword(params.password))){
             if(session.logintry){
                 session.removeAttribute('logintry')
                 session.removeAttribute('previd')

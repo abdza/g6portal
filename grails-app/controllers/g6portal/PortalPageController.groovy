@@ -647,39 +647,12 @@ setTimeout(check,2000);
         }
     }
 
+    // Superseded by SetupController (/setup): the first administrator is now created from a
+    // one-time token written on the server, instead of this minting a fixed
+    // admin / admin1234$ account whenever server.allow_setup happened to be on. Kept as a
+    // redirect so existing links still lead somewhere useful; it no longer creates anything.
     def setup() {
-        println "In setup"
-        def allow_setup = config.server.allow_setup
-        if(allow_setup) {
-            println "Doing setup"
-            def admin_user = User.findByIsAdmin(true)
-            if(!admin_user) {
-                println "Admin not found. Creating one"
-                try {
-                    PortalPage.withTransaction { sqltrans->
-                        admin_user = new User()
-                        admin_user.userID = 'admin'
-                        admin_user.name = 'Admin'
-                        admin_user.isAdmin = true
-                        admin_user.isActive = true
-                        admin_user.resetPassword = false
-                        admin_user.email = 'admin@g6portal.com'
-                        admin_user.hashPassword('admin1234$')
-                        admin_user.save(flush:true)
-                        def portal_dev = new UserRole()
-                        portal_dev.user = admin_user
-                        portal_dev.module = 'portal'
-                        portal_dev.role = 'Developer'
-                        portal_dev.save(flush:true)
-                        println "Done saving admin. Login with admin, admin1234\$"
-                    }
-                }
-                catch(Exception exp) {
-                    println "Error saving admin:" + exp
-                }
-            }
-        }
-        redirect(controller:'portalPage',action:'home')
+        redirect(controller:'setup',action:'index')
     }
 
     def home() {

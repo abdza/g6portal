@@ -25,7 +25,7 @@ class User {
         name()
         email(email:true)
         role(nullable:true)
-        roletargetid(nullable:true)
+        roletargetid(nullable:true,bindable:false)
         lastlogin(nullable:true)
         nodes(nullable:true)
         profilepic(nullable:true)
@@ -41,15 +41,24 @@ class User {
         state(nullable:true)
         date_joined(nullable:true)
         lanid(nullable:true)
-        activeSessionId(nullable:true)
-        activeSessionUpdated(nullable:true)
+        activeSessionId(nullable:true,bindable:false)
+        activeSessionUpdated(nullable:true,bindable:false)
         treesdate(nullable:true)
         lastUpdated(nullable:true)
         lastInfoUpdate(nullable:true)
         lastReminder(nullable:true)
         lanidexception(nullable:true)
-        password(nullable:true,password:true)
-        password5(nullable:true,password:true)
+        // bindable:false: these are never safe to take straight from request parameters.
+        // user.register / user.save are in the default portal.whitelist, so an anonymous POST
+        // binds into a brand new User - isAdmin would have made a system administrator, and
+        // roletargetid grants whatever org-tree role that row carries (SecurityInterceptor
+        // checks currentrole() when authorizing pages). The screen that legitimately sets
+        // isAdmin/roletargetid (user/edit) assigns them explicitly in UserController.update
+        // after checking the acting user is a superuser. The password always goes through
+        // hashPassword() from params, never bound raw.
+        isAdmin(bindable:false)
+        password(nullable:true,password:true,bindable:false)
+        password5(nullable:true,password:true,bindable:false)
         profile_id(nullable:true)
     }
 
@@ -151,6 +160,15 @@ class User {
     }
 
     def verifyPassword(String toverify) {
+        if(!toverify) {
+            return false
+        }
+        // No stored password is not a free pass. An account that never set one, or had it
+        // cleared in the database, must not accept an arbitrary password - and BCrypt throws
+        // rather than returning false when handed a null hash.
+        if(!this.password) {
+            return false
+        }
         def toreturn = BCrypt.verifyer().verify(toverify.toCharArray(), this.password)
         return toreturn.verified
     }

@@ -19,17 +19,19 @@ class UrlMappings {
         action = "login"
     }
 
+	// First-run setup for an instance that has no administrator yet. The controller
+	// refuses to do anything once one exists.
+	"/setup" {
+        controller = "setup"
+        action = "index"
+    }
+
 	"/user/switchuser/$id" {
         controller = "user"
         action = "switchuser"
         constraints {
             id(matches:/[a-zA-Z0-9._\-]+$/)
         }
-    }
-
-	"/setup" {
-        controller = "portalPage"
-        action = "setup"
     }
 
 	"/download/$module/$slug" {

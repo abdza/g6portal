@@ -560,11 +560,17 @@ class PortalModuleController {
 
   // Export the module's current state to a temp folder and diff it against
   // the migration files about to be imported
-  private String generateimportdiff(module, file_on, staff_on) {
+  // Trees are only in the migration files when the exporter ticked them, and are imported
+  // whenever the package carries them
+  private boolean migrationHasTrees(module) {
+      return new File(modulemigrationfolder(module) + '/treelist.json').exists()
+  }
+
+  private String generateimportdiff(module, file_on, staff_on, tree_on) {
       def migrationfolder = modulemigrationfolder(module)
       def tmpdir = File.createTempDir('g6export_', '_' + module.name)
       try {
-          portalService.export_module(module.id, file_on, staff_on, tmpdir.path)
+          portalService.export_module(module.id, file_on, staff_on, tree_on, tmpdir.path)
           return PortalService.diff_module_folders(tmpdir, new File(migrationfolder))
       } finally {
           tmpdir.deleteDir()
@@ -585,9 +591,10 @@ class PortalModuleController {
       }
       def file_on = (params.files ? true : false) && migrationHasFiles(module)
       def staff_on = (params.staff ? true : false) && migrationHasStaff(module)
+      def tree_on = migrationHasTrees(module)
       def difftext = ''
       try {
-          difftext = generateimportdiff(module, file_on, staff_on)
+          difftext = generateimportdiff(module, file_on, staff_on, tree_on)
       } catch(Exception e) {
           println "Error generating import diff: " + e
           flash.message = "Error generating import diff: " + e.message
@@ -605,7 +612,7 @@ class PortalModuleController {
           flash.message = "Could not read settinglist.json: ${e.message}"
       }
       respond module, view:'importpreview', model:[curuser:curuser, diff:difftext,
-              file_on:file_on, staff_on:staff_on, settings:settings]
+              file_on:file_on, staff_on:staff_on, tree_on:tree_on, settings:settings]
   }
 
   def confirmimport(Long id) {
@@ -631,6 +638,7 @@ class PortalModuleController {
       }
       def file_on = (params.files ? true : false) && migrationHasFiles(module)
       def staff_on = (params.staff ? true : false) && migrationHasStaff(module)
+      def tree_on = migrationHasTrees(module)
       // Per-setting decisions from the preview form. Each row posts its key in a hidden
       // settingkey_<n> alongside its radio settingchoice_<n>, so the pairing travels with the
       // submission and does not depend on the settings file still being in the same order.
@@ -646,14 +654,14 @@ class PortalModuleController {
       try {
           // regenerate the diff at import time so the log records exactly
           // what changed even if the module was modified after the preview
-          def difftext = generateimportdiff(module, file_on, staff_on)
+          def difftext = generateimportdiff(module, file_on, staff_on, tree_on)
           // Record the settings deliberately not taken, so the log explains why the imported
           // module does not match its migration files.
           if(kept) {
               difftext = "Settings kept at their existing values (not imported):\n" +
                          kept.collect { "  " + it }.join("\n") + "\n\n" + (difftext ?: '')
           }
-          portalService.import_module(id, file_on, staff_on, settingchoices)
+          portalService.import_module(id, file_on, staff_on, tree_on, settingchoices)
           PortalModuleImportLog.withTransaction {
               new PortalModuleImportLog(module:module.name, staffid:curuser?.staffID,
                   staffname:curuser?.name, remarks:params.remarks, diff:difftext).save(flush:true)
@@ -727,11 +735,15 @@ class PortalModuleController {
 
         def file_on = false
         def user_on = false
+        def tree_on = false
         if(params.files) {
             file_on = true
         }
         if(params.user) {
             user_on = true
+        }
+        if(params.trees) {
+            tree_on = true
         }
         if(params.op=="Delete") {
           portalModuleService.delete(id)
@@ -741,7 +753,7 @@ class PortalModuleController {
             flash.message = "Module exported"
             def module = portalModuleService.get(id)
             if(module) {
-                portalService.export_module(id,file_on,user_on)
+                portalService.export_module(id,file_on,user_on,tree_on)
                 def curfolder = System.getProperty("user.dir")
                 def migrationfolder = PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration') + '/' + module.name
                 migrationfolder = migrationfolder.replaceAll('//','/')
