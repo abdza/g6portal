@@ -26,6 +26,14 @@ info:
     team: "G6 Portal Team"
     # logo_slug: "logo"
     # logo_url: "https://g6portal.abdullahsolutions.com/images/logo.png"
+portal:
+  # Folder of <modulename>.zip packages - the archives the module export screen
+  # produces - imported on startup when the module is not installed yet. Lets a
+  # preconfigured instance be shipped as "unzip this and run it". A module that
+  # already exists is never touched; upgrade one through the admin UI, where the
+  # diff is shown first. Relative paths resolve against the working directory.
+  # Defaults to ./bundled-modules, and does nothing when that folder is absent.
+  # bundled_modules_folder: "./bundled-modules"
 spring:
   cache:
     jcache:
@@ -175,8 +183,11 @@ environments:
         defaultTransactionIsolation: 2 # TRANSACTION_READ_COMMITTED
   test:
     dataSource:
-      dbCreate: update
-      url: jdbc:h2:./g6db;LOCK_TIMEOUT=10000;DB_CLOSE_ON_EXIT=FALSE;DATABASE_TO_LOWER=TRUE;MODE=PostgreSQL
+      # Tests get their own throwaway in-memory database. Pointing this at ./g6db - the
+      # same file development uses - meant a test run wrote to real data, and could not run
+      # at all while the app was up, because H2 locks the file to a single process.
+      dbCreate: create-drop
+      url: jdbc:h2:mem:testDb;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE;MODE=PostgreSQL
       # url: jdbc:postgresql://localhost:5432/g6portal?stringtype=unspecified
       # url: jdbc:sqlserver://localhost:1433;databaseName=g6portal;encrypt=true;trustServerCertificate=true;
       properties:
