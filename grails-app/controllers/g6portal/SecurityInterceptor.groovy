@@ -362,6 +362,23 @@ class SecurityInterceptor {
         redirect(controller: "portalPage", action: "home")
         return false
 		}
+		else if(controllerName=='branding') {
+        // Branding restyles the whole portal for every user and is not scoped to any
+        // module, so the generic "admin of some module" fallback below would be far too
+        // broad - one module's admin could rebrand the entire install. Superusers only.
+        if(curuser?.isAdmin) {
+            return true
+        }
+        if(curuser) {
+            flash.message = "Branding can only be changed by a system administrator"
+            redirect(controller: "portalPage", action: "home")
+            return false
+        }
+        session['redirectAfterLogin'] = [ controller: controllerName, action: actionName, params: params ]
+        flash.message = "You need to login to access that functionality"
+        redirect(controller: "user", action: "login")
+        return false
+		}
 		else if(controllerName=='portalEndpoint') {
         // serve() is exempt from this interceptor entirely (it authenticates itself per
         // PortalEndpoint row); everything else here is the maintenance UI. An endpoint's

@@ -5,19 +5,11 @@
   <meta charset="utf-8">
   <meta content="width=device-width, initial-scale=1.0" name="viewport">
 
-  <title>
-<g:if test="${grailsApplication.config.getProperty('info.app.name')}">
-${grailsApplication.config.getProperty('info.app.name')}
-</g:if>
-<g:else>
-G6 Portal
-</g:else>
-<g:layoutTitle default="Grails"/>
-</title>
+  <title><g:brand name='app_name'/> <g:layoutTitle default="Grails"/></title>
   <meta content="" name="description">
   <meta content="" name="keywords">
   <!-- Favicons -->
-  <asset:link rel="icon" type="image/x-ico" href="images/favicon.ico"/>
+  <link rel="icon" type="image/x-icon" href="<g:brand_favicon_url/>"/>
   <asset:link href="images/apple-touch-icon.png" rel="apple-touch-icon"/>
 
   <!-- Google Fonts -->
@@ -25,6 +17,10 @@ G6 Portal
 
   <!-- Vendor CSS Files -->
   <asset:stylesheet src="application.css"/>
+
+  <%-- Client palette. Overrides the var(--brand-*) fallbacks compiled into the theme,
+       and emits nothing when the portal is still on the stock colours. --%>
+  <g:branding_style/>
 
     <g:layoutHead/>
 </head>
@@ -47,25 +43,8 @@ G6 Portal
 
     <div class="d-flex align-items-center justify-content-between">
       <a href="index.html" class="logo d-flex align-items-center">
-<g:if test="${grailsApplication.config.getProperty('info.app.logo_slug')}">
-        <img src="<g:download_file slug='${grailsApplication.config.getProperty('info.app.logo_slug')}'/>" alt="">
-</g:if>
-<g:else>
-  <g:if test="${grailsApplication.config.getProperty('info.app.logo_url')}">
-          <img src="${grailsApplication.config.getProperty('info.app.logo_url')}" alt="">
-  </g:if>
-  <g:else>
-          <img src="${resource(dir:'images',file:'logo.png')}" alt="">
-  </g:else>
-</g:else>
-        <span class="d-none d-lg-block">
-<g:if test="${grailsApplication.config.getProperty('info.app.name')}">
-${grailsApplication.config.getProperty('info.app.name')}
-</g:if>
-<g:else>
-G6 Portal
-</g:else>
-        </span>
+        <img src="<g:brand_logo_url/>" alt="<g:brand name='app_name'/>">
+        <span class="d-none d-lg-block"><g:brand name='app_name'/></span>
       </a>
       <i class="bi bi-list toggle-sidebar-btn"></i>
     </div><!-- End Logo -->
@@ -347,6 +326,15 @@ G6 Portal
       </li><!-- End Tree Nav -->
 
     <g:if test="${curuser?.isAdmin}">
+        <li class="nav-item">
+    <g:link controller='branding' action='index' class='nav-link collapsed'>
+            <i class="bi bi-palette"></i>
+            <span>Branding</span>
+    </g:link>
+      </li><!-- End Branding Nav -->
+    </g:if>
+
+    <g:if test="${curuser?.isAdmin}">
         <%-- Superusers only: an endpoint's target is a program the server executes, so
              editing one is running anything as the portal's account. SecurityInterceptor
              enforces the same restriction; this only keeps the link out of sight. --%>
@@ -404,31 +392,10 @@ G6 Portal
   <!-- ======= Footer ======= -->
   <footer id="footer" class="footer">
     <div class="copyright">
-      &copy; Copyright <strong><span>
-<g:if test="${grailsApplication.config.getProperty('info.app.copyright')}">
-${grailsApplication.config.getProperty('info.app.copyright')}
-</g:if>
-<g:else>
-G6 Portal
-</g:else>
-      </span></strong>. All Rights Reserved
+      &copy; Copyright <strong><span><g:brand name='copyright'/></span></strong>. All Rights Reserved
     </div>
     <div class="credits">
-      Designed by <a href="
-<g:if test="${grailsApplication.config.getProperty('info.app.homepage')}">
-${grailsApplication.config.getProperty('info.app.homepage')}
-</g:if>
-<g:else>
-https://g6portal.abdullahsolutions.com/
-</g:else>
-      ">
-<g:if test="${grailsApplication.config.getProperty('info.app.team')}">
-${grailsApplication.config.getProperty('info.app.team')}
-</g:if>
-<g:else>
-G6Portal Portal Team
-</g:else>
-      </a>
+      Designed by <a href="<g:brand name='homepage'/>"><g:brand name='team'/></a>
     </div>
   </footer><!-- End Footer -->
 

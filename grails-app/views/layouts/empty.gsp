@@ -5,20 +5,12 @@
   <meta charset="utf-8">
   <meta content="width=device-width, initial-scale=1.0" name="viewport">
 
-  <title>
-<g:if test="${grailsApplication.config.getProperty('info.app.name')}">
-${grailsApplication.config.getProperty('info.app.name')}
-</g:if>
-<g:else>
-G6 Portal
-</g:else>
-<g:layoutTitle default="Grails"/>
-</title>
+  <title><g:brand name='app_name'/> <g:layoutTitle default="Grails"/></title>
   <meta content="" name="description">
   <meta content="" name="keywords">
   <asset:stylesheet src="application.css"/>
   <!-- Favicons -->
-  <asset:link rel="icon" type="image/x-ico" href="assets/images/favicon.png"/>
+  <link rel="icon" type="image/x-icon" href="<g:brand_favicon_url/>"/>
   <asset:link href="assets/images/apple-touch-icon.png" rel="apple-touch-icon"/>
 
   <!-- Google Fonts -->
@@ -26,6 +18,9 @@ G6 Portal
 
   <!-- Vendor CSS Files -->
   <asset:stylesheet src="application.css"/>
+
+  <%-- Client palette - see main.gsp. --%>
+  <g:branding_style/>
 
     <g:layoutHead/>
 </head>
