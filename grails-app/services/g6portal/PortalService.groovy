@@ -178,6 +178,14 @@ class PortalService {
                     def qparams = [:]
                     qparams[curfield.name] = val.trim()
                     def prevdata = curfield.tracker.rows(qparams)
+                    // Editing a record resubmits its own value for every field, so
+                    // without this the record always clashes with itself and no
+                    // record carrying a Unique field can ever be edited again -
+                    // not even to change something else.
+                    def ownid = params ? params['id']?.toString()?.trim() : null
+                    if(ownid) {
+                        prevdata = prevdata.findAll { it['id']?.toString() != ownid }
+                    }
                     if(prevdata.size()>0) {
                         if(error.error_msg) {
                             Binding binding = new Binding()
