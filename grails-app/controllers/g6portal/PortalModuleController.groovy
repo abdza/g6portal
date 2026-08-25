@@ -486,44 +486,12 @@ class PortalModuleController {
                           def copytarget = migrationfolder+'/'+fileName
                           println "Copy target:" + copytarget
                           f.transferTo(new File(copytarget))
-                          byte[] buffer = new byte[1024];
-                          ZipInputStream zis = new ZipInputStream(new FileInputStream(copytarget));
-                          ZipEntry zipEntry = zis.getNextEntry();
-                          while (zipEntry != null) {
-                              def zipstr = zipEntry.toString().replace('\\','/')
-                              if(zipEntry.toString()[0] != '/' && zipEntry.toString()[0] != '\\') {
-                                  destfolder = PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration') + '/' + modulename + '/'
-                              }
-                              println "File destfolder:" + destfolder
-                              def destfile = new File(destfolder)
-                              if(!destfile.isDirectory() && !destfile.mkdirs()) {
-                                  throw new IOException("Failed to create directory " + destfile);
-                              }
-                              File newFile = new File(destfolder + zipstr);
-                              println "New File:" + newFile
-                              if (zipEntry.isDirectory()) {
-                                  if (!newFile.isDirectory() && !newFile.mkdirs()) {
-                                      throw new IOException("Failed to create directory " + newFile);
-                                  }
-                              } else {
-                                  // fix for Windows-created archives
-                                  File parent = newFile.getParentFile();
-                                  if (!parent.isDirectory() && !parent.mkdirs()) {
-                                      throw new IOException("Failed to create directory " + parent);
-                                  }
-
-                                  // write file content
-                                  FileOutputStream fos = new FileOutputStream(newFile);
-                                  int len;
-                                  while ((len = zis.read(buffer)) > 0) {
-                                      fos.write(buffer, 0, len);
-                                  }
-                                  fos.close();
-                              }
-                              zipEntry = zis.getNextEntry();
-                          }
-                          zis.closeEntry();
-                          zis.close();
+                          // Entry names come from whoever built the archive. This used to
+                          // concatenate them onto destfolder and write the result, so an
+                          // entry named ../../../start.sh landed outside the module folder
+                          // entirely. PortalService.extract resolves each one against the
+                          // destination and refuses anything that escapes it.
+                          PortalService.extract(new File(copytarget), new File(destfolder))
                           println "Done extract zip file"
                           def module = null
                           PortalModule.withTransaction { sqltrans->

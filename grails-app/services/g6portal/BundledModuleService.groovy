@@ -1,8 +1,6 @@
 package g6portal
 
 import grails.util.Holders
-import java.util.zip.ZipEntry
-import java.util.zip.ZipInputStream
 
 /**
  * Installs module packages shipped alongside the application, so a preconfigured instance
@@ -105,7 +103,7 @@ class BundledModuleService {
         if (migrationFolder.exists()) {
             migrationFolder.deleteDir()
         }
-        extract(pkg, migrationFolder)
+        PortalService.extract(pkg, migrationFolder)
 
         // The export screen only writes these files when the exporter ticked the matching
         // box, so their presence is what says whether the package carries them.
@@ -131,51 +129,6 @@ class BundledModuleService {
     private String migrationRoot() {
         def curfolder = System.getProperty('user.dir')
         PortalSetting.namedefault('migrationfolder', curfolder + '/uploads/modulemigration')
-    }
-
-    /**
-     * Unpack a package into its migration folder.
-     *
-     * Entry names are resolved and checked to stay inside the destination before anything
-     * is written. A zip is a file of attacker-chosen paths, and an entry named
-     * ../../grails-app/conf/application.yml would otherwise be written wherever it asked -
-     * this runs unattended at startup, so there is nobody to notice.
-     */
-    private void extract(File pkg, File destination) {
-        if (!destination.isDirectory() && !destination.mkdirs()) {
-            throw new IOException("Could not create ${destination}")
-        }
-        String root = destination.canonicalPath + File.separator
-
-        new ZipInputStream(new FileInputStream(pkg)).withCloseable { zis ->
-            byte[] buffer = new byte[4096]
-            ZipEntry entry
-            while ((entry = zis.nextEntry) != null) {
-                File target = new File(destination, entry.name.replace('\\', '/'))
-                if (!(target.canonicalPath + (entry.directory ? File.separator : '')).startsWith(root)
-                    && target.canonicalPath != destination.canonicalPath) {
-                    throw new IOException("Refusing entry '${entry.name}' in ${pkg.name}: it points outside the module folder")
-                }
-                if (entry.directory) {
-                    if (!target.isDirectory() && !target.mkdirs()) {
-                        throw new IOException("Could not create ${target}")
-                    }
-                }
-                else {
-                    File parent = target.parentFile
-                    if (!parent.isDirectory() && !parent.mkdirs()) {
-                        throw new IOException("Could not create ${parent}")
-                    }
-                    target.withOutputStream { out ->
-                        int len
-                        while ((len = zis.read(buffer)) > 0) {
-                            out.write(buffer, 0, len)
-                        }
-                    }
-                }
-                zis.closeEntry()
-            }
-        }
     }
 
     /** Same audit trail the interactive import writes, attributed to the package. */

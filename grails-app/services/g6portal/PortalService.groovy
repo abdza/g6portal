@@ -740,6 +740,61 @@ class PortalService {
         return zipFile
     }
 
+    /**
+     * Unpack a module package into a destination folder, refusing any entry that would
+     * land outside it.
+     *
+     * The names inside a zip are chosen by whoever built it, and Java hands them over
+     * unnormalised. Concatenating one onto a destination path - which is what the module
+     * importer used to do - lets an entry called ../../../start.sh be written wherever it
+     * asks, as the account the portal runs as. Each entry is therefore resolved against
+     * the destination and its canonical path checked to still be under it before anything
+     * is created or written.
+     *
+     * Absolute entry names were already harmless under the old string concatenation, since
+     * dest + "/etc/passwd" stays under dest. Resolving properly, as here, would make them
+     * dangerous again, so the containment check is what keeps them safe now.
+     *
+     * The counterpart to compress() above.
+     */
+    static void extract(final File zipFile, final File destination) {
+        if (!destination.isDirectory() && !destination.mkdirs()) {
+            throw new IOException("Failed to create directory " + destination)
+        }
+        String root = destination.canonicalPath + File.separator
+
+        new ZipInputStream(new FileInputStream(zipFile)).withCloseable { zis ->
+            byte[] buffer = new byte[4096]
+            ZipEntry entry
+            while ((entry = zis.nextEntry) != null) {
+                File target = new File(destination, entry.name.replace('\\', '/'))
+                String canonical = target.canonicalPath
+                if (canonical != destination.canonicalPath && !canonical.startsWith(root)) {
+                    throw new IOException("Refusing entry '" + entry.name + "' in " +
+                        zipFile.name + ": it points outside the destination folder")
+                }
+                if (entry.directory) {
+                    if (!target.isDirectory() && !target.mkdirs()) {
+                        throw new IOException("Failed to create directory " + target)
+                    }
+                }
+                else {
+                    File parent = target.parentFile
+                    if (!parent.isDirectory() && !parent.mkdirs()) {
+                        throw new IOException("Failed to create directory " + parent)
+                    }
+                    target.withOutputStream { out ->
+                        int len
+                        while ((len = zis.read(buffer)) > 0) {
+                            out.write(buffer, 0, len)
+                        }
+                    }
+                }
+                zis.closeEntry()
+            }
+        }
+    }
+
     // ---- Module import diff support ----------------------------------------
     // Compares the current state of a module (temp export) against the files
     // about to be imported, producing a unified diff for the import log.
