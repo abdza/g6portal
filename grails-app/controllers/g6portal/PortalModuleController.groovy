@@ -427,6 +427,19 @@ class PortalModuleController {
 
   def importform() {
       if(request.method == 'POST') {
+          // Same one-shot token the other mutating actions use. Without it this action -
+          // which unpacks an archive and creates a module - could be driven cross-site
+          // from an authenticated user's browser.
+          def abandon = false
+          withForm {
+          }.invalidToken {
+              flash.message = "Invalid session for the forms"
+              redirect(action:'importform')
+              abandon = true
+          }
+          if(abandon) {
+              return
+          }
           try {
               println "Updated import module"
               // def curuser = User.get(session.userid)
@@ -461,7 +474,7 @@ class PortalModuleController {
                   def existingmodule = PortalModule.findByName(modulename)
                   def doimport = true
                   if(existingmodule) {
-                      if(!('Admin' in curuser.modulerole(modulename))) {
+                      if(!mayImportInto(existingmodule, curuser)) {
                           doimport = false
                           flash.message = 'You are not authorized to update that module'
                       }
@@ -500,6 +513,15 @@ class PortalModuleController {
                                   module = new PortalModule()
                                   module.name = modulename
                                   module.save(flush:true)
+                                  // Whoever brings a new module in owns it: without a
+                                  // Developer row they could not come back and update
+                                  // what they just imported, since mayImportInto asks
+                                  // for exactly that role.
+                                  if(curuser && !UserRole.findByUserAndModuleAndRole(curuser, modulename, 'Developer')) {
+                                      new UserRole(user:curuser, module:modulename, role:'Developer')
+                                          .save(flush:true, failOnError:true)
+                                      println "Import: made " + curuser.userID + " Developer of new module " + modulename
+                                  }
                               }
                           }
                           // review the changes before applying the import
@@ -523,6 +545,28 @@ class PortalModuleController {
               return
           }
       }
+  }
+
+  /**
+   * Who may import over a module that already exists.
+   *
+   * A module's Developer owns its pages, trackers and scripts, so replacing them is
+   * theirs to do; a system administrator may do it anywhere. Note this is deliberately
+   * NOT 'Admin' in modulerole(): modulerole() hands Admin to every Developer, and to
+   * superusers when enablesuperuser is set, so testing for Admin would let a module's
+   * Admin-but-not-Developer overwrite work they do not own.
+   *
+   * Importing a module that does not exist yet is open to anyone - see importform, which
+   * makes the importer its Developer.
+   */
+  private boolean mayImportInto(module, curuser) {
+      if(!curuser) {
+          return false
+      }
+      if(curuser.isAdmin) {
+          return true
+      }
+      return 'Developer' in curuser.modulerole(module.name)
   }
 
   private String modulemigrationfolder(module) {
@@ -566,6 +610,11 @@ class PortalModuleController {
       def module = portalModuleService.get(id)
       if (module == null) {
           notFound()
+          return
+      }
+      if(!mayImportInto(module, curuser)) {
+          flash.message = 'You are not authorized to update that module'
+          redirect(controller:'portalPage', action:'home')
           return
       }
       if(!(new File(modulemigrationfolder(module)).exists())) {
@@ -618,6 +667,14 @@ class PortalModuleController {
       def module = portalModuleService.get(id)
       if (module == null) {
           notFound()
+          return
+      }
+      // The import happens here, so this is where ownership has to be enforced. Checking
+      // only at upload was bypassable by posting an existing module's id straight to this
+      // action and never touching importform at all.
+      if(!mayImportInto(module, curuser)) {
+          flash.message = 'You are not authorized to update that module'
+          redirect(controller:'portalPage', action:'home')
           return
       }
       def file_on = (params.files ? true : false) && migrationHasFiles(module)

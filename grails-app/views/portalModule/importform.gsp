@@ -22,7 +22,7 @@
                     <g:if test="${flash.message}">
                     <div class="message" role="status">${flash.message}</div>
                     </g:if>
-                    <g:uploadForm method="POST" action="importform">
+                    <g:uploadForm method="POST" action="importform" useToken="true">
                         <fieldset class="form">
                           <div class="fieldcontain">
                             <label for="name">Module File</label>
