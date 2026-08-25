@@ -594,6 +594,10 @@ class PortalModuleController {
       return new File(modulemigrationfolder(module) + '/treelist.json').exists()
   }
 
+  private boolean migrationHasEndpoints(module) {
+      return new File(modulemigrationfolder(module) + '/endpointlist.json').exists()
+  }
+
   private String generateimportdiff(module, file_on, staff_on, tree_on) {
       def migrationfolder = modulemigrationfolder(module)
       def tmpdir = File.createTempDir('g6export_', '_' + module.name)
@@ -702,13 +706,30 @@ class PortalModuleController {
               difftext = "Settings kept at their existing values (not imported):\n" +
                          kept.collect { "  " + it }.join("\n") + "\n\n" + (difftext ?: '')
           }
-          portalService.import_module(id, file_on, staff_on, tree_on, settingchoices)
+          // An endpoint's target is a program this server runs, and the endpoint admin
+          // screens are superusers-only for that reason. Importing a module must not be a
+          // way around it, so a module Developer's import leaves endpointlist.json alone.
+          def endpoints_on = curuser?.isAdmin ? true : false
+          def endpoints_skipped = migrationHasEndpoints(module) && !endpoints_on
+          if(endpoints_skipped) {
+              // Say so rather than quietly dropping part of the package - otherwise the
+              // module looks imported but its endpoints are simply missing.
+              difftext = "Endpoints in this package were NOT imported: they define programs the\n" +
+                         "server runs, so only a system administrator can bring them in.\n\n" + (difftext ?: '')
+          }
+          portalService.import_module(id, file_on, staff_on, tree_on, settingchoices, endpoints_on)
           PortalModuleImportLog.withTransaction {
               new PortalModuleImportLog(module:module.name, staffid:curuser?.staffID,
                   staffname:curuser?.name, remarks:params.remarks, diff:difftext).save(flush:true)
           }
-          flash.message = kept ? "Module imported (${kept.size()} setting${kept.size()==1?'':'s'} kept at existing value${kept.size()==1?'':'s'})"
-                              : "Module imported"
+          def notes = []
+          if(kept) {
+              notes << "${kept.size()} setting${kept.size()==1?'':'s'} kept at existing value${kept.size()==1?'':'s'}"
+          }
+          if(endpoints_skipped) {
+              notes << "endpoints not imported - a system administrator has to do that"
+          }
+          flash.message = notes ? "Module imported (" + notes.join('; ') + ")" : "Module imported"
       } catch(Exception e) {
           println "Error importing module: " + e
           e.printStackTrace()

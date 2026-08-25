@@ -924,7 +924,15 @@ class PortalModule {
         }
     }
 
-    def importmodule(file_on,staff_on,tree_on = false,settingchoices = null) {
+    /**
+     * @param endpoints_on whether to bring in endpointlist.json. Defaults to false, so a
+     *        caller has to ask: an endpoint's target is a program this server execs and
+     *        its env_json the environment it runs in, and the endpoint admin screens are
+     *        restricted to superusers for exactly that reason. Importing a module must not
+     *        be a way around that restriction, so only a superuser's import - or a package
+     *        placed on the server's filesystem, which is more privileged still - sets it.
+     */
+    def importmodule(file_on,staff_on,tree_on = false,settingchoices = null,endpoints_on = false) {
         def curfolder = System.getProperty("user.dir")
         def migrationfolder = PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration') + '/' + this.name
         def jsonSlurper = new JsonSlurper()
@@ -939,7 +947,12 @@ class PortalModule {
               importuserroles(migrationfolder,jsonSlurper)
             }
             importsettings(migrationfolder,jsonSlurper,settingchoices)
-            importendpoints(migrationfolder,jsonSlurper)
+            if(endpoints_on) {
+              importendpoints(migrationfolder,jsonSlurper)
+            }
+            else if(new File(migrationfolder + '/endpointlist.json').exists()) {
+              println "importmodule: skipping endpointlist.json - endpoints are only imported by a system administrator"
+            }
             importpages(migrationfolder,jsonSlurper)
             importtrackers(migrationfolder,jsonSlurper)
             if(tree_on) {

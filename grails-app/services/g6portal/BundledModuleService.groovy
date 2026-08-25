@@ -120,7 +120,14 @@ class BundledModuleService {
             m
         }
 
-        module.importmodule(fileOn, false, treeOn)
+        // Endpoints ARE imported here, unlike a module Developer's upload through the web
+        // screens. The point of that restriction is that importing must not become a way to
+        // create exec endpoints without being a superuser - but a package only lands in this
+        // folder if somebody could already write to the server's filesystem, which is a
+        // higher bar than being a superuser: they could edit application.yml or swap the jar.
+        // There is no privilege to escalate here, and the first endpoint user (scm over
+        // hgweb / git-http-backend) is exactly the kind of module shipped preconfigured.
+        module.importmodule(fileOn, false, treeOn, null, true)
 
         println "Bundled modules: imported ${moduleName} (files=${fileOn}, trees=${treeOn})"
         recordImport(moduleName, pkg, fileOn, treeOn)
@@ -138,7 +145,8 @@ class BundledModuleService {
                 module: moduleName,
                 staffname: 'Bundled package',
                 remarks: "Imported automatically at startup from ${pkg.name} " +
-                         "(files=${fileOn}, trees=${treeOn}, staff roles not imported)."
+                         "(files=${fileOn}, trees=${treeOn}, endpoints included, " +
+                         "staff roles not imported)."
             ).save(flush: true, failOnError: true)
         }
     }
