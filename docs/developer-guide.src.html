@@ -1,0 +1,1707 @@
+<title>g6portal Module Builder's Handbook</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#f5f7f8;
+  --surface:#ffffff;
+  --surface-2:#e9eef0;
+  --ink:#151d23;
+  --body:#3e4e5a;
+  --muted:#6b7d8a;
+  --rule:#d8e0e5;
+  --rule-strong:#b9c6ce;
+  --accent:#0c5b62;
+  --accent-ink:#0c5b62;
+  --accent-soft:#e0eff0;
+  --warn:#8a5216;
+  --warn-soft:#f8efe1;
+  --good:#2b6340;
+  --good-soft:#e5f0e8;
+  --code-bg:#eef2f4;
+
+  --f-display:"Newsreader",Georgia,"Times New Roman",serif;
+  --f-body:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+
+  --measure:70ch;
+  --rail:250px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#10151a;
+    --surface:#161d24;
+    --surface-2:#1d252d;
+    --ink:#e6edf2;
+    --body:#b0bfca;
+    --muted:#8295a3;
+    --rule:#29333c;
+    --rule-strong:#3d4b56;
+    --accent:#63b6bd;
+    --accent-ink:#7ec6cc;
+    --accent-soft:#14302f;
+    --warn:#d9a25e;
+    --warn-soft:#2c2417;
+    --good:#7fbb92;
+    --good-soft:#16271c;
+    --code-bg:#1b232a;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#10151a;
+  --surface:#161d24;
+  --surface-2:#1d252d;
+  --ink:#e6edf2;
+  --body:#b0bfca;
+  --muted:#8295a3;
+  --rule:#29333c;
+  --rule-strong:#3d4b56;
+  --accent:#63b6bd;
+  --accent-ink:#7ec6cc;
+  --accent-soft:#14302f;
+  --warn:#d9a25e;
+  --warn-soft:#2c2417;
+  --good:#7fbb92;
+  --good-soft:#16271c;
+  --code-bg:#1b232a;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+body{
+  background:var(--ground);
+  color:var(--body);
+  font-family:var(--f-body);
+  font-size:16px;
+  line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--accent-ink);text-decoration-thickness:1px;text-underline-offset:2px}
+a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px}
+
+/* ---------- shell ---------- */
+.shell{display:grid;grid-template-columns:var(--rail) minmax(0,1fr);gap:0;align-items:start}
+.rail{
+  position:sticky;top:0;height:100vh;overflow-y:auto;
+  padding:2.2rem 1.1rem 3rem 1.6rem;
+  border-right:1px solid var(--rule);
+  background:var(--surface);
+}
+.rail .mark{font-family:var(--f-display);font-size:1.15rem;font-weight:600;color:var(--ink);line-height:1.2;margin:0 0 .15rem}
+.rail .sub{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 1.6rem}
+.rail ol{list-style:none;margin:0;padding:0;counter-reset:toc;display:flex;flex-direction:column;gap:.05rem}
+.rail ol a{
+  display:flex;gap:.55rem;padding:.28rem .4rem .28rem .1rem;
+  font-size:.83rem;line-height:1.35;color:var(--body);text-decoration:none;border-radius:3px;
+}
+.rail ol a:hover{background:var(--surface-2);color:var(--ink)}
+.rail ol a .n{font-family:var(--f-mono);font-size:.72rem;color:var(--muted);flex:none;padding-top:.12rem;width:1.2rem}
+.main{min-width:0;padding:0 0 8rem}
+.wrap{max-width:min(96rem,100%);margin:0 auto;padding:0 clamp(1.2rem,4vw,4rem)}
+.col{max-width:var(--measure)}
+
+/* ---------- masthead ---------- */
+.masthead{border-bottom:1px solid var(--rule);padding:clamp(3rem,7vw,5.5rem) 0 clamp(2.2rem,4vw,3.2rem);margin-bottom:3rem}
+.eyebrow{font-family:var(--f-mono);font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-ink);margin:0 0 1rem}
+.masthead h1{
+  font-family:var(--f-display);font-weight:500;font-size:clamp(2.4rem,5.6vw,4rem);
+  line-height:1.04;letter-spacing:-.015em;color:var(--ink);margin:0 0 1rem;text-wrap:balance;max-width:18ch;
+}
+.masthead .lede{font-size:clamp(1.05rem,1.7vw,1.2rem);line-height:1.55;max-width:58ch;margin:0 0 1.8rem}
+.meta{display:flex;flex-wrap:wrap;gap:.5rem 2rem;font-family:var(--f-mono);font-size:.76rem;color:var(--muted)}
+.meta b{color:var(--body);font-weight:500}
+
+/* ---------- headings ---------- */
+h2{
+  font-family:var(--f-display);font-weight:600;font-size:clamp(1.7rem,3vw,2.15rem);line-height:1.15;
+  color:var(--ink);letter-spacing:-.01em;margin:4.5rem 0 .3rem;text-wrap:balance;
+  display:flex;gap:.8rem;align-items:baseline;
+}
+h2 .num{font-family:var(--f-mono);font-size:.8rem;font-weight:400;color:var(--accent-ink);letter-spacing:.06em;flex:none;padding-top:.1rem}
+h2 + .dek{color:var(--muted);font-size:1rem;margin:0 0 2rem;max-width:60ch;padding-left:2.6rem}
+h3{font-family:var(--f-body);font-weight:600;font-size:1.12rem;color:var(--ink);margin:2.8rem 0 .7rem;letter-spacing:-.005em}
+h4{font-family:var(--f-body);font-weight:600;font-size:.95rem;color:var(--ink);margin:1.8rem 0 .5rem}
+p{margin:0 0 1.05rem;max-width:var(--measure)}
+ul,ol{max-width:var(--measure);padding-left:1.25rem;margin:0 0 1.15rem}
+li{margin:0 0 .4rem}
+li::marker{color:var(--muted)}
+hr{border:0;border-top:1px solid var(--rule);margin:3rem 0}
+strong{color:var(--ink);font-weight:600}
+
+/* ---------- code ---------- */
+code{font-family:var(--f-mono);font-size:.86em;background:var(--code-bg);padding:.1em .34em;border-radius:3px;color:var(--ink)}
+pre{
+  font-family:var(--f-mono);font-size:.8rem;line-height:1.6;
+  background:var(--code-bg);border:1px solid var(--rule);border-left:2px solid var(--rule-strong);
+  border-radius:4px;padding:.95rem 1.1rem;overflow-x:auto;margin:0 0 1.3rem;max-width:var(--measure);
+  color:var(--ink);
+}
+pre code{background:none;padding:0;font-size:inherit}
+pre.wide{max-width:100%}
+.cmt{color:var(--muted)}
+
+/* ---------- callouts ---------- */
+.note{
+  border-left:2px solid var(--accent);background:var(--accent-soft);
+  padding:.85rem 1.1rem;margin:0 0 1.4rem;border-radius:0 4px 4px 0;max-width:var(--measure);
+}
+.note.warn{border-left-color:var(--warn);background:var(--warn-soft)}
+.note.good{border-left-color:var(--good);background:var(--good-soft)}
+.note p:last-child{margin-bottom:0}
+.note .lbl{display:block;font-family:var(--f-mono);font-size:.7rem;letter-spacing:.11em;text-transform:uppercase;color:var(--accent-ink);margin:0 0 .35rem}
+.note.warn .lbl{color:var(--warn)}
+.note.good .lbl{color:var(--good)}
+
+/* ---------- numbered procedure ---------- */
+ol.steps{list-style:none;padding:0;margin:0 0 1.8rem;counter-reset:step;max-width:var(--measure)}
+ol.steps > li{
+  counter-increment:step;position:relative;padding:0 0 1.3rem 2.6rem;margin:0;
+  border-left:1px solid var(--rule);
+}
+ol.steps > li::before{
+  content:counter(step);position:absolute;left:-.85rem;top:0;
+  width:1.7rem;height:1.7rem;border-radius:50%;
+  background:var(--surface);border:1px solid var(--rule-strong);color:var(--accent-ink);
+  font-family:var(--f-mono);font-size:.75rem;display:flex;align-items:center;justify-content:center;
+}
+ol.steps > li:last-child{border-left-color:transparent;padding-bottom:.2rem}
+ol.steps > li > :first-child{margin-top:-.25rem}
+ol.steps p,ol.steps ul,ol.steps pre{max-width:none}
+.steps .lead{color:var(--ink);font-weight:600}
+
+/* ---------- figures ---------- */
+figure{margin:1.8rem 0 2.2rem;max-width:min(1100px,100%)}
+figure img{
+  display:block;width:100%;height:auto;border:1px solid var(--rule);border-radius:5px;
+  background:var(--surface);box-shadow:0 1px 2px rgba(16,30,40,.05),0 8px 24px -12px rgba(16,30,40,.18);
+}
+:root[data-theme="dark"] figure img{box-shadow:0 1px 2px rgba(0,0,0,.45)}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) figure img{box-shadow:0 1px 2px rgba(0,0,0,.45)}
+}
+figcaption{
+  font-family:var(--f-mono);font-size:.74rem;line-height:1.5;color:var(--muted);
+  margin-top:.6rem;padding-left:.1rem;max-width:78ch;
+}
+figcaption b{color:var(--body);font-weight:500}
+figure.narrow{max-width:640px}
+
+/* ---------- tables ---------- */
+.tablewrap{overflow-x:auto;margin:0 0 1.8rem;border:1px solid var(--rule);border-radius:5px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.86rem;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:.55rem .85rem;border-bottom:1px solid var(--rule);vertical-align:top}
+thead th{
+  font-family:var(--f-mono);font-size:.7rem;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--muted);font-weight:400;background:var(--surface-2);white-space:nowrap;
+}
+tbody tr:last-child td{border-bottom:0}
+td code{font-size:.82em;white-space:nowrap}
+td.w{white-space:normal}
+
+/* ---------- diagram ---------- */
+.diagram{margin:2rem 0 2.4rem;padding:1.6rem 1.2rem;background:var(--surface);border:1px solid var(--rule);border-radius:5px;overflow-x:auto}
+.diagram svg{display:block;margin:0 auto;max-width:100%;height:auto}
+
+/* ---------- misc ---------- */
+.kv{display:grid;grid-template-columns:auto 1fr;gap:.3rem 1.2rem;font-size:.9rem;margin:0 0 1.4rem;max-width:var(--measure)}
+.kv dt{font-family:var(--f-mono);font-size:.8rem;color:var(--accent-ink);white-space:nowrap}
+.kv dd{margin:0}
+.pill{display:inline-block;font-family:var(--f-mono);font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;padding:.12em .5em;border-radius:3px;background:var(--surface-2);color:var(--muted);border:1px solid var(--rule);vertical-align:.1em}
+.endnote{margin-top:5rem;padding-top:1.6rem;border-top:1px solid var(--rule);font-size:.85rem;color:var(--muted);max-width:var(--measure)}
+
+@media (max-width:920px){
+  .shell{grid-template-columns:1fr}
+  .rail{position:static;height:auto;border-right:0;border-bottom:1px solid var(--rule);padding:1.6rem 1.4rem}
+  .rail ol{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:0 1rem}
+  h2 + .dek{padding-left:0}
+  h2{display:block}
+  h2 .num{display:block;margin-bottom:.2rem}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="shell">
+<nav class="rail" aria-label="Contents">
+  <p class="mark">Module Builder's Handbook</p>
+  <p class="sub">g6portal</p>
+  <ol>
+    <li><a href="#big-picture"><span class="n">1</span><span>The big picture</span></a></li>
+    <li><a href="#parts"><span class="n">2</span><span>The parts, one by one</span></a></li>
+    <li><a href="#urls"><span class="n">3</span><span>The URL space</span></a></li>
+    <li><a href="#running"><span class="n">4</span><span>From jar to login</span></a></li>
+    <li><a href="#roles"><span class="n">5</span><span>Roles: get yourself in</span></a></li>
+    <li><a href="#module"><span class="n">6</span><span>Build a module</span></a></li>
+    <li><a href="#tracker"><span class="n">7</span><span>The tracker</span></a></li>
+    <li><a href="#workflow"><span class="n">8</span><span>The workflow</span></a></li>
+    <li><a href="#usingit"><span class="n">9</span><span>Using what you built</span></a></li>
+    <li><a href="#pages"><span class="n">10</span><span>Pages</span></a></li>
+    <li><a href="#menus"><span class="n">11</span><span>Menus and navigation</span></a></li>
+    <li><a href="#packaging"><span class="n">12</span><span>Packaging a module</span></a></li>
+    <li><a href="#platform"><span class="n">13</span><span>The rest of the platform</span></a></li>
+    <li><a href="#security"><span class="n">14</span><span>The security model</span></a></li>
+    <li><a href="#source"><span class="n">15</span><span>Working on the platform</span></a></li>
+    <li><a href="#trouble"><span class="n">16</span><span>When things go wrong</span></a></li>
+    <li><a href="#reference"><span class="n">17</span><span>Reference tables</span></a></li>
+  </ol>
+</nav>
+
+<main class="main">
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">g6portal &middot; developer guide</p>
+  <h1>Building modules on g6portal</h1>
+  <p class="lede">g6portal is a Grails 6 application that is also a runtime for business applications you build by
+  configuration rather than by writing Grails code. This guide walks the whole path: what the pieces are,
+  how to get an instance running from a jar, and how to build a working module end to end &mdash; every
+  screenshot below is from that build.</p>
+  <div class="meta">
+    <span><b>Applies to</b> Grails 6.2.2 &middot; Java 11</span>
+    <span><b>Worked example</b> a helpdesk module</span>
+    <span><b>Audience</b> new portal developers</span>
+  </div>
+</header>
+
+<section id="big-picture">
+<h2><span class="num">01</span><span>The big picture</span></h2>
+<p class="dek">Two layers, and almost all your work happens in the second one.</p>
+
+<div class="col">
+<p>Most Grails applications are one layer: you write domain classes, controllers and GSPs, compile, and
+deploy. g6portal is two.</p>
+
+<p>The <strong>platform</strong> is the Grails code in <code>grails-app/</code>. It has about thirty domain classes,
+thirty controllers and thirty services, and it changes rarely. Nothing in it knows what a helpdesk ticket
+or a leave application is.</p>
+
+<p>A <strong>module</strong> is the business application &mdash; helpdesk, claims, quizzes. A module is not code.
+It is a set of rows in the platform's own tables: a <code>PortalModule</code> row, some <code>PortalTracker</code>
+rows with their fields and statuses and transitions, some <code>PortalPage</code> rows whose content is GSP text
+stored in a column, some <code>UserRole</code> rows. You create those rows through the portal's own admin screens,
+and you can export the whole set to a ZIP file and import it somewhere else.</p>
+
+<p>That is the single most important thing to understand before you start. When you "write a module" you are
+filling in forms, not editing files. The GSP and Groovy you write lives in database columns and is compiled at
+request time. It also means a module travels: the same package installs on a laptop, a test server and a client
+site, and a portal can ship with modules already inside it.</p>
+</div>
+
+<div class="diagram">
+<svg viewBox="0 0 900 400" role="img" aria-labelledby="d1t">
+  <title id="d1t">The platform layer runs modules, which are rows of data, which are packaged as ZIP files</title>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+    </marker>
+  </defs>
+  <g font-family="IBM Plex Sans, sans-serif" color="currentColor">
+
+    <!-- platform -->
+    <rect x="30" y="30" width="250" height="340" rx="6" fill="none" stroke="currentColor" stroke-opacity=".3"/>
+    <text x="46" y="58" font-size="11" font-family="IBM Plex Mono, monospace" letter-spacing="1.4" fill="currentColor" fill-opacity=".55">PLATFORM</text>
+    <text x="46" y="80" font-size="13" fill="currentColor" font-weight="600">grails-app/</text>
+    <text x="46" y="104" font-size="12" fill="currentColor" fill-opacity=".75">SecurityInterceptor</text>
+    <text x="46" y="126" font-size="12" fill="currentColor" fill-opacity=".75">PortalPageController</text>
+    <text x="46" y="148" font-size="12" fill="currentColor" fill-opacity=".75">PortalTrackerController</text>
+    <text x="46" y="170" font-size="12" fill="currentColor" fill-opacity=".75">PortalModule / PortalService</text>
+    <text x="46" y="192" font-size="12" fill="currentColor" fill-opacity=".75">taglibs, layouts, assets</text>
+    <text x="46" y="230" font-size="11" fill="currentColor" fill-opacity=".5">Changes when the platform</text>
+    <text x="46" y="248" font-size="11" fill="currentColor" fill-opacity=".5">itself gains a capability.</text>
+    <text x="46" y="266" font-size="11" fill="currentColor" fill-opacity=".5">Needs a rebuild and a deploy.</text>
+
+    <!-- module rows -->
+    <rect x="330" y="30" width="250" height="340" rx="6" fill="none" stroke="currentColor" stroke-opacity=".3"/>
+    <text x="346" y="58" font-size="11" font-family="IBM Plex Mono, monospace" letter-spacing="1.4" fill="currentColor" fill-opacity=".55">MODULE (DATA)</text>
+    <text x="346" y="80" font-size="13" fill="currentColor" font-weight="600">rows in the database</text>
+    <text x="346" y="104" font-size="12" fill="currentColor" fill-opacity=".75">PortalModule &mdash; the namespace</text>
+    <text x="346" y="126" font-size="12" fill="currentColor" fill-opacity=".75">PortalTracker + fields, statuses,</text>
+    <text x="346" y="144" font-size="12" fill="currentColor" fill-opacity=".75">roles, transitions</text>
+    <text x="346" y="166" font-size="12" fill="currentColor" fill-opacity=".75">PortalPage + datasources</text>
+    <text x="346" y="188" font-size="12" fill="currentColor" fill-opacity=".75">PortalTree nodes (menus)</text>
+    <text x="346" y="210" font-size="12" fill="currentColor" fill-opacity=".75">UserRole, PortalSetting, FileLink</text>
+    <text x="346" y="248" font-size="11" fill="currentColor" fill-opacity=".5">Created through the admin UI.</text>
+    <text x="346" y="266" font-size="11" fill="currentColor" fill-opacity=".5">Takes effect immediately.</text>
+
+    <!-- package -->
+    <rect x="630" y="30" width="240" height="340" rx="6" fill="none" stroke="currentColor" stroke-opacity=".3"/>
+    <text x="646" y="58" font-size="11" font-family="IBM Plex Mono, monospace" letter-spacing="1.4" fill="currentColor" fill-opacity=".55">PACKAGE (FILE)</text>
+    <text x="646" y="80" font-size="13" fill="currentColor" font-weight="600">helpdesk.zip</text>
+    <text x="646" y="104" font-size="12" font-family="IBM Plex Mono, monospace" fill="currentColor" fill-opacity=".75">trackerlist.json</text>
+    <text x="646" y="126" font-size="12" font-family="IBM Plex Mono, monospace" fill="currentColor" fill-opacity=".75">pagelist.json</text>
+    <text x="646" y="148" font-size="12" font-family="IBM Plex Mono, monospace" fill="currentColor" fill-opacity=".75">menulist.json</text>
+    <text x="646" y="170" font-size="12" font-family="IBM Plex Mono, monospace" fill="currentColor" fill-opacity=".75">settinglist.json</text>
+    <text x="646" y="192" font-size="12" font-family="IBM Plex Mono, monospace" fill="currentColor" fill-opacity=".75">pages/*.gsp</text>
+    <text x="646" y="230" font-size="11" fill="currentColor" fill-opacity=".5">What you commit to source</text>
+    <text x="646" y="248" font-size="11" fill="currentColor" fill-opacity=".5">control, review and ship.</text>
+
+    <!-- arrows -->
+    <path d="M285,200 L322,200" stroke="currentColor" stroke-opacity=".55" fill="none" marker-end="url(#ar)"/>
+    <text x="288" y="192" font-size="10" font-family="IBM Plex Mono, monospace" fill="currentColor" fill-opacity=".55">runs</text>
+
+    <path d="M585,180 L622,180" stroke="currentColor" stroke-opacity=".55" fill="none" marker-end="url(#ar)"/>
+    <text x="583" y="172" font-size="10" font-family="IBM Plex Mono, monospace" fill="currentColor" fill-opacity=".55">export</text>
+    <path d="M622,220 L585,220" stroke="currentColor" stroke-opacity=".55" fill="none" marker-end="url(#ar)"/>
+    <text x="583" y="240" font-size="10" font-family="IBM Plex Mono, monospace" fill="currentColor" fill-opacity=".55">import</text>
+  </g>
+</svg>
+</div>
+
+<div class="col">
+<h3>Everything is namespaced by module</h3>
+<p>Almost every row in the platform carries a <code>module</code> string. A page is
+<code>helpdesk / dashboard</code>, a tracker is <code>helpdesk / ticket</code>, a role grant is
+<em>(this user, module <code>helpdesk</code>, role <code>Agent</code>)</em>. There is no foreign key to
+<code>PortalModule</code> &mdash; the module is just a name, and the <code>PortalModule</code> row exists so the
+export, import and permission screens have something to hang off. Two consequences follow:</p>
+<ul>
+  <li>A typo in a module name creates a second, invisible module. Slugs and module names are matched exactly.</li>
+  <li>Deleting a <code>PortalModule</code> row does not sweep up everything that named it. Pages, trackers and menu
+      nodes carrying that module name stay where they are.</li>
+</ul>
+
+<h3>Three kinds of thing you will build</h3>
+<div class="kv">
+  <dt>Tracker</dt>
+  <dd>A form, a list, a table and (optionally) a workflow. Use one whenever the module stores records that
+      people create, search, edit and move through states.</dd>
+  <dt>Page</dt>
+  <dd>Arbitrary GSP with Groovy behind it. Use one for anything a tracker's generated screens can't express:
+      dashboards, reports, custom forms, JSON and XLSX endpoints, HTMX fragments.</dd>
+  <dt>Menu</dt>
+  <dd>Tree nodes that put the above in the header megamenu and a per-module sidebar. Declared as
+      <code>menulist.json</code> in the package.</dd>
+</div>
+</div>
+</section>
+
+<section id="parts">
+<h2><span class="num">02</span><span>The parts, one by one</span></h2>
+<p class="dek">Every domain class you will meet, and what it is for.</p>
+
+<div class="col">
+<h3>The module and its contents</h3>
+</div>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Domain</th><th>Table / screen</th><th>What it holds</th></tr></thead>
+<tbody>
+<tr><td><code>PortalModule</code></td><td><code>/portalModule</code></td><td class="w">Just a name. The anchor for export, import, and the "add a developer" shortcuts.</td></tr>
+<tr><td><code>PortalTracker</code></td><td><code>/portalTracker</code></td><td class="w">A record type. Owns its own database table, its field definitions, its statuses, roles and transitions.</td></tr>
+<tr><td><code>PortalTrackerField</code></td><td>Fields tab</td><td class="w">One column. Name, label, type, options, default, validation, display rules.</td></tr>
+<tr><td><code>PortalTrackerStatus</code></td><td>Status tab</td><td class="w">A state a record can be in. Carries the fields shown and the roles allowed to edit while in that state.</td></tr>
+<tr><td><code>PortalTrackerTransition</code></td><td>Transitions tab</td><td class="w">A move between states: from which statuses, to which status, by which roles, editing which fields.</td></tr>
+<tr><td><code>PortalTrackerRole</code></td><td>Roles tab</td><td class="w">A role <em>name</em> the tracker recognises. Matched against the user's module roles, or computed from the record's own data.</td></tr>
+<tr><td><code>PortalTrackerError</code></td><td>Field &rarr; error checks</td><td class="w">Validation on one field: Unique, E-mail, Format, Not Empty, Custom.</td></tr>
+<tr><td><code>PortalTrackerIndex</code></td><td>Index tab</td><td class="w">A database index over the tracker's own table.</td></tr>
+<tr><td><code>PortalTrackerFlow</code></td><td>Flows tab</td><td class="w">A named subset of fields and transitions, for multi-step forms.</td></tr>
+<tr><td><code>PortalTrackerEmail</code></td><td>Emails tab</td><td class="w">A notification fired by a status change or a transition. The body is a <code>PortalPage</code>.</td></tr>
+<tr><td><code>PortalTrackerData</code></td><td><code>/portalTrackerData</code></td><td class="w">A bulk Excel upload into a tracker, with its own row-validation and status.</td></tr>
+<tr><td><code>PortalPage</code></td><td><code>/portalPage</code></td><td class="w">Title, slug, module, GSP content, Groovy preprocess, render mode, access flags.</td></tr>
+<tr><td><code>PortalPageData</code></td><td>Page &rarr; datasources</td><td class="w">A named SQL query run before the page, available to it as <code>datas.&lt;name&gt;</code>.</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="col">
+<h3>Access, navigation and infrastructure</h3>
+</div>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Domain</th><th>Table / screen</th><th>What it holds</th></tr></thead>
+<tbody>
+<tr><td><code>User</code></td><td><code>/user</code></td><td class="w">An account. <code>userID</code> is the login name. <code>isAdmin</code> marks a system administrator.</td></tr>
+<tr><td><code>UserRole</code></td><td><code>/userRole</code></td><td class="w">The triple <em>(user, module, role)</em>. This is the whole permission model.</td></tr>
+<tr><td><code>PortalTree</code> / <code>PortalTreeNode</code></td><td><code>/portalTree</code></td><td class="w">Nested-set trees. Two of them drive navigation: <code>portal/main_menu</code> (the megamenu) and <code>portal/&lt;module&gt;_menu</code> (the sidebar).</td></tr>
+<tr><td><code>PortalSetting</code></td><td><code>/portalSetting</code></td><td class="w">Configuration rows. Typed Text, Array, Hashmap, Date, Number or Xml; optionally scoped to a module.</td></tr>
+<tr><td><code>FileLink</code></td><td><code>/fileLink</code></td><td class="w">An uploaded file with its own slug, module and allowed roles. Served from <code>/download/&lt;module&gt;/&lt;slug&gt;</code>.</td></tr>
+<tr><td><code>PortalFileManager</code></td><td><code>/portalFileManager</code></td><td class="w">A browsable folder on disk exposed through the portal.</td></tr>
+<tr><td><code>PortalScheduler</code></td><td><code>/portalScheduler</code></td><td class="w">Runs a list of page slugs on an hour/day-of-week/day-of-month schedule.</td></tr>
+<tr><td><code>PortalEmail</code></td><td><code>/portalEmail</code></td><td class="w">Scheduled or triggered mail whose body is a page.</td></tr>
+<tr><td><code>PortalEndpoint</code></td><td><code>/portalEndpoint</code></td><td class="w">A raw HTTP endpoint at <code>/svc/&lt;module&gt;/&lt;slug&gt;</code>, handled by a CGI program or proxied upstream. Superuser only.</td></tr>
+<tr><td><code>PortalSearch</code></td><td><code>/portalSearch</code></td><td class="w">The cross-tracker search index.</td></tr>
+<tr><td><code>PortalErrorLog</code></td><td><code>/portalErrorLog</code></td><td class="w">Every caught exception, with the params and user that produced it. Your first stop when a page goes blank.</td></tr>
+<tr><td><code>PortalAuditTrail</code></td><td>&mdash;</td><td class="w">One row per request, written by <code>SecurityInterceptor</code> before any permission check.</td></tr>
+<tr><td><code>PortalModuleImportLog</code></td><td><code>/portalModule/importlogs</code></td><td class="w">Who imported which package, when, with what remarks and diff.</td></tr>
+<tr><td><code>Branding</code> settings</td><td><code>/branding</code></td><td class="w">Logo, favicon, product name, colours.</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="col">
+<h3>Where a tracker's data actually lives</h3>
+<p>A tracker does not store its records in a generic key/value table. It creates and maintains a real table
+of its own:</p>
+<pre class="wide"><code>trak_&lt;module&gt;_&lt;slug&gt;_data      <span class="cmt">-- one column per field, plus id and record_status</span>
+trak_&lt;module&gt;_&lt;slug&gt;_updates   <span class="cmt">-- the audit trail, for tracker_type = 'Tracker'</span></code></pre>
+<p>So <code>helpdesk / ticket</code> becomes <code>trak_helpdesk_ticket_data</code>. Adding a field adds a column;
+adding an index adds an index. That is what makes it reasonable to write plain SQL against a tracker from a page,
+and it is why the <span class="pill">Update DB</span> button in section 7 matters.</p>
+<p>The system columns on every data table are <code>id</code> and <code>record_status</code> (the status
+<em>name</em>, as text). The trail table carries <code>record_id</code>, <code>update_date</code>,
+<code>updater_id</code>, <code>status</code>, <code>changes</code> and <code>description</code>.</p>
+</div>
+</section>
+
+<section id="urls">
+<h2><span class="num">03</span><span>The URL space</span></h2>
+<p class="dek">Learn these five shapes and you can navigate any g6portal instance without the menus.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>URL</th><th>Goes to</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><code>/view/&lt;module&gt;/&lt;slug&gt;</code></td><td class="w">A page, rendered in the site layout</td><td class="w">Up to three extra path segments arrive as <code>params.arg1</code>&ndash;<code>arg3</code>.</td></tr>
+<tr><td><code>/run/&lt;module&gt;/&lt;slug&gt;</code></td><td class="w">A <em>runable</em> page &mdash; Groovy executed, result returned</td><td class="w">Same extra-segment rule. This is how HTMX fragments, JSON APIs and file downloads are served.</td></tr>
+<tr><td><code>/&lt;module&gt;/&lt;slug&gt;/list</code></td><td class="w">A tracker's list screen</td><td class="w">Also <code>/create</code>, <code>/display/&lt;id&gt;</code>, <code>/edit/&lt;id&gt;</code>.</td></tr>
+<tr><td><code>/&lt;module&gt;/&lt;slug&gt;/&lt;transition&gt;/&lt;id&gt;</code></td><td class="w">Runs a named transition on a record</td><td class="w">GET shows the form, POST applies it. Append <code>/direct</code> to skip the form.</td></tr>
+<tr><td><code>/download/&lt;module&gt;/&lt;slug&gt;</code></td><td class="w">A <code>FileLink</code></td><td class="w"><code>/download/&lt;slug&gt;</code> alone means module <code>portal</code>.</td></tr>
+<tr><td><code>/svc/&lt;module&gt;/&lt;slug&gt;/...</code></td><td class="w">A <code>PortalEndpoint</code></td><td class="w">Everything after the slug belongs to the handler. Authenticates itself; the interceptor does not see it.</td></tr>
+<tr><td><code>/setup</code></td><td class="w">First-run administrator creation</td><td class="w">Refuses to do anything once an administrator exists.</td></tr>
+<tr><td><code>/</code></td><td class="w">The page <code>portal / home</code></td><td class="w">The dashboard. It is an ordinary <code>PortalPage</code>, so you can edit it.</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="col">
+<h3>What happens on every request</h3>
+<ol class="steps">
+  <li><p class="lead">SecurityHeadersInterceptor sets the CSP.</p>
+      <p><code>script-src 'self'</code>. Any external CDN is silently blocked &mdash; serve libraries from
+      <code>grails-app/assets/</code> instead.</p></li>
+  <li><p class="lead">SecurityInterceptor resolves the user and writes an audit row.</p>
+      <p>The audit row is written <em>before</em> any permission check, so <code>portal_audit_trail</code>
+      records attempts as well as successes. A polling page writes a row per poll; plan for the growth.</p></li>
+  <li><p class="lead">It decides whether you may proceed.</p>
+      <p>A system administrator with the <code>enablesuperuser</code> setting on is waved through. Otherwise the
+      check depends on the controller: pages are matched against the page's <code>allowedroles</code>, trackers
+      against the tracker's, files against the file's. A Developer on the named module is admitted to the
+      admin screens for that module.</p></li>
+  <li><p class="lead">The controller runs.</p>
+      <p>For a page that means compiling its content as a GSP template (or evaluating it as a Groovy script,
+      if the page is runable) with a fixed set of variables in scope &mdash; see section 10.</p></li>
+</ol>
+</div>
+</section>
+
+<section id="running">
+<h2><span class="num">04</span><span>From jar to login</span></h2>
+<p class="dek">A brand new instance, from an empty directory to a working administrator account.</p>
+
+<div class="col">
+<h3>What you need first</h3>
+<div class="kv">
+  <dt>Java 11</dt>
+  <dd>The build targets Java 11 and the jar runs on it. Newer JDKs are not tested and Hibernate's reflection
+      will complain on some of them. <code>java -version</code> should say 11.</dd>
+  <dt>A jar</dt>
+  <dd>One of the three database flavours below.</dd>
+  <dt>A port</dt>
+  <dd>9090 by default.</dd>
+</div>
+
+<h3>Getting a jar</h3>
+<p>If you have the source, <code>packageall.sh</code> builds all three flavours by swapping
+<code>grails-app/conf/application.yml</code> for the matching profile and running <code>bootJar</code>:</p>
+<pre><code>./packageall.sh
+<span class="cmt"># -&gt; build/libs/g6portal-h2.jar</span>
+<span class="cmt"># -&gt; build/libs/g6portal-postgresql.jar</span>
+<span class="cmt"># -&gt; build/libs/g6portal-mssql.jar</span></code></pre>
+<p>For a single build against whatever <code>application.yml</code> currently says:</p>
+<pre class="wide"><code>export JAVA_HOME=/path/to/java-11
+./gradlew bootJar
+<span class="cmt"># -&gt; build/libs/g6portal-0.1.jar   (~180 MB; the asset compile takes a few minutes)</span></code></pre>
+<p>The three jars differ only in their bundled <code>application.yml</code> &mdash; the JDBC driver, the URL and
+the dialect. If you are going to supply your own configuration file anyway, any of them will do.</p>
+
+<h3>Lay out the directory</h3>
+<p>The jar resolves relative paths against its <em>working directory</em>, not against itself. Give it a
+directory of its own:</p>
+<pre class="wide"><code>g6portal/
+  g6portal-h2.jar
+  application.yml         <span class="cmt"># optional: overrides the config baked into the jar</span>
+  bundled-modules/        <span class="cmt"># optional: module ZIPs imported at first boot</span>
+  <span class="cmt"># created on first run:</span>
+  g6db.mv.db              <span class="cmt"># the H2 database file</span>
+  setup-token.txt         <span class="cmt"># the one-time first-run token</span>
+  uploads/                <span class="cmt"># uploads and module export/import staging</span></code></pre>
+
+<div class="note warn">
+  <span class="lbl">Choose the directory deliberately</span>
+  <p>H2 keeps its whole database in <code>g6db.mv.db</code> in that directory, and locks the file to a single
+  process. Two instances started from the same directory will fight; a test run pointed at the same file will
+  write to real data.</p>
+</div>
+
+<h3>Start it</h3>
+<pre><code>cd g6portal
+java -jar g6portal-h2.jar</code></pre>
+<p>The console prints a banner you need to read:</p>
+<pre class="wide"><code>******************************************************************************
+* This instance has no system administrator yet.
+*
+* Open  /setup  and enter this token to create the first administrator:
+*
+*     38ccd8fd4307117f214d3932fb610905d24869f021b762f1
+*
+* It is also in:  /home/you/g6portal/setup-token.txt
+* That file is deleted as soon as the administrator account exists.
+******************************************************************************
+
+Grails application running at http://localhost:9090/ in environment: production</code></pre>
+
+<div class="note">
+  <span class="lbl">Why a token</span>
+  <p>A fresh database has no accounts, and every controller sits behind the security interceptor &mdash; so
+  there is nobody who could be authorised to create the first user. The token proves you have filesystem access
+  to the machine running the portal, which is the only credential that exists at that moment. It is written to
+  a file readable only by the portal's own account, and deleted the instant the administrator exists.</p>
+</div>
+
+<h3>Create the first administrator</h3>
+<p>Open <code>http://localhost:9090/setup</code>. The page tells you where the token file is, in case you
+missed the console.</p>
+
+<figure class="narrow">
+  <img src="{{IMG:01_setup_empty}}" alt="The setup page: fields for setup token, user ID, full name, email, password and repeat password, with a checkbox for treating system administrators as Admin of every module.">
+  <figcaption><b>/setup</b> &mdash; the only screen reachable before an account exists. Note the last checkbox: leave it ticked.</figcaption>
+</figure>
+
+<ol class="steps">
+  <li><p class="lead">Paste the token.</p>
+      <p>From the console or from <code>setup-token.txt</code>. Five wrong attempts and the page makes you
+      restart the browser session.</p></li>
+  <li><p class="lead">Pick a User ID.</p>
+      <p>This is the login username. No spaces &mdash; it has to be typeable into the login form.</p></li>
+  <li><p class="lead">Fill in name, email and a password of at least eight characters.</p></li>
+  <li><p class="lead">Leave <em>Treat system administrators as Admin of every module</em> ticked.</p>
+      <p>This writes the <code>enablesuperuser</code> setting. Without it, <code>isAdmin</code> only carries the
+      checks that test it directly, and you will find yourself locked out of your own module's pages until you
+      grant yourself a role by hand. On a new instance you want it on.</p></li>
+</ol>
+
+<figure class="narrow">
+  <img src="{{IMG:02_setup_filled}}" alt="The setup form filled in with a token, user ID admin, name Ada Developer, an email address and matching passwords.">
+  <figcaption>Filled in and ready. The token is spent the moment the account is created.</figcaption>
+</figure>
+
+<div class="note warn">
+  <span class="lbl">If server.disable_lanid is not set</span>
+  <p>Accounts that have a LAN ID authenticate against Active Directory, not against a local password.
+  The administrator you create here has no LAN ID, so it signs in with the password you just set &mdash; the
+  setup screen says so explicitly when the setting is off.</p>
+</div>
+
+<h3>Log in</h3>
+<figure class="narrow">
+  <img src="{{IMG:03_login}}" alt="The g6portal login page with username and password fields and a Sign in button.">
+  <figcaption>Setup redirects here with a confirmation message. Log in with the User ID and password from the previous step.</figcaption>
+</figure>
+
+<figure>
+  <img src="{{IMG:04_dashboard}}" alt="The portal dashboard after logging in, showing a Welcome to G6Portal panel and a sidebar with Dashboard and Admin entries.">
+  <figcaption>A working instance. The welcome panel is the page <code>portal / home</code> &mdash; an ordinary <code>PortalPage</code> you can edit like any other.</figcaption>
+</figure>
+
+<p>Expand <strong>Admin</strong> in the sidebar and you have the whole platform:</p>
+
+<figure>
+  <img src="{{IMG:05_admin_sidebar}}" alt="The Admin section of the sidebar expanded, listing File, File Manager, Data Update, Role, Settings, Module, Page, Tracker, Tree, Scheduler, Branding, Endpoint, E-mail, User and Error.">
+  <figcaption>The admin menu. <b>Page</b> and <b>Tracker</b> only appear once you hold a Developer role somewhere; <b>Branding</b> and <b>Endpoint</b> only for system administrators.</figcaption>
+</figure>
+
+<h3>Choosing a database</h3>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Flavour</th><th>JDBC URL</th><th>Use for</th></tr></thead>
+<tbody>
+<tr><td>H2</td><td><code>jdbc:h2:./g6db;LOCK_TIMEOUT=10000;DB_CLOSE_ON_EXIT=FALSE;DATABASE_TO_LOWER=TRUE;MODE=PostgreSQL</code></td><td class="w">Development, demos, single-user instances. One file, no server.</td></tr>
+<tr><td>PostgreSQL</td><td><code>jdbc:postgresql://host:5432/g6portal?stringtype=unspecified</code></td><td class="w">Production. <code>stringtype=unspecified</code> is required &mdash; the dynamic tracker tables rely on it.</td></tr>
+<tr><td>SQL Server</td><td><code>jdbc:sqlserver://host:1433;databaseName=g6portal;encrypt=true;trustServerCertificate=true;</code></td><td class="w">Production where the site standard is MSSQL.</td></tr>
+</tbody>
+</table>
+</div>
+<p>H2 runs in PostgreSQL compatibility mode, which is what lets the same tracker DDL work on both. The code
+branches on the URL in a handful of places (<code>config.dataSource.url.contains("jdbc:postgresql")</code>),
+treating H2 and PostgreSQL as one family and SQL Server as the other.</p>
+
+<h3>Overriding configuration</h3>
+<p>Spring Boot reads <code>./application.yml</code> from the working directory and merges it over the one inside
+the jar. A minimal override:</p>
+<pre class="wide"><code>server:
+  port: 8080
+  disable_lanid: true          <span class="cmt"># local passwords instead of Active Directory</span>
+  allow_registration: false
+dataSource:
+  driverClassName: org.postgresql.Driver
+  username: g6portal
+  password: <span class="cmt">&lt;secret&gt;</span>
+environments:
+  production:
+    dataSource:
+      dbCreate: update
+      url: jdbc:postgresql://db.internal:5432/g6portal?stringtype=unspecified
+portal:
+  bundled_modules_folder: "./bundled-modules"
+grails:
+  mail:
+    host: smtp.internal
+    port: 25</code></pre>
+<p>A jar started with no <code>--spring.profiles.active</code> runs in the <code>production</code> environment,
+so that is the block that matters. <code>dbCreate: update</code> lets the platform's own schema evolve on
+upgrade; the tracker tables are managed separately by the tracker code itself.</p>
+
+<h3>Shipping a preconfigured instance</h3>
+<p>Drop module packages into <code>bundled-modules/</code> and each one that is not installed yet is imported at
+startup, before anyone logs in:</p>
+<pre class="wide"><code>Bundled modules: found 1 package(s) in /home/you/g6portal/bundled-modules
+Importing pages from .../uploads/modulemigration/livequiz
+Importing page: livequiz:manage
+...</code></pre>
+<p>This turns "unzip this and run it" into a real deployment story. Two limits are worth knowing before you
+rely on it:</p>
+<ul>
+  <li><strong>A module that already exists is left completely alone.</strong> This is an install path, not an
+      upgrade path &mdash; upgrading stays a deliberate act through the import screens, where a human sees the
+      diff first.</li>
+  <li><strong>It cannot grant roles.</strong> The import runs at boot with nobody logged in, so unlike the
+      interactive import it cannot make you a Developer on what it installed. Grant yourself the role
+      afterwards at <code>/userRole/create</code>.</li>
+</ul>
+</section>
+
+<section id="roles">
+<h2><span class="num">05</span><span>Roles: getting yourself in</span></h2>
+<p class="dek">The permission model is one table wide. Understand it now and section 9 will not surprise you.</p>
+
+<div class="col">
+<p>A permission in g6portal is a <code>UserRole</code> row: <em>(user, module, role)</em>. The role is a free
+string. There is no role registry, no hierarchy, no groups &mdash; a role exists because somebody typed its
+name into a grant and something else looks for that name.</p>
+
+<figure class="narrow">
+  <img src="{{IMG:25_userrole_index}}" alt="The Role list screen showing three rows: Ada Developer with roles Developer, Agent and Requester, all on module helpdesk.">
+  <figcaption><code>/userRole</code> &mdash; the whole permission model. One row per grant.</figcaption>
+</figure>
+
+<h3>The four rules</h3>
+<ol class="steps">
+  <li><p class="lead">Roles are per module.</p>
+      <p><code>Agent</code> on <code>helpdesk</code> means nothing on <code>claims</code>.</p></li>
+  <li><p class="lead">Developer implies Admin, on that module only.</p>
+      <p>Granting <code>Developer</code> on <code>helpdesk</code> makes
+      <code>user.modulerole('helpdesk')</code> return <code>['Developer','Admin']</code>. This is why a
+      developer can reach a page whose <code>allowedroles</code> only lists <code>Admin</code>.</p></li>
+  <li><p class="lead">Developer on a module unlocks that module's admin screens.</p>
+      <p>The interceptor admits a Developer of the named module to <code>/portalPage</code>,
+      <code>/portalTracker</code> and the builder. It is the role you give someone who is building the module,
+      not someone who is using it.</p></li>
+  <li><p class="lead">isAdmin only means "Admin everywhere" when enablesuperuser is on.</p>
+      <p>With the setting off, a system administrator has the flags that test <code>isAdmin</code> directly and
+      nothing more &mdash; <code>modulerole()</code> reports no role at all for a module they hold no grant on,
+      and module pages will bounce them. This catches people out constantly. The setup screen ticks it for you;
+      if you skipped it, add a <code>Number</code> setting named <code>enablesuperuser</code> with value
+      <code>1</code>, then log out and back in.</p></li>
+</ol>
+
+<div class="note">
+  <span class="lbl">Roles are cached in the session</span>
+  <p><code>enablesuperuser</code>, <code>adminmodules</code> and <code>developermodules</code> are computed once
+  per session, and <code>modulerole()</code> is cached per user object. After changing your own roles or that
+  setting, log out and back in &mdash; otherwise you will be debugging a permission that has already been
+  granted.</p>
+</div>
+</div>
+</section>
+
+<section id="module">
+<h2><span class="num">06</span><span>Build a module: the namespace</span></h2>
+<p class="dek">Everything from here to section 12 builds one worked example: a helpdesk with tickets that move through a small workflow.</p>
+
+<div class="col">
+<p>Go to <strong>Admin &rarr; Module</strong>. A fresh instance has nothing:</p>
+</div>
+
+<figure>
+  <img src="{{IMG:06_module_index_empty}}" alt="The PortalModule list screen, empty, with a New PortalModule link.">
+  <figcaption><code>/portalModule</code> on a new instance.</figcaption>
+</figure>
+
+<ol class="steps">
+  <li><p class="lead">Create the module.</p>
+      <p><em>New PortalModule</em>, then a name. Lowercase, no spaces &mdash; this name goes into URLs
+      (<code>/helpdesk/ticket/list</code>), into table names
+      (<code>trak_helpdesk_ticket_data</code>) and into every role grant.</p>
+      <figure><img src="{{IMG:07_module_create}}" alt="The create module form with a single Name field containing helpdesk."><figcaption>One field. The module is a namespace, not a container.</figcaption></figure></li>
+
+  <li><p class="lead">Look at what the module page gives you.</p>
+      <p>The show page is the module's control room: the export/import toolbar along the top, then its
+      trackers, pages, roles, settings, trees, endpoints and files, each with an <em>Add</em> link that
+      pre-fills the module for you. Use these links rather than the top-level admin screens &mdash; they
+      save you typing the module name, and typing it wrong is the single most common beginner mistake.</p>
+      <figure><img src="{{IMG:08_module_show}}" alt="The module show page for helpdesk, with a toolbar offering Files, Trees, Menus and user checkboxes plus Edit, Export, Delete, Import, Add Admin and Add Developer buttons, and empty sections for Trackers, Pages and Roles."><figcaption>The module page. <b>Add Developer</b> at the far right is the fastest way to grant yourself the role you need next.</figcaption></figure></li>
+
+  <li><p class="lead">Grant yourself Developer on it.</p>
+      <p>Click <strong>Add Developer</strong>. Module and role arrive pre-filled; pick yourself from the user
+      search and save.</p>
+      <figure class="narrow"><img src="{{IMG:09_add_developer}}" alt="The create role form with module helpdesk, role Developer, and a user search dropdown showing the match Ada Developer."><figcaption>The user picker searches as you type. Module and role came from the button you clicked.</figcaption></figure>
+      <div class="note warn"><span class="lbl">Do this even as a system administrator</span>
+      <p>With <code>enablesuperuser</code> on you would get in anyway &mdash; but the grant is what makes the
+      module's Developer role real, and it is what gets exported when you package the module for someone else.</p></div></li>
+</ol>
+</section>
+
+<section id="tracker">
+<h2><span class="num">07</span><span>The tracker</span></h2>
+<p class="dek">A table, a form, a list screen and a search box, defined by filling in a form.</p>
+
+<div class="col">
+<h3>Pick a type first</h3>
+<p>A tracker's <code>tracker_type</code> decides how much machinery it gets, and you cannot really change your
+mind later without rework:</p>
+</div>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Type</th><th>Statuses &amp; transitions</th><th>Audit trail</th><th>Use when</th></tr></thead>
+<tbody>
+<tr><td><strong>Tracker</strong></td><td>Yes</td><td>Yes &mdash; <code>*_updates</code> table</td><td class="w">Records move through states and you need to know who changed what: requests, approvals, tickets, claims.</td></tr>
+<tr><td><strong>Statement</strong></td><td>Roles only</td><td>No</td><td class="w">Role-controlled data entry with no workflow.</td></tr>
+<tr><td><strong>DataStore</strong></td><td>No</td><td>No</td><td class="w">Plain storage a page drives itself. Reference data, and the backing tables of a custom app.</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="col">
+<p>Our ticket needs states and history, so: <strong>Tracker</strong>.</p>
+</div>
+
+<ol class="steps">
+  <li><p class="lead">Create it.</p>
+      <p><em>Add Tracker</em> from the module page, or <code>/portalTracker/create</code>. Name is what people
+      see; <strong>slug</strong> is what goes in URLs and the table name. Set <strong>side_menu</strong> to the
+      module name if you want this tracker's screens to carry the module's sidebar.</p>
+      <figure><img src="{{IMG:10_tracker_create}}" alt="The create tracker form with Name Ticket, Module helpdesk, Slug ticket, Trackertype Tracker and Sidemenu helpdesk."><figcaption>The create form is deliberately short. Everything else is set from the tabs on the show page, where the tracker exists and the pickers can be populated.</figcaption></figure></li>
+
+  <li><p class="lead">Meet the show page.</p>
+      <p>Eleven tabs and a toolbar. This is where you will spend most of your time.</p>
+      <figure><img src="{{IMG:11_tracker_show_empty}}" alt="The tracker show page for helpdesk - ticket, with tabs Details, Fields, Roles, Status, Transitions, Flows, Index, Data Updates, Pages, Emails and Tools, and a toolbar with Create Defaults, Export Data, Fix Status, Delete Fields and Workflow Graph."><figcaption>A new tracker. <b>Create Defaults</b> in the toolbar is the shortcut we use in step 5.</figcaption></figure></li>
+
+  <li><p class="lead">Add the fields.</p>
+      <p><em>Fields</em> tab &rarr; <em>Create Field</em>, once per column. <strong>Name</strong> becomes the
+      database column, so keep it lowercase with underscores; <strong>Label</strong> is what users read.</p>
+      <figure><img src="{{IMG:12_field_create}}" alt="The create field form with Name priority, Label Priority, Fieldtype Drop Down and Fieldoptions containing a Groovy list of Low, Normal, High and Urgent."><figcaption>A <b>Drop Down</b>'s <code>field_options</code> is <em>Groovy</em>, not a list of literals &mdash; it is evaluated, and must <code>return</code> the options. That is what lets a dropdown be driven by a query.</figcaption></figure>
+      <p>Our five fields:</p></li>
+</ol>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Name</th><th>Label</th><th>Type</th><th>Options</th></tr></thead>
+<tbody>
+<tr><td><code>subject</code></td><td>Subject</td><td>Text</td><td>&mdash;</td></tr>
+<tr><td><code>details</code></td><td>Details</td><td>Text Area</td><td>&mdash;</td></tr>
+<tr><td><code>priority</code></td><td>Priority</td><td>Drop Down</td><td><code>return ['Low','Normal','High','Urgent']</code></td></tr>
+<tr><td><code>due_date</code></td><td>Due Date</td><td>Date</td><td>&mdash;</td></tr>
+<tr><td><code>assignee</code></td><td>Assignee</td><td>User</td><td>&mdash;</td></tr>
+</tbody>
+</table>
+</div>
+
+<figure>
+  <img src="{{IMG:13_tracker_fields}}" alt="The Fields tab listing assignee, details, due_date, priority and subject with their labels, types and options, above a toolbar with Create Field, Excel Template, Multi Fields, From Table, Update DB, Create Index and Fix FileLinks.">
+  <figcaption>All five fields. Note the tab's own toolbar &mdash; <b>Update DB</b>, <b>Create Index</b> and <b>From Table</b> live here, not on the page toolbar.</figcaption>
+</figure>
+
+<div class="note warn">
+  <span class="lbl">The step everyone forgets</span>
+  <p>Fields are definitions. The <em>columns</em> are created by <span class="pill">Update DB</span> on the
+  Fields tab. Skip it and the list screen dies with
+  <code>Table "trak_helpdesk_ticket_data" not found</code>. Run it after adding fields, after renaming one, and
+  any time a tracker starts complaining about a column. It is safe to run repeatedly &mdash; it adds what is
+  missing and leaves the rest alone.</p>
+</div>
+
+<div class="col">
+<h3>Field types</h3>
+</div>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Type</th><th>Column</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>Text</td><td><code>varchar</code></td><td class="w">Single line.</td></tr>
+<tr><td>Text Area</td><td><code>text</code></td><td class="w">Multi-line. Can be made rich text per transition via <code>richtextfields</code>.</td></tr>
+<tr><td>Integer</td><td><code>numeric(19,0)</code></td><td class="w">Indexed.</td></tr>
+<tr><td>Number</td><td><code>decimal(24,6)</code></td><td class="w"><code>field_format</code> controls the step, e.g. <code>0.01</code>.</td></tr>
+<tr><td>Date / DateTime</td><td><code>date</code> / <code>timestamp</code></td><td class="w">Native pickers. An empty date is stored as <code>1900-01-01</code> and displayed blank.</td></tr>
+<tr><td>Checkbox</td><td><code>boolean</code></td><td class="w"></td></tr>
+<tr><td>Drop Down</td><td><code>varchar</code></td><td class="w">Options are Groovy that returns a list. <code>curuser</code>, <code>session</code>, <code>sql</code> and <code>datas</code> are in scope.</td></tr>
+<tr><td>MultiSelect</td><td><code>varchar</code></td><td class="w">Comma-joined values.</td></tr>
+<tr><td>User</td><td><code>numeric(19,0)</code></td><td class="w">A <code>User</code> id, rendered as a searching dropdown.</td></tr>
+<tr><td>File</td><td><code>numeric(19,0)</code></td><td class="w">A <code>FileLink</code> id. Upload happens inline.</td></tr>
+<tr><td>BelongsTo</td><td><code>numeric(19,0)</code></td><td class="w">A row in another tracker. Configured through the <code>tracker_objects</code> setting or an explicit options script.</td></tr>
+<tr><td>HasMany</td><td>none</td><td class="w">The inverse side. No column is created.</td></tr>
+<tr><td>TreeNode</td><td><code>numeric(19,0)</code></td><td class="w">A node in a <code>PortalTree</code> &mdash; org units, categories.</td></tr>
+<tr><td>Hidden</td><td><code>varchar</code></td><td class="w">Stored, never shown on a form.</td></tr>
+<tr><td>FieldGroup</td><td>none</td><td class="w">A layout heading. Groups the fields named in its options.</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="col">
+<p>Beyond type, a field carries a lot of behaviour worth knowing exists: <code>field_default</code> and
+<code>field_query</code> (Groovy), <code>field_display</code> (how the value renders in lists),
+<code>field_description</code> / <code>field_tooltip</code> / <code>field_placeholder</code> (help text),
+<code>hyperscript</code> (client-side behaviour), <code>is_encrypted</code>, <code>url_value</code>,
+<code>row_validation_regex</code> (for bulk Excel uploads) and <code>field_order</code>.</p>
+
+<h3>Create Defaults</h3>
+<p>Now press <span class="pill">Create Defaults</span> on the toolbar. In one click it gives the tracker
+everything it needs to be usable:</p>
+<ul>
+  <li><code>listfields</code> set to all your fields, so the list screen has columns;</li>
+  <li>an <strong>Admin</strong> role;</li>
+  <li>a <strong>New</strong> status, set as the tracker's initial status, and a <strong>Delete</strong> status;</li>
+  <li><strong>New</strong>, <strong>Edit</strong> and <strong>Delete</strong> transitions, all restricted to Admin.</li>
+</ul>
+<p>That is a working create/read/update/delete tracker. Everything in the next section turns it into a workflow.</p>
+</div>
+
+<figure class="narrow">
+  <img src="{{IMG:14_defaults_statuses}}" alt="The Status tab after Create Defaults, listing two statuses: Delete and New.">
+  <figcaption>After <b>Create Defaults</b>. Two statuses, three transitions, one role &mdash; enough to add records.</figcaption>
+</figure>
+</section>
+
+<section id="workflow">
+<h2><span class="num">08</span><span>The workflow</span></h2>
+<p class="dek">Statuses are where a record can be. Transitions are how it moves, who may move it, and what they may edit on the way.</p>
+
+<div class="col">
+<h3>Statuses</h3>
+<p>A ticket needs two more states beyond <code>New</code>: <code>In Progress</code> and <code>Resolved</code>.
+<em>Status</em> tab &rarr; <em>Create Status</em>.</p>
+</div>
+
+<figure class="narrow">
+  <img src="{{IMG:15_status_create}}" alt="The create status form with Name In Progress and empty Displayfields, Editroles and Editfields pickers.">
+  <figcaption>On the <em>create</em> form the field pickers are empty &mdash; they are populated from the tracker, and the status has no tracker until it is saved. Create it with a name, then edit it.</figcaption>
+</figure>
+
+<p class="col">Now edit the status and set <strong>displayfields</strong>: the fields shown on a record while it
+sits in this status, in the order you drag them.</p>
+
+<figure>
+  <img src="{{IMG:27_status_displayfields}}" alt="The edit status form for In Progress with a Displayfields tag widget containing subject, details, priority, due_date and assignee as draggable chips.">
+  <figcaption>Field pickers are tag widgets restricted to the tracker's own field names, and the order of the chips is the render order. A status with no <code>displayfields</code> shows nothing.</figcaption>
+</figure>
+
+<div class="col">
+<p>A status also carries <code>editroles</code> and <code>editfields</code> (inline editing without a
+transition), <code>updateable</code> and <code>attachable</code> flags, <code>emailonupdate</code>, and
+<code>compositeStatuses</code> for statuses that stand in for a group.</p>
+
+<h3>Roles</h3>
+<p>A tracker role is a <em>name the tracker recognises</em>. There are two kinds:</p>
+<div class="kv">
+  <dt>User Role</dt>
+  <dd>Matched against the user's module roles. A tracker role called <code>Agent</code> is satisfied by a
+      <code>UserRole</code> row granting <code>Agent</code> on this tracker's module.</dd>
+  <dt>Data Compare</dt>
+  <dd>A Groovy rule evaluated against the record and the current user. This is how "the person who raised it"
+      or "the assignee's manager" become roles.</dd>
+</div>
+<p>Add <strong>Requester</strong> and <strong>Agent</strong>, both User Role.</p>
+</div>
+
+<figure class="narrow">
+  <img src="{{IMG:16_role_create}}" alt="The create tracker role form with Name Agent, Roletype User Role and a description reading Picks up and resolves tickets.">
+  <figcaption>Give every role a description. It is the only place the intent is written down.</figcaption>
+</figure>
+
+<figure class="narrow">
+  <img src="{{IMG:17_roles_list}}" alt="The Roles tab listing Admin, Agent and Requester, all of type User Role.">
+  <figcaption>Three roles: Admin from <b>Create Defaults</b>, plus the two we added.</figcaption>
+</figure>
+
+<div class="col">
+<h3>Transitions</h3>
+<p>A transition answers four questions at once:</p>
+<div class="kv">
+  <dt>prev_status</dt>
+  <dd>Which statuses it can be run <em>from</em>. Empty means it creates a new record.</dd>
+  <dt>next_status</dt>
+  <dd>Which status the record lands in. Or tick <code>same_status</code> to leave it where it is.</dd>
+  <dt>roles</dt>
+  <dd>Who may run it. A user with none of these roles never sees the button.</dd>
+  <dt>editfields</dt>
+  <dd>Which fields the form offers. This is the transition's whole form definition.</dd>
+</div>
+<p>The helpdesk workflow needs three more on top of the defaults:</p>
+</div>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Transition</th><th>From</th><th>To</th><th>Roles</th><th>Edit fields</th></tr></thead>
+<tbody>
+<tr><td><code>Assign</code></td><td>New</td><td>In Progress</td><td>Agent</td><td><code>assignee, priority, due_date</code></td></tr>
+<tr><td><code>Resolve</code></td><td>In Progress</td><td>Resolved</td><td>Agent</td><td><code>details</code></td></tr>
+<tr><td><code>Reopen</code></td><td>Resolved</td><td>New</td><td>Requester, Agent</td><td><code>details</code></td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="note">
+  <span class="lbl">Create, then wire</span>
+  <p>Like statuses, a transition's role and status pickers are empty on the create form because they are
+  populated from the tracker it does not yet belong to. Create each transition with just a name and a tracker,
+  then open it for editing and wire it up.</p>
+</div>
+
+<figure>
+  <img src="{{IMG:19_transition_edit}}" alt="The edit transition form for Assign, showing Roles set to Agent, Prevstatus set to New, Nextstatus In Progress and Editfields containing assignee, priority and due_date.">
+  <figcaption>The <code>Assign</code> transition wired up. Every list here is a searching multi-select backed by the tracker's own roles, statuses and fields.</figcaption>
+</figure>
+
+<figure>
+  <img src="{{IMG:20_transitions_list}}" alt="The Transitions tab listing Assign, Delete, Edit, New, Reopen and Resolve with their roles, previous statuses, next statuses and edit fields.">
+  <figcaption>Six transitions. <code>New</code> has no previous status &mdash; that is what makes it the create form.</figcaption>
+</figure>
+
+<div class="col">
+<h3>See it, and edit it, as a graph</h3>
+<p><span class="pill">Workflow Graph</span> on the tracker toolbar draws the whole state machine, and for anyone
+holding a Developer role on the tracker's own module it is also an editor.</p>
+</div>
+
+<figure>
+  <img src="{{IMG:18b_graph_only}}" alt="A workflow diagram: START leads to New; New has a self-loop labelled Edit [Admin]; New leads to Delete via Delete [Admin]; New leads to In Progress via Assign [Agent]; In Progress leads to Resolved via Resolve [Agent]; Resolved leads back to New via Reopen [Requester, Agent].">
+  <figcaption>The finished helpdesk workflow. Each edge is labelled with the transition and the roles that may run it &mdash; the fastest way to review who can do what.</figcaption>
+</figure>
+
+<p class="col">Click a status or a transition and the panel above the graph becomes its editor:</p>
+
+<figure>
+  <img src="{{IMG:50b_builder_selected}}" alt="The workflow graph page with the In Progress status selected. The panel above shows a Name field, Updateable and Attachable checkboxes, a table of the five fields with View and Edit checkboxes, and a table of the three roles with On checkboxes. Buttons read Save, Revert, plus Self-transition, Delete, Add Fields and Add Roles. The graph below highlights the selected status and its edges in red.">
+  <figcaption>The builder. <b>View</b> is the status's <code>displayfields</code>, <b>Edit</b> its <code>editfields</code>, and dragging a row reorders the tracker's fields. <b>+ Status</b>, <b>+ Transition</b>, <b>Add Fields</b> and <b>Add Roles</b> create new ones without leaving the page.</figcaption>
+</figure>
+
+<div class="note">
+  <span class="lbl">Who may edit here</span>
+  <p>Editing writes tracker <em>structure</em> &mdash; columns, statuses, transitions &mdash; so the builder
+  re-checks permission itself rather than trusting the interceptor: you need Developer on <em>this tracker's own
+  module</em>, or to be a system administrator. Reading the graph is open to anyone who can reach the tracker.</p>
+</div>
+</section>
+
+<section id="usingit">
+<h2><span class="num">09</span><span>Using what you built</span></h2>
+<p class="dek">No code was written. The screens already exist.</p>
+
+<figure>
+  <img src="{{IMG:21_tracker_list_empty}}" alt="The Ticket list screen, empty, with columns Assignee, Due Date, Priority, Subject and Details and a New Ticket link.">
+  <figcaption><code>/helpdesk/ticket/list</code>. Columns come from the tracker's <code>listfields</code>.</figcaption>
+</figure>
+
+<figure>
+  <img src="{{IMG:22_ticket_create}}" alt="The Create Ticket form with fields Subject, Details, Priority, Due Date and Assignee and a Create button.">
+  <figcaption><code>/helpdesk/ticket/create</code> runs the <code>New</code> transition &mdash; the form is exactly that transition's <code>editfields</code>.</figcaption>
+</figure>
+
+<figure>
+  <img src="{{IMG:23_tracker_list}}" alt="The Ticket list with three rows: a printer jam, a monitor request and a VPN problem, each with assignee, priority and subject.">
+  <figcaption>Three tickets. Search, filtering, sorting, pagination and Excel export are all configured on the tracker's Details tab, not written.</figcaption>
+</figure>
+
+<div class="col">
+<h3>The lesson in the buttons</h3>
+<p>Open a ticket. Which buttons you see is the whole permission model in one screen.</p>
+</div>
+
+<figure>
+  <img src="{{IMG:24_ticket_display}}" alt="A ticket display page showing Assignee, Due Date, Priority, Subject and Details, with Assign, Delete and Edit buttons.">
+  <figcaption>With <code>Developer</code> (which implies <code>Admin</code>) <em>and</em> <code>Agent</code> granted on <code>helpdesk</code>, all three transitions out of <code>New</code> are offered.</figcaption>
+</figure>
+
+<div class="note warn">
+  <span class="lbl">Tracker roles are satisfied by module roles</span>
+  <p>Before <code>Agent</code> was granted at <code>/userRole</code>, this page showed only <b>Delete</b> and
+  <b>Edit</b> &mdash; the two Admin transitions. <b>Assign</b> appeared the moment the module role matched the
+  tracker role <em>by name</em>. Defining a role on a tracker does not give it to anyone; a
+  <code>UserRole</code> row does. When a transition button is missing, this is almost always why.</p>
+</div>
+
+<figure class="narrow">
+  <img src="{{IMG:26_transition_form}}" alt="The Assign Ticket form showing only three fields - Assignee, Priority and Due Date - and an Update button.">
+  <figcaption>Running <b>Assign</b>. The form is three fields because that is the transition's <code>editfields</code>; nothing else on the record is editable here.</figcaption>
+</figure>
+
+<figure>
+  <img src="{{IMG:28_after_transition}}" alt="The same ticket after the Assign transition, now showing a due date of 2026-09-15 and an assignee, with only a Resolve button.">
+  <figcaption>After the transition the record sits in <code>In Progress</code> &mdash; and the only button offered is <b>Resolve</b>, the one transition that leaves that status. The state machine now drives the UI.</figcaption>
+</figure>
+</section>
+
+<section id="pages">
+<h2><span class="num">10</span><span>Pages</span></h2>
+<p class="dek">Where you write actual code. A page is GSP in a database column with Groovy behind it.</p>
+
+<div class="col">
+<p>Trackers give you generated screens. A page gives you a blank canvas: a dashboard, a report, an HTMX
+fragment, a JSON endpoint, a generated spreadsheet. Pages are how every g6portal module stops looking like a
+generated admin app.</p>
+
+<h3>Two kinds of page</h3>
+<div class="kv">
+  <dt>Display</dt>
+  <dd><code>runable</code> off. <code>content</code> is compiled as a <strong>GSP template</strong> and rendered
+      into the site layout. Reached at <code>/view/&lt;module&gt;/&lt;slug&gt;</code>.</dd>
+  <dt>Runable</dt>
+  <dd><code>runable</code> on. <code>content</code> is evaluated as a <strong>Groovy script</strong> and whatever
+      it returns is the response. Reached at <code>/run/&lt;module&gt;/&lt;slug&gt;</code>.</dd>
+</div>
+<p>That distinction is the one to keep straight. A display page returns markup; a runable page returns a value,
+which the render mode then interprets.</p>
+
+<h3>What runs, in order</h3>
+<ol class="steps">
+  <li><p class="lead">Datasources.</p>
+      <p>Each <code>PortalPageData</code> row holds Groovy that must <em>return a SQL string</em>. The string is
+      run, and the rows land in <code>datas.&lt;name&gt;</code>. A <code>:name</code> placeholder in the SQL is
+      bound from <code>params</code>. Tick <em>return one</em> for a single row instead of a list.</p></li>
+  <li><p class="lead">Preprocess.</p>
+      <p>Groovy, with <code>datas</code> now in scope. Whatever it returns arrives in the view as
+      <code>pp</code>. This is where the real work belongs &mdash; queries, aggregation, permission decisions
+      &mdash; so the view stays a view.</p></li>
+  <li><p class="lead">Content.</p>
+      <p>For a display page, compiled as GSP with <code>pp</code> and <code>datas</code> available. For a runable
+      page, evaluated as Groovy.</p></li>
+</ol>
+
+<h3>What is in scope</h3>
+</div>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Variable</th><th>Datasource</th><th>Preprocess</th><th>Runable content</th><th>Display content</th></tr></thead>
+<tbody>
+<tr><td><code>params</code></td><td>yes</td><td>yes</td><td>yes</td><td>via <code>pp</code></td></tr>
+<tr><td><code>curuser</code></td><td>yes</td><td>yes</td><td>yes</td><td>yes</td></tr>
+<tr><td><code>session</code></td><td>yes</td><td>yes</td><td>yes</td><td>&mdash;</td></tr>
+<tr><td><code>request</code></td><td>yes</td><td>yes</td><td>yes</td><td>&mdash;</td></tr>
+<tr><td><code>sql</code> <span class="pill">groovy.sql.Sql</span></td><td>yes</td><td>yes</td><td>yes</td><td>yes</td></tr>
+<tr><td><code>datasource</code> <span class="pill">Connection</span></td><td>yes</td><td>yes</td><td>yes</td><td>&mdash;</td></tr>
+<tr><td><code>datas</code></td><td>&mdash;</td><td>yes</td><td>yes</td><td>yes</td></tr>
+<tr><td><code>pp</code></td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>yes</td></tr>
+<tr><td><code>flash</code></td><td>&mdash;</td><td>&mdash;</td><td>yes</td><td>&mdash;</td></tr>
+<tr><td><code>portalService</code>, <code>userService</code>, <code>mailService</code></td><td>yes</td><td>yes</td><td>yes</td><td>yes</td></tr>
+<tr><td><code>grailsLinkGenerator</code></td><td>yes</td><td>yes</td><td>yes</td><td>&mdash;</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="col">
+<p>Domain classes are reachable by their full name &mdash; <code>g6portal.PortalTracker</code>,
+<code>g6portal.User</code>, <code>g6portal.PortalSetting</code>. The handful you will use constantly:</p>
+<pre><code>def T = g6portal.PortalTracker
+
+T.raw_rows(sql, params)            <span class="cmt">// list of rows from arbitrary SQL</span>
+T.raw_firstRow(sql, params)        <span class="cmt">// one row</span>
+T.raw_execute(sql, params)         <span class="cmt">// insert / update / delete</span>
+T.load_rows(module, slug, qparams) <span class="cmt">// rows of a tracker, by name</span>
+T.load_datas(module, slug, params) <span class="cmt">// one row of a tracker</span>
+T.get_value(slug, id, field)       <span class="cmt">// a single field value</span>
+T.savedatas(module, slug, datas)   <span class="cmt">// write a record</span>
+
+g6portal.PortalSetting.namedefault('name', fallback)</code></pre>
+
+<h3>Render modes</h3>
+</div>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Render</th><th>The page returns</th><th>Response</th></tr></thead>
+<tbody>
+<tr><td><em>(Default)</em></td><td class="w">Markup</td><td class="w">Wrapped in the site layout &mdash; header, sidebar, footer.</td></tr>
+<tr><td>HTML</td><td class="w">Markup</td><td class="w">Sent raw, no layout. Use for HTMX fragments.</td></tr>
+<tr><td>JSON</td><td class="w">A map or list</td><td class="w">Serialised. Use for anything a browser script calls.</td></tr>
+<tr><td>XML</td><td class="w">An XML string</td><td class="w">Sent as <code>text/xml</code>.</td></tr>
+<tr><td>File</td><td class="w">A path</td><td class="w">Streamed as a download. <code>?thumbsize=</code> resizes images on the way out.</td></tr>
+<tr><td>XLSX</td><td class="w"><code>[wb: workbook, filename: 'name']</code></td><td class="w">Generated in a background thread; the browser gets a polling page immediately, so a slow export cannot time out behind a proxy.</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="col">
+<h3>Access flags</h3>
+<div class="kv">
+  <dt>published</dt>
+  <dd>Off means the page does not exist as far as visitors are concerned. Your working draft.</dd>
+  <dt>requirelogin</dt>
+  <dd>Off <em>plus</em> published on is how a page becomes anonymous &mdash; a public form, a QR-code landing
+      page. Both are needed.</dd>
+  <dt>allowedroles</dt>
+  <dd>Comma-separated, matched against the user's roles <em>on this page's module</em>. Empty or
+      <code>All</code> means any logged-in user.</dd>
+  <dt>fullpage</dt>
+  <dd>Renders without the portal chrome. For projector screens and kiosk views.</dd>
+  <dt>side_menu</dt>
+  <dd>Set it to the module name to give the page the module's sidebar.</dd>
+</div>
+
+<h3>A worked example</h3>
+<p>The helpdesk needs a landing page: counts by status, a table of tickets, links onwards. Create it from the
+module page's <em>Add Page</em>, so the module is filled in for you.</p>
+</div>
+
+<figure>
+  <img src="{{IMG:29_page_create}}" alt="The page editor showing Title Helpdesk, Slug dashboard, Module helpdesk, Published and Requirelogin ticked, Allowedroles listing Admin, Developer, Agent and Requester, Sidemenu helpdesk, and an ACE code editor containing the page's GSP content.">
+  <figcaption>The page editor. Content and preprocess are ACE editors &mdash; F11 for fullscreen. The editor switches between HTML and Groovy syntax highlighting when you tick <b>Runable</b>.</figcaption>
+</figure>
+
+<p class="col">The preprocess does the work:</p>
+
+<pre class="wide"><code><span class="cmt">// Runs before the page renders. Whatever it returns arrives in the view as `pp`.</span>
+def T = g6portal.PortalTracker
+
+def rows = T.raw_rows('''
+    select id, subject, priority, due_date, record_status as status, assignee
+      from trak_helpdesk_ticket_data
+     order by id desc
+''') ?: []
+
+def counts = [:]
+rows.each { r -&gt; counts[r.status] = (counts[r.status] ?: 0) + 1 }
+
+def names = [:]
+rows*.assignee.findAll { it }.unique().each { uid -&gt;
+    names[uid] = g6portal.User.get(uid as Long)?.name
+}
+
+return [rows: rows, counts: counts, names: names, total: rows.size()]</code></pre>
+
+<p class="col">and the content is ordinary GSP against <code>pp</code>:</p>
+
+<pre class="wide"><code>&lt;div class="col-12"&gt;
+  &lt;h3 class="mb-3"&gt;Helpdesk&lt;/h3&gt;
+
+  &lt;div class="row mb-4"&gt;
+    &lt;div class="col-md-3"&gt;
+      &lt;div class="card"&gt;&lt;div class="card-body"&gt;
+        &lt;h6 class="card-title text-muted"&gt;All tickets&lt;/h6&gt;
+        &lt;div class="display-6"&gt;${pp.total}&lt;/div&gt;
+      &lt;/div&gt;&lt;/div&gt;
+    &lt;/div&gt;
+    &lt;g:each in="${pp.counts}" var="s"&gt;
+    &lt;div class="col-md-3"&gt;
+      &lt;div class="card"&gt;&lt;div class="card-body"&gt;
+        &lt;h6 class="card-title text-muted"&gt;${s.key}&lt;/h6&gt;
+        &lt;div class="display-6"&gt;${s.value}&lt;/div&gt;
+      &lt;/div&gt;&lt;/div&gt;
+    &lt;/div&gt;
+    &lt;/g:each&gt;
+  &lt;/div&gt;
+
+  &lt;table class="table align-middle"&gt;
+    &lt;thead&gt;&lt;tr&gt;&lt;th&gt;Subject&lt;/th&gt;&lt;th&gt;Priority&lt;/th&gt;&lt;th&gt;Status&lt;/th&gt;&lt;th&gt;Assignee&lt;/th&gt;&lt;th&gt;Due&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;
+    &lt;tbody&gt;
+      &lt;g:each in="${pp.rows}" var="r"&gt;
+      &lt;tr&gt;
+        &lt;td&gt;&lt;a href="/helpdesk/ticket/display/${r.id}"&gt;&lt;strong&gt;${r.subject}&lt;/strong&gt;&lt;/a&gt;&lt;/td&gt;
+        &lt;td&gt;&lt;span class="badge bg-secondary"&gt;${r.priority}&lt;/span&gt;&lt;/td&gt;
+        &lt;td&gt;${r.status}&lt;/td&gt;
+        &lt;td&gt;${pp.names[r.assignee] ?: '-'}&lt;/td&gt;
+        &lt;td&gt;${r.due_date ?: '-'}&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;/g:each&gt;
+    &lt;/tbody&gt;
+  &lt;/table&gt;
+
+  &lt;a class="btn btn-primary" href="/helpdesk/ticket/create"&gt;Raise a ticket&lt;/a&gt;
+  &lt;a class="btn btn-outline-secondary" href="/helpdesk/ticket/list"&gt;All tickets&lt;/a&gt;
+&lt;/div&gt;</code></pre>
+
+<figure>
+  <img src="{{IMG:31_page_rendered}}" alt="The rendered helpdesk page at /view/helpdesk/dashboard, showing three count cards - All tickets 3, New 2, In Progress 1 - above a table of the three tickets and two buttons.">
+  <figcaption><code>/view/helpdesk/dashboard</code>. Bootstrap 5 is already loaded by the layout, so the card and table classes work without adding anything.</figcaption>
+</figure>
+
+<div class="note warn">
+  <span class="lbl">A page that throws renders as nothing</span>
+  <p>Exceptions in a page are caught, logged and swallowed &mdash; you get the layout with an empty middle,
+  not a stack trace. Go to <strong>Admin &rarr; Error</strong>, or watch the console for
+  <code>Error with page &lt;title&gt;</code>. It is the first thing to check whenever a page comes up blank.</p>
+</div>
+
+<div class="col">
+<h3>Taglibs you have</h3>
+<div class="kv">
+  <dt><code>&lt;g:ifrole&gt;</code></dt><dd>Show the body only to the named roles. <code>&lt;g:ifnotrole&gt;</code> for the inverse.</dd>
+  <dt><code>&lt;g:user_selector&gt;</code></dt><dd>The searching user dropdown the tracker forms use.</dd>
+  <dt><code>&lt;g:download_file&gt;</code>, <code>&lt;g:filelink_link&gt;</code></dt><dd>Links to a <code>FileLink</code> by module and slug.</dd>
+  <dt><code>&lt;g:picture_file&gt;</code>, <code>&lt;g:stream_file&gt;</code></dt><dd>Inline an image or stream a file.</dd>
+  <dt><code>&lt;g:file_exists&gt;</code>, <code>&lt;g:file_not_exists&gt;</code></dt><dd>Conditional on a file being there.</dd>
+  <dt><code>&lt;g:tree_menu&gt;</code>, <code>&lt;g:side_menu&gt;</code></dt><dd>The navigation menus &mdash; see the next section.</dd>
+  <dt><code>&lt;g:hashlink&gt;</code>, <code>&lt;g:continueparams&gt;</code></dt><dd>Base64-encoded link params, and carrying the current params onward.</dd>
+  <dt><code>&lt;g:brand&gt;</code>, <code>&lt;g:brand_logo_url&gt;</code></dt><dd>Branding values.</dd>
+</div>
+</div>
+</section>
+
+<section id="menus">
+<h2><span class="num">11</span><span>Menus and navigation</span></h2>
+<p class="dek">Until you wire a menu, a module is reachable only by typing a URL.</p>
+
+<div class="col">
+<p>Navigation lives in two trees, both owned by the module <code>portal</code>, because the taglibs hardcode
+that: <code>portal/main_menu</code> is the header megamenu, and <code>portal/&lt;module&gt;_menu</code> is a
+module's sidebar. You could build the nodes by hand at <code>/portalTree</code>. Don't &mdash; declare them in
+the module package instead, and the portal builds and maintains both trees for you.</p>
+
+<h3>menulist.json</h3>
+<p>One file at the package root, beside <code>pagelist.json</code>:</p>
+<pre><code>{
+    "label": "Helpdesk",
+    "icon": "life-preserver",
+    "items": [
+        { "name": "Helpdesk home",  "link": "page:helpdesk:dashboard",
+          "icon": "speedometer2", "group": null },
+        { "name": "Raise a ticket", "link": "link:/helpdesk/ticket/create",
+          "icon": "plus-circle",  "group": null },
+        { "name": "All tickets",    "link": "tracker:helpdesk:ticket",
+          "icon": "card-list",    "group": "Authoring" }
+    ]
+}</code></pre>
+<p>Icons are <a href="https://icons.getbootstrap.com/">Bootstrap Icons</a> names without the
+<code>bi-</code> prefix. Entries sharing a <code>group</code> are collected under one heading; <code>null</code>
+puts the entry directly under the module. Two optional keys, <code>mainrole</code> and <code>hiderole</code>,
+gate an entry by role.</p>
+
+<h4>Link forms</h4>
+<pre><code>page:&lt;module&gt;:&lt;slug&gt;[:arg1[:arg2[:arg3]]]   a portal page
+tracker:&lt;module&gt;:&lt;slug&gt;                     a tracker's list screen
+run:&lt;module&gt;:&lt;slug&gt;                         a runable page
+file:&lt;module&gt;:&lt;slug&gt;                        a file download
+link:/any/path                              anything else</code></pre>
+
+<h3>What gets built</h3>
+<p>Importing a package that carries <code>menulist.json</code> gives the module a column in the header megamenu
+and a sidebar of its own. The sidebar only appears on screens that ask for it: set <code>side_menu</code> to
+the <em>module name</em> on the pages and trackers that should carry it &mdash; the taglib appends
+<code>_menu</code> itself.</p>
+</div>
+
+<figure class="narrow">
+  <img src="{{IMG:36b_sidebar_crop}}" alt="The sidebar showing Dashboard, then Helpdesk home and Raise a ticket, then a collapsible Authoring group, then Admin.">
+  <figcaption>The sidebar built from the declaration above. Ungrouped entries are links; each group becomes a collapsible.</figcaption>
+</figure>
+
+<figure>
+  <img src="{{IMG:49_megamenu_two_modules}}" alt="The header megamenu open, showing two columns: Helpdesk with Helpdesk home, Raise a ticket and an Authoring heading over All tickets; and Live Quiz with Run a session, Projector screen, All sessions and an Authoring heading over Sessions, Questions and Options.">
+  <figcaption>Two modules in the megamenu &mdash; one imported through the screens, one installed from <code>bundled-modules/</code> at boot. Each owns its own column.</figcaption>
+</figure>
+
+<div class="col">
+<h3>Ownership, and why it matters</h3>
+<p>Every node built from a declaration is stamped with its module in the node's <code>data</code> field, and
+matching is done by that stamp, never by name. So:</p>
+<ul>
+  <li>Renaming an entry <em>updates</em> it rather than leaving a duplicate behind.</li>
+  <li>Re-importing rebuilds the module's nodes to match the declaration &mdash; <strong>including deleting
+      entries the declaration has dropped</strong>. The menu always reflects the installed version.</li>
+  <li>Reordering <code>items</code> reorders the menu.</li>
+  <li>Nodes an administrator added by hand carry no stamp and are never touched. Neither is any other
+      module's column.</li>
+</ul>
+
+<div class="note warn">
+  <span class="lbl">Two things menus do not do</span>
+  <p><strong>Menu visibility is not access control.</strong> An entry shows to anyone the node's
+  <code>mainrole</code> / <code>hiderole</code> allow; whether the page behind it opens is decided by that
+  page's own <code>allowedroles</code>. Gate the page, not just the menu.</p>
+  <p><strong>A removed module keeps its menu.</strong> Deleting a <code>PortalModule</code> row does not sweep
+  up the nodes it contributed. Remove them at <code>/portalTree</code>, or re-import with an empty
+  <code>items</code> list.</p>
+</div>
+</div>
+</section>
+
+<section id="packaging">
+<h2><span class="num">12</span><span>Packaging a module</span></h2>
+<p class="dek">A module becomes a file, and the file is the thing you commit, review and ship.</p>
+
+<div class="col">
+<h3>Export</h3>
+<p>The module page's toolbar carries the export controls. Tick what the package should include, then
+<strong>Export</strong>.</p>
+</div>
+
+<figure>
+  <img src="{{IMG:32_module_export_form}}" alt="The module page toolbar with checkboxes for Files, Trees, Menus and user, and buttons Edit, Export, Delete, Import, Add Admin and Add Developer.">
+  <figcaption>The export options. <b>Menus</b> regenerates <code>menulist.json</code> from the nodes the module owns, so a module exported from one portal carries its navigation to the next.</figcaption>
+</figure>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Option</th><th>Adds</th><th>Tick it when</th></tr></thead>
+<tbody>
+<tr><td>&mdash; (default)</td><td class="w"><code>trackerlist.json</code>, <code>pagelist.json</code>, <code>pages/*.gsp</code>, <code>settinglist.json</code></td><td class="w">Always attempted. Each file is written only if the module actually has something of that kind, so a small package is a short one.</td></tr>
+<tr><td>Files</td><td class="w"><code>filelinklist.json</code> and the file bodies</td><td class="w">The module ships templates or images.</td></tr>
+<tr><td>Trees</td><td class="w"><code>treelist.json</code></td><td class="w">The module owns a tree of its own, beyond the menus.</td></tr>
+<tr><td>Menus</td><td class="w"><code>menulist.json</code></td><td class="w">Nearly always &mdash; otherwise the module installs unreachable.</td></tr>
+<tr><td>User</td><td class="w"><code>userrolelist.json</code></td><td class="w">The role grants should travel too. Usually not, between environments.</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="col">
+<p>The result lands in <code>uploads/modulemigration/&lt;module&gt;/</code> and as
+<code>&lt;module&gt;.zip</code> beside it. The archive's entries sit at the ZIP root &mdash; there is no
+wrapping directory, and the importer expects it that way.</p>
+
+<pre class="wide"><code>helpdesk.zip
+  trackerlist.json      <span class="cmt"># trackers with fields, statuses, roles, transitions</span>
+  pagelist.json         <span class="cmt"># page flags: slug, module, published, render, allowedroles...</span>
+  menulist.json         <span class="cmt"># menu entries          (only when Menus was ticked)</span>
+  settinglist.json      <span class="cmt"># module-scoped settings (only when there are any)</span>
+  pages/
+    content_dashboard.gsp   <span class="cmt"># page content, one file per page</span>
+    pp_dashboard.gsp        <span class="cmt"># page preprocess, where there is one</span></code></pre>
+
+<p>Page <em>content</em> lives in files rather than inside the JSON, which is what makes a package reviewable:
+a diff of <code>pages/content_dashboard.gsp</code> reads like a diff of any other template.</p>
+
+<h3>Import</h3>
+</div>
+
+<figure class="narrow">
+  <img src="{{IMG:33_import_form}}" alt="The module import form with a file chooser and an Import button.">
+  <figcaption><code>/portalModule/importform</code>. Upload a package exported from anywhere.</figcaption>
+</figure>
+
+<p class="col">Import never applies immediately. It stages the package, compares it with what this server
+already holds, and shows you a diff:</p>
+
+<figure>
+  <img src="{{IMG:34_import_preview}}" alt="The Import Preview page for helpdesk showing a unified diff of menulist.json with every line added, a ticked checkbox reading Add this module's menu entries, and a required Import Remarks field.">
+  <figcaption>The preview. Lines starting with <code>-</code> are what will be replaced; <code>+</code> is what is coming in. <b>Import Remarks</b> is required and goes into the import log.</figcaption>
+</figure>
+
+<div class="col">
+<p>Three things about the preview are worth knowing:</p>
+<ul>
+  <li>The <strong>Add this module's menu entries</strong> checkbox is ticked by default. Untick it to take the
+      module without disturbing a menu somebody has curated; the import log records that the entries were left
+      out. The diff always shows <code>menulist.json</code> either way, so it compares like with like.</li>
+  <li><strong>Endpoints are only imported by a system administrator.</strong> An endpoint's target is a program
+      this server executes, so <code>endpointlist.json</code> is skipped for everyone else &mdash; and the
+      console says so.</li>
+  <li>The import gives the importing user <strong>Developer</strong> on the module. That is the difference
+      between importing through the screens and dropping a package in <code>bundled-modules/</code>.</li>
+</ul>
+<p>Every import is recorded at <code>/portalModule/importlogs</code>: who, when, which options, what remarks,
+and the diff that was shown.</p>
+
+<h3>Keeping the package as source</h3>
+<p>Exporting from a running portal is fine for moving a module between environments. For a module you are
+actively developing, invert it: keep the package in the repository and treat the portal as the thing you
+install into. The <code>livequiz</code> module in <code>modules/livequiz/</code> is the reference for this
+pattern:</p>
+<pre><code>modules/livequiz/
+  gen_trackers.py     <span class="cmt"># generates trackerlist.json</span>
+  gen_pages.py        <span class="cmt"># generates pagelist.json (flags only)</span>
+  menulist.json       <span class="cmt"># hand-written</span>
+  build.sh            <span class="cmt"># runs both generators, then zips</span>
+  pages/
+    content_&lt;slug&gt;.gsp
+    pp_&lt;slug&gt;.gsp</code></pre>
+<p>The JSON is generated because the package format repeats the same statuses, roles and transitions for every
+tracker, and hand-copying that across five of them invites drift. Page <em>content</em> is never generated
+&mdash; it lives in <code>pages/</code> as ordinary files you can edit, diff and review, and the importer reads
+them directly. <code>./build.sh</code> produces the ZIP; upload it at the import screen, or drop it in
+<code>bundled-modules/</code> for a fresh instance to pick up at boot.</p>
+</div>
+</section>
+
+<section id="platform">
+<h2><span class="num">13</span><span>The rest of the platform</span></h2>
+<p class="dek">Everything else in the Admin menu, and when you would reach for it.</p>
+
+<div class="col">
+<h3>Settings</h3>
+<p>Typed configuration rows, optionally scoped to a module. Read them from anywhere with
+<code>PortalSetting.namedefault('name', fallback)</code>, which returns the fallback when the row is absent
+&mdash; so a module can ship with sensible behaviour and let a site override it. Lookup falls back from
+<code>module.setting</code> to the global <code>setting</code>.</p>
+</div>
+
+<figure class="narrow">
+  <img src="{{IMG:43_settings}}" alt="The Settings list screen with a search box and Module filter.">
+  <figcaption><code>/portalSetting</code>. Types are Text, Array, Hashmap, Date, Number and Xml; Array and Hashmap are parsed on read.</figcaption>
+</figure>
+
+<div class="col">
+<p>Settings you will meet:</p>
+<div class="kv">
+  <dt>enablesuperuser</dt><dd>System administrators count as Admin of every module. Section 5.</dd>
+  <dt>portal.whitelist</dt><dd>Controller/action pairs the interceptor lets through unchecked.</dd>
+  <dt>portal.module_whitelist</dt><dd>Modules reachable while impersonating another user.</dd>
+  <dt>migrationfolder</dt><dd>Where module export and import stage their files. Defaults to <code>./uploads/modulemigration</code>.</dd>
+  <dt>tracker_objects</dt><dd>Maps a field type name onto <code>module.slug</code> of another tracker, for BelongsTo-style relations.</dd>
+  <dt>emailpagerror</dt><dd>An address to mail when a page throws.</dd>
+  <dt>download_module_whitelist</dt><dd>Modules whose files are downloadable without a role check.</dd>
+</div>
+
+<h3>Files</h3>
+<p><strong>File</strong> (<code>/fileLink</code>) is one uploaded file with a slug, a module and its own
+<code>allowedroles</code>, served from <code>/download/&lt;module&gt;/&lt;slug&gt;</code>. Tracker
+<code>File</code> fields create these rows for you. <strong>File Manager</strong>
+(<code>/portalFileManager</code>) exposes a folder on disk as a browsable tree instead.</p>
+
+<h3>Scheduler and e-mail</h3>
+<p>A <code>PortalScheduler</code> row names a list of page slugs and an hour / day-of-week / day-of-month
+pattern, and runs those pages on that schedule. Because the unit of work is a page, a scheduled job is written
+exactly like any other runable page &mdash; there is no separate job API to learn.
+<code>PortalEmail</code> does the same for mail, with a page as the body.</p>
+
+<h3>Endpoints</h3>
+<p>Portal pages return a String, so they cannot carry a binary wire protocol. <code>PortalEndpoint</code> is the
+escape hatch: it hands the raw request to a handler and streams the reply back, with the portal doing
+authentication in front. Served at <code>/svc/&lt;module&gt;/&lt;slug&gt;/...</code>, with everything after the
+slug belonging to the handler.</p>
+</div>
+
+<figure class="narrow">
+  <img src="{{IMG:45_endpoints}}" alt="The Endpoint list screen, empty, with a Create Endpoint link.">
+  <figcaption><code>/portalEndpoint</code> &mdash; visible to system administrators only.</figcaption>
+</figure>
+
+<div class="col">
+<div class="kv">
+  <dt>Handlers</dt><dd><strong>CGI</strong> executes <code>target</code> as a CGI program; <strong>Proxy</strong> forwards to <code>target</code> as an upstream base URL.</dd>
+  <dt>Auth modes</dt><dd><strong>Basic</strong> (what git and hg clients send), <strong>Token</strong> (a shared secret in <code>?token=</code> or <code>X-G5-Token</code>), <strong>Session</strong> (an existing portal login), <strong>None</strong>.</dd>
+</div>
+<div class="note warn">
+  <span class="lbl">Why superuser only</span>
+  <p>An endpoint's <code>target</code> is a program this server executes. Being able to edit one is being able
+  to run anything as the portal's account. The interceptor enforces the restriction; hiding the menu entry is
+  only cosmetic. Note that <code>serve</code> is the one action exempt from the interceptor entirely &mdash; a
+  protocol client cannot follow a redirect to a login form &mdash; so each endpoint authenticates itself.</p>
+</div>
+
+<h3>Errors, audit and impersonation</h3>
+<p><strong>Error</strong> (<code>/portalErrorLog</code>) is where swallowed exceptions go, with the params,
+user, controller and module that produced them.</p>
+</div>
+
+<figure>
+  <img src="{{IMG:47_errorlog}}" alt="The Error log screen with filters and a list of recorded errors.">
+  <figcaption>The error log. Filter by module when a page is misbehaving.</figcaption>
+</figure>
+
+<div class="col">
+<p><code>PortalAuditTrail</code> records one row per request &mdash; controller, action, params, URI, IP, user
+agent, user, and the real user when someone is impersonating. It is written before any permission check, so it
+captures attempts as well as successes, and it has no opt-out from module code. A page that polls writes a row
+per poll; a room of fifty phones polling every three seconds is roughly sixty thousand rows an hour. Throughput
+is not the problem; growth is. Plan housekeeping for anything that polls.</p>
+<p>An administrator can switch into another user's session from the user screen, to see exactly what they see.
+While impersonating, the module whitelist and the real user's own admin list still apply, so impersonation
+cannot be used to reach a module the administrator could not reach anyway.</p>
+
+<h3>Search and branding</h3>
+<p><code>PortalSearch</code> indexes tracker records for the header search box; a tracker opts in through its
+Index tab. <code>/branding</code> sets the logo, favicon, product name and colours &mdash; system
+administrators only.</p>
+</div>
+</section>
+
+<section id="security">
+<h2><span class="num">14</span><span>The security model</span></h2>
+<p class="dek">What is checked, where, and the places it is easy to get wrong.</p>
+
+<div class="col">
+<h3>Where the checks live</h3>
+<ul>
+  <li><strong>SecurityInterceptor</strong> runs before every controller except login, <code>/setup</code>, the
+      OAuth callbacks and <code>portalEndpoint.serve</code>. It resolves the user, writes the audit row and
+      decides admission per controller family.</li>
+  <li><strong>Pages</strong> are matched on <code>published</code>, <code>requirelogin</code> and
+      <code>allowedroles</code>, the last against <code>user.modulerole(module)</code>. Running a page also
+      re-checks against the <em>resolved</em> page, so addressing a page by id cannot bypass the check.</li>
+  <li><strong>Trackers</strong> are matched on <code>require_login</code>, <code>allowedroles</code>, and the
+      <code>anonymous_list</code> / <code>anonymous_view</code> flags. Beyond admission, a transition's own
+      roles decide whether its button is offered at all.</li>
+  <li><strong>Files</strong> are matched on the <code>FileLink</code>'s own <code>allowedroles</code>, then on
+      module roles, then on the download whitelist. A file attached to a tracker record inherits that record's
+      access.</li>
+  <li><strong>Structural edits re-check themselves.</strong> The tracker builder and the endpoint screens do
+      not trust the interceptor, because its "Developer of any module" shortcut is deliberately wide for
+      reading and far too wide for writing.</li>
+</ul>
+
+<h3>Making something anonymous</h3>
+<p>Anonymous access is the pair <code>requirelogin: false</code> <em>plus</em> <code>published: true</code> on a
+page, or <code>anonymous_list</code> / <code>anonymous_view</code> on a tracker. Both halves are required; one
+alone does nothing.</p>
+
+<h3>Five things to hold on to</h3>
+<ol class="steps">
+  <li><p class="lead">A missing button is a role problem nine times in ten.</p>
+      <p>Tracker role names must be matched by <code>UserRole</code> grants on the same module.</p></li>
+  <li><p class="lead">Gate the page, not the menu.</p>
+      <p>Hiding a menu entry hides nothing. The URL still works if the page allows it.</p></li>
+  <li><p class="lead">Anything a client sends must be re-checked server-side.</p>
+      <p>Anonymous pages in particular: verify state, ownership and timing on every submission, and make replays
+      harmless.</p></li>
+  <li><p class="lead">A Developer on one module is not a developer on another.</p>
+      <p>Except where <code>enablesuperuser</code> is on and the user is a system administrator.</p></li>
+  <li><p class="lead">Page and tracker code runs as the server.</p>
+      <p><code>content</code>, <code>preprocess</code>, <code>field_options</code> and role rules are all
+      evaluated Groovy. Granting Developer on a module is granting the ability to run code on the server. Treat
+      the role accordingly.</p></li>
+</ol>
+</div>
+</section>
+
+<section id="source">
+<h2><span class="num">15</span><span>Working on the platform itself</span></h2>
+<p class="dek">For the times a module genuinely cannot express what you need.</p>
+
+<div class="col">
+<pre class="wide"><code>grails-app/
+  controllers/g6portal/   <span class="cmt"># one per domain, plus the two interceptors and UrlMappings</span>
+  domain/g6portal/        <span class="cmt"># PortalTracker and PortalModule carry most of the logic</span>
+  services/g6portal/      <span class="cmt"># PortalService: export/import; SetupService; BundledModuleService</span>
+  views/                  <span class="cmt"># admin screens and the site layout</span>
+  taglib/g6portal/        <span class="cmt"># Portal, Tracker, Tree, FileLink, Branding</span>
+  assets/                 <span class="cmt"># JS and CSS - libraries are vendored, not CDN-loaded</span>
+  conf/                   <span class="cmt"># application.yml plus the three database profiles</span>
+  init/g6portal/          <span class="cmt"># BootStrap: setup token, bundled modules</span>
+src/main/groovy/          <span class="cmt"># PoiExcel.java and other helpers</span>
+src/integration-test/     <span class="cmt"># Spock specs</span>
+modules/                  <span class="cmt"># module packages kept as source</span>
+bundled-modules/          <span class="cmt"># packages imported at first boot</span></code></pre>
+
+<h3>Day to day</h3>
+<pre><code>export JAVA_HOME=$HOME/.sdkman/candidates/java/11.0.24-tem
+
+./gradlew bootRun          <span class="cmt"># dev server on :9090, reload on change</span>
+./gradlew test             <span class="cmt"># unit tests</span>
+./gradlew integrationTest  <span class="cmt"># integration specs, on an in-memory H2</span>
+./gradlew bootJar          <span class="cmt"># the deployable jar</span>
+./packageall.sh            <span class="cmt"># all three database flavours</span></code></pre>
+
+<div class="note">
+  <span class="lbl">Tests get their own database</span>
+  <p>The test environment points at <code>jdbc:h2:mem:testDb</code>, not at <code>./g6db</code>. That is
+  deliberate: sharing the file meant a test run wrote to real data, and could not run at all while the
+  application was up, because H2 locks the file to one process.</p>
+</div>
+
+<h3>Things that will bite you</h3>
+<ul>
+  <li><strong>The CSP blocks CDNs.</strong> <code>SecurityHeadersInterceptor</code> sets
+      <code>script-src 'self'</code>, and a blocked script fails silently. Vendor libraries into
+      <code>grails-app/assets/</code>.</li>
+  <li><strong>The asset compile dominates the build.</strong> A clean <code>bootJar</code> is a few minutes,
+      most of it minifying assets.</li>
+  <li><strong>Two databases, one DDL.</strong> H2 runs in PostgreSQL mode and the code treats the two as one
+      family, branching only for SQL Server. New DDL needs both branches.</li>
+  <li><strong>Encoding in GSP-generated JSON.</strong> Serialise with <code>JsonOutput.toJson</code> in the
+      controller rather than <code>encodeAsJSON()</code> in the view &mdash; the view's HTML codec turns the
+      output into <code>&amp;quot;</code>-riddled markup that breaks the script block.</li>
+</ul>
+</div>
+</section>
+
+<section id="trouble">
+<h2><span class="num">16</span><span>When things go wrong</span></h2>
+<p class="dek">The failures you will actually hit, in the order you will hit them.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td class="w"><code>Table "trak_x_y_data" not found</code></td><td class="w">Fields defined, columns never created</td><td class="w"><span class="pill">Update DB</span> on the tracker's Fields tab.</td></tr>
+<tr><td class="w">A page renders as an empty middle</td><td class="w">The page threw; the exception was swallowed</td><td class="w"><strong>Admin &rarr; Error</strong>, or the console line <code>Error with page &lt;title&gt;</code>.</td></tr>
+<tr><td class="w">A transition button is missing</td><td class="w">No <code>UserRole</code> grant matching the transition's tracker role</td><td class="w">Grant the role on the tracker's module at <code>/userRole/create</code>, then log out and in.</td></tr>
+<tr><td class="w">"You do not have the rights to run that page"</td><td class="w">The page's <code>allowedroles</code> does not match your module roles</td><td class="w">Grant the role, or widen <code>allowedroles</code>. Remember <code>Developer</code> implies <code>Admin</code>.</td></tr>
+<tr><td class="w">Bounced from your own module after a bundled install</td><td class="w">The boot-time import cannot grant roles</td><td class="w"><code>/userRole/create</code> &rarr; you, the module, <code>Developer</code>.</td></tr>
+<tr><td class="w">A status shows no fields</td><td class="w"><code>displayfields</code> empty on that status</td><td class="w">Edit the status and pick the fields. Every status needs its own list.</td></tr>
+<tr><td class="w">Pickers empty on a create form</td><td class="w">The row has no tracker yet, so nothing can be listed</td><td class="w">Save with a name, then edit. Or use the workflow builder, which has the tracker throughout.</td></tr>
+<tr><td class="w">A role change appears to do nothing</td><td class="w">Roles cached in the session</td><td class="w">Log out and back in.</td></tr>
+<tr><td class="w"><code>/setup</code> says the instance is already set up</td><td class="w">An administrator exists</td><td class="w">Log in. To start over, stop the app and delete the database file.</td></tr>
+<tr><td class="w">The setup token is rejected</td><td class="w">Stale token, or five failed attempts</td><td class="w">Re-read <code>setup-token.txt</code>; restart the browser session after five failures.</td></tr>
+<tr><td class="w">"File corrupted" opening <code>g6db</code> with the H2 CLI</td><td class="w">Wrong H2 jar version, not a damaged database</td><td class="w">Use the H2 jar matching the one in the application.</td></tr>
+<tr><td class="w">A vendored script does not run</td><td class="w">Loaded from a CDN; the CSP blocked it silently</td><td class="w">Serve it from <code>grails-app/assets/</code>.</td></tr>
+<tr><td class="w">A bundled module was not upgraded</td><td class="w">By design &mdash; an existing module is never touched at boot</td><td class="w">Upgrade through the import screens, where you see the diff.</td></tr>
+<tr><td class="w"><code>portal_audit_trail</code> growing fast</td><td class="w">A polling page; every request is audited</td><td class="w">Housekeep it, or exempt the route in <code>SecurityInterceptor</code>.</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section id="reference">
+<h2><span class="num">17</span><span>Reference</span></h2>
+<p class="dek">The tables worth keeping open in another tab.</p>
+
+<div class="col">
+<h3>Naming</h3>
+</div>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Thing</th><th>Convention</th><th>Because</th></tr></thead>
+<tbody>
+<tr><td>Module name</td><td><code>lowercase</code>, no spaces</td><td class="w">Goes into URLs, table names and role grants.</td></tr>
+<tr><td>Tracker slug</td><td><code>lowercase</code>, singular</td><td class="w"><code>/helpdesk/ticket/list</code>, <code>trak_helpdesk_ticket_data</code>.</td></tr>
+<tr><td>Field name</td><td><code>lower_snake_case</code></td><td class="w">Becomes a database column, and appears in your SQL.</td></tr>
+<tr><td>Page slug</td><td><code>lowercase</code>, hyphen or underscore</td><td class="w"><code>/view/helpdesk/dashboard</code>.</td></tr>
+<tr><td>Role name</td><td><code>Capitalised</code></td><td class="w">Matched by exact string between tracker roles and user grants.</td></tr>
+<tr><td>Status name</td><td><code>Capitalised</code></td><td class="w">Stored as text in <code>record_status</code> and shown to users.</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="col">
+<h3>The order to build in</h3>
+</div>
+<div class="tablewrap">
+<table>
+<thead><tr><th>#</th><th>Step</th><th>Where</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>Create the module</td><td><code>/portalModule/create</code></td></tr>
+<tr><td>2</td><td>Grant yourself Developer on it</td><td>Module page &rarr; <b>Add Developer</b></td></tr>
+<tr><td>3</td><td>Create the tracker, choosing its type</td><td>Module page &rarr; <b>Add Tracker</b></td></tr>
+<tr><td>4</td><td>Add the fields</td><td>Tracker &rarr; Fields &rarr; <b>Create Field</b></td></tr>
+<tr><td>5</td><td><b>Update DB</b></td><td>Tracker &rarr; Fields toolbar</td></tr>
+<tr><td>6</td><td><b>Create Defaults</b></td><td>Tracker toolbar</td></tr>
+<tr><td>7</td><td>Add statuses; set <code>displayfields</code> on each</td><td>Tracker &rarr; Status</td></tr>
+<tr><td>8</td><td>Add roles</td><td>Tracker &rarr; Roles</td></tr>
+<tr><td>9</td><td>Add transitions, then edit them to wire statuses, roles and fields</td><td>Tracker &rarr; Transitions, or the builder</td></tr>
+<tr><td>10</td><td>Grant the tracker's roles to real users</td><td><code>/userRole/create</code></td></tr>
+<tr><td>11</td><td>Add pages</td><td>Module page &rarr; <b>Add Page</b></td></tr>
+<tr><td>12</td><td>Export, add <code>menulist.json</code>, re-import</td><td>Module page &rarr; <b>Export</b> / <b>Import</b></td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="col">
+<h3>Where else to look</h3>
+<div class="kv">
+  <dt>docs/PORTALTRACKER_DOCUMENTATION.md</dt>
+  <dd>The exhaustive tracker reference &mdash; every property, every field option, the SQL generation and the
+      import format, in far more depth than this guide.</dd>
+  <dt>docs/MODULE_MENUS.md</dt>
+  <dd>The <code>menulist.json</code> mechanism in full.</dd>
+  <dt>modules/livequiz/README.md</dt>
+  <dd>A real module built as a package: five trackers, thirteen pages, anonymous access, polling, generators
+      and a build script. The best worked example in the repository.</dd>
+  <dt>README.md</dt>
+  <dd>First-run notes and links to the Grails 6.2.2 documentation.</dd>
+</div>
+</div>
+
+<p class="endnote">Every screenshot in this guide was taken against a freshly created instance while building
+the <code>helpdesk</code> module described here, on g6portal at Grails 6.2.2 running on Java 11.</p>
+</section>
+
+</div>
+</main>
+</div>
