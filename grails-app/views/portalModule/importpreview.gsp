@@ -28,6 +28,7 @@
                         <br/>Importing files: <strong>${file_on ? 'Yes' : 'No'}</strong>,
                         staff roles: <strong>${staff_on ? 'Yes' : 'No'}</strong>,
                         trees: <strong>${tree_on ? 'Yes' : 'No'}</strong><g:if test="${tree_on && !staff_on}"> (structure only, no role holders)</g:if>
+                        <g:if test="${menu_on}"><br/>This package carries menu entries &mdash; see the checkbox below the diff.</g:if>
                         <g:if test="${settings}">
                             <br/>Settings are listed separately below the diff, where each one that
                             would change can be kept or updated individually.
@@ -42,6 +43,23 @@
                     <g:form useToken="true" action="confirmimport" id="${portalModule.id}" method="POST">
                         <g:if test="${file_on}"><g:hiddenField name="files" value="on"/></g:if>
                         <g:if test="${staff_on}"><g:hiddenField name="staff" value="on"/></g:if>
+                        <%-- Menus are a live checkbox rather than a hidden field: they change
+                             shared portal navigation, so a portal with a curated menu can take
+                             the module without it. Ticked by default, because the common case
+                             is wanting the module to be reachable. --%>
+                        <g:if test="${menu_on}">
+                        <div class="fieldcontain" style="margin-bottom:1em;">
+                            <label for="menus">
+                                <input type="checkbox" name="menus" id="menus" value="on" checked="checked"/>
+                                Add this module's menu entries
+                            </label>
+                            <span class="property-value">
+                                Puts the module in the header megamenu and gives its pages a sidebar.
+                                Entries this module added before are updated or removed to match;
+                                anything you added by hand is left alone.
+                            </span>
+                        </div>
+                        </g:if>
                         <g:if test="${settings}">
                         <h2>Settings</h2>
                         <g:set var="changedcount" value="${settings.count { it.status == 'changed' }}"/>

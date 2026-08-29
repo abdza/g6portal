@@ -933,7 +933,7 @@ class PortalModule {
      *        be a way around that restriction, so only a superuser's import - or a package
      *        placed on the server's filesystem, which is more privileged still - sets it.
      */
-    def importmodule(file_on,staff_on,tree_on = false,settingchoices = null,endpoints_on = false) {
+    def importmodule(file_on,staff_on,tree_on = false,settingchoices = null,endpoints_on = false,menu_on = false) {
         def curfolder = System.getProperty("user.dir")
         def migrationfolder = PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration') + '/' + this.name
         def jsonSlurper = new JsonSlurper()
@@ -961,6 +961,14 @@ class PortalModule {
               // staff were asked for, since those are people rather than module structure
               importtrees(migrationfolder,jsonSlurper,staff_on)
             }
+            // Last: menu entries link to pages and trackers, which should already exist by
+            // the time anything points at them.
+            if(menu_on) {
+              importmenu(migrationfolder,jsonSlurper)
+            }
+            else if(new File(migrationfolder + MENU_FILE).exists()) {
+              println "importmodule: skipping menulist.json - menu entries were not requested"
+            }
         }
     }
 
@@ -968,6 +976,270 @@ class PortalModule {
     // files line-oriented so diffs between imports stay small and readable
     static String formatExportJson(obj) {
         return JsonOutput.prettyPrint(JsonOutput.toJson(obj))
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Menu contributions (menulist.json)
+    //
+    // Everything else a module owns is found by `module = this.name`. Menus cannot be:
+    // TreeTagLib.side_menu hardcodes findByModuleAndName('portal', ...) and main.gsp calls
+    // <g:tree_menu module='portal' name='main_menu'/>, so a module's menu entries have to
+    // live in trees belonging to the `portal` module. Before this, a module wanting a menu
+    // had to smuggle a hand-written treelist.json naming someone else's tree, and exporting
+    // the module never regenerated it.
+    //
+    // So a module declares menu entries in a flat menulist.json and the portal materialises
+    // them into the two trees the taglibs actually read:
+    //
+    //   portal/main_menu       a column node for this module -> a group per declared
+    //                          group -> the items      (tree_menu renders exactly 3 levels)
+    //   portal/<module>_menu   root -> ungrouped items as leaves, plus a collapsible per
+    //                          declared group          (side_menu renders 2 levels)
+    //
+    // Pages and trackers join the sidebar by setting side_menu to the module name; the
+    // taglib appends "_menu" itself.
+    //
+    // Every node created here is stamped `module=<name>` in PortalTreeNode.data, which is
+    // already a "key=value;key=value" blob with a getdata() reader. The stamp is what makes
+    // the entries owned rather than merely present: matching is by stamp and never by name,
+    // so renaming an item updates it instead of duplicating it, and a re-import may delete
+    // entries the declaration has dropped. Anything an admin adds by hand carries no stamp
+    // and is never touched.
+    // ---------------------------------------------------------------------------------
+
+    static final String MENU_FILE = '/menulist.json'
+
+    /**
+     * The `module=` stamp that marks a node as belonging to a module's declaration.
+     *
+     * `data` is a shared "key=value;key=value" blob, so this merges rather than replaces:
+     * only `module` and `icon` belong to the declaration, and every other key already on
+     * the node is carried through. Downstream portals put their own flags in here - the
+     * ikram fork gates menu nodes on an `adminonly` key - and a module import has no
+     * business silently dropping them.
+     */
+    static String menustamp(modulename, icon = null, existing = null) {
+        def owned = ['module', 'icon']
+        def kept = (existing ?: '').tokenize(';').findAll { pair ->
+            def kv = pair.tokenize('=')
+            kv.size() > 1 && !(kv[0].trim().toLowerCase() in owned)
+        }*.trim()
+        def parts = ['module=' + modulename]
+        if(icon) {
+            parts << 'icon=' + icon
+        }
+        return (parts + kept).join(';')
+    }
+
+    static boolean ownsnode(node, modulename) {
+        return node?.getdata('module', null)?.toString() == modulename?.toString()
+    }
+
+    /** The two trees a module's menu lives in. Both belong to `portal` - see the note above. */
+    private static PortalTree menutree(String name) {
+        def tree = PortalTree.findByModuleAndName('portal', name)
+        if(!tree) {
+            tree = new PortalTree(module: 'portal', name: name)
+            if(!tree.save(flush: true)) {
+                println "menu import: could not create tree portal/" + name + ": " + tree.errors.allErrors
+                return null
+            }
+        }
+        return tree
+    }
+
+    /**
+     * Rebuild the module's nodes under one parent to match `wanted`, then recurse.
+     *
+     * Reuses a stamped node where one matches by link (or by name for a container, which has
+     * no link), so ids survive a re-import - TreeNode tracker fields store raw node ids, and
+     * recreating a node would strand them. Stamped nodes left over are deleted; unstamped
+     * siblings are left exactly where they are.
+     */
+    private def syncmenunodes(tree, parent, List wanted, String modulename) {
+        def siblings = (parent ? PortalTreeNode.findAllByParent(parent)
+                               : PortalTreeNode.findAllByTreeAndParentIsNull(tree))
+        def owned = siblings.findAll { ownsnode(it, modulename) }
+        def spare = new ArrayList(owned)
+        // Declaration order should decide menu order, otherwise an item removed in one
+        // version and restored in the next comes back at the bottom, and reordering
+        // menulist.json does nothing at all. lft is only a sort key here - fixnodes
+        // renumbers the whole tree properly at the end - but it may only be rewritten when
+        // this module owns every node at this level. In main_menu's root it does not: the
+        // siblings there are other modules' columns, and renumbering would shuffle them on
+        // every import. (A module owns exactly one column, so there is nothing to order.)
+        def mayreorder = (siblings.size() == owned.size())
+        def position = 0
+
+        wanted.each { want ->
+            def key = want.slug ?: want.name
+            def node = spare.find { (it.slug ?: it.name) == key }
+            if(node) {
+                spare.remove(node)
+            }
+            else {
+                node = new PortalTreeNode(tree: tree, parent: parent)
+            }
+            node.name = want.name
+            node.slug = want.slug
+            node.data = menustamp(modulename, want.icon, node.data)
+            node.mainrole = want.mainrole
+            node.hiderole = want.hiderole
+            def isnew = (node.id == null)
+            if(!node.save(flush: true)) {
+                println "menu import: could not save node '" + want.name + "': " + node.errors.allErrors
+                return
+            }
+            if(isnew && parent) {
+                // beforeInsert reads parent.rgt to place the new sibling, and the insert has
+                // just moved it in the database
+                parent.refresh()
+            }
+            if(mayreorder) {
+                node.lft = position
+                node.save(flush: true)
+            }
+            position++
+            syncmenunodes(tree, node, (want.nodes ?: []), modulename)
+        }
+
+        // Whatever this module used to own here and no longer declares.
+        spare.each { stale ->
+            deletemenunode(stale)
+        }
+    }
+
+    /**
+     * Depth-first delete. PortalTreeNode.beforeDelete closes the nested-set gap one row at a
+     * time, so children have to go before their parent rather than relying on a cascade;
+     * fixnodes renumbers the tree afterwards either way.
+     */
+    private def deletemenunode(node) {
+        PortalTreeNode.findAllByParent(node).each { child ->
+            deletemenunode(child)
+        }
+        node.delete(flush: true)
+    }
+
+    /** menulist.json -> the node shapes each tree needs: [label, ungrouped, groups]. */
+    private static Map menushape(imenu, modulename) {
+        def label = (imenu?.label ?: modulename).toString()
+        def items = (imenu?.items ?: [])
+        def ungrouped = items.findAll { !it.group }
+        // Declaration order decides group order; a LinkedHashMap keeps it.
+        def grouped = [:]
+        items.findAll { it.group }.each { item ->
+            def g = item.group.toString()
+            if(!grouped.containsKey(g)) { grouped[g] = [] }
+            grouped[g] << item
+        }
+        def leaf = { item ->
+            [name: item.name, slug: item.link, icon: item.icon,
+             mainrole: item.mainrole, hiderole: item.hiderole, nodes: []]
+        }
+        return [label: label, ungrouped: ungrouped.collect(leaf),
+                groups: grouped.collect { g, gitems ->
+                    [name: g, slug: null, icon: null, mainrole: null, hiderole: null,
+                     nodes: gitems.collect(leaf)]
+                }]
+    }
+
+    def importmenu(migrationfolder, jsonSlurper) {
+        def menufile = new File(migrationfolder + MENU_FILE)
+        if(!menufile.exists()) {
+            return
+        }
+        def imenu = jsonSlurper.parseText(menufile.text)
+        def shape = menushape(imenu, this.name)
+        println "Importing menu for " + this.name + " (" + (imenu?.items?.size() ?: 0) + " items)"
+
+        // Megamenu: tree_menu emits a column div per child of root, an <h3> per group, and
+        // <li> per item - three levels, no deeper. Ungrouped items get a group named after
+        // the module so they still sit under a heading.
+        def main = menutree('main_menu')
+        if(main) {
+            def root = main.root ?: PortalTreeNode.findAllByTreeAndParentIsNull(main)
+                                                  .sort { it.lft ?: 0 }.find { true }
+            if(!root) {
+                root = new PortalTreeNode(tree: main, parent: null, name: 'Main Menu')
+                root.save(flush: true)
+            }
+            if(main.root?.id != root.id) {
+                main.root = root
+                main.save(flush: true)
+            }
+            def groups = []
+            if(shape.ungrouped) {
+                groups << [name: shape.label, slug: null, icon: null,
+                           mainrole: null, hiderole: null, nodes: shape.ungrouped]
+            }
+            groups.addAll(shape.groups)
+            // One column for this module, so several modules lay out side by side rather
+            // than piling into one another's headings.
+            def column = [name: shape.label, slug: null, icon: imenu?.icon,
+                          mainrole: null, hiderole: null, nodes: groups]
+            syncmenunodes(main, root, (groups ? [column] : []), this.name)
+            PortalTree.fixnodes(main)
+        }
+
+        // Sidebar: side_menu renders root's children, a nav-link per leaf and a collapsible
+        // per node that has children.
+        def side = menutree(this.name + '_menu')
+        if(side) {
+            def root = side.root ?: PortalTreeNode.findAllByTreeAndParentIsNull(side)
+                                                  .sort { it.lft ?: 0 }.find { true }
+            if(!root) {
+                root = new PortalTreeNode(tree: side, parent: null, name: shape.label,
+                                          data: menustamp(this.name, imenu?.icon))
+                root.save(flush: true)
+            }
+            if(side.root?.id != root.id) {
+                side.root = root
+                side.save(flush: true)
+            }
+            syncmenunodes(side, root, shape.ungrouped + shape.groups, this.name)
+            PortalTree.fixnodes(side)
+        }
+    }
+
+    /**
+     * Regenerate menulist.json from the nodes this module owns, so a module exported from
+     * the portal carries its menu back out. The sidebar tree is the source: it holds the
+     * same items as the megamenu column and its shape maps straight onto the flat file.
+     */
+    def exportmenu(migrationfolder) {
+        def menufile = new File(migrationfolder + MENU_FILE)
+        def side = PortalTree.findByModuleAndName('portal', this.name + '_menu')
+        def root = side?.root
+        if(!root) {
+            menufile.delete()
+            return
+        }
+        def items = []
+        def label = root.name
+        def icon = root.getdata('icon', null)
+        PortalTreeNode.findAllByParent(root).sort { a,b -> (a.lft?:0) <=> (b.lft?:0) ?: a.id <=> b.id }.each { node ->
+            if(!ownsnode(node, this.name)) {
+                return
+            }
+            def children = PortalTreeNode.findAllByParent(node).sort { a,b -> (a.lft?:0) <=> (b.lft?:0) ?: a.id <=> b.id }
+            if(children) {
+                children.each { child ->
+                    if(!ownsnode(child, this.name)) { return }
+                    items << [name: child.name, link: child.slug, icon: child.getdata('icon', null),
+                              group: node.name, mainrole: child.mainrole, hiderole: child.hiderole]
+                }
+            }
+            else {
+                items << [name: node.name, link: node.slug, icon: node.getdata('icon', null),
+                          group: null, mainrole: node.mainrole, hiderole: node.hiderole]
+            }
+        }
+        if(!items) {
+            menufile.delete()
+            return
+        }
+        menufile.write(formatExportJson([label: label, icon: icon, items: items]))
     }
 
     def exportfilelinks(migrationfolder) {
@@ -1025,7 +1297,7 @@ class PortalModule {
     }
 
     def exportuserroles(migrationfolder) {
-        def userroles = UserRole.findAllByModule(this.name).sort { a,b -> (a.user.newStaffID?:'') <=> (b.user.newStaffID?:'') ?: (a.role?:'') <=> (b.role?:'') }
+        def userroles = UserRole.findAllByModule(this.name).sort { a,b -> (a.user.userID?:'') <=> (b.user.userID?:'') ?: (a.role?:'') <=> (b.role?:'') }
         if(userroles.size()){
             def userrolefile = new File(migrationfolder + '/userrolelist.json')
             def userrolearray = []
@@ -1309,7 +1581,7 @@ class PortalModule {
         }
     }
 
-    def exportmodule(file_on,staff_on,tree_on = false,targetfolder = null) {
+    def exportmodule(file_on,staff_on,tree_on = false,targetfolder = null,menu_on = false) {
         def curfolder = System.getProperty("user.dir")
         def migrationfolder = targetfolder ?: (PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration') + '/' + this.name)
         if(!(new File(migrationfolder).exists())){
@@ -1330,6 +1602,14 @@ class PortalModule {
               // an unticked export must not smuggle in a treelist.json left behind by an
               // earlier ticked one
               new File(migrationfolder + '/treelist.json').delete()
+            }
+            if(menu_on) {
+              exportmenu(migrationfolder)
+            }
+            else {
+              // same reasoning as trees above: an unticked export must not ship a
+              // menulist.json left behind by an earlier ticked one
+              new File(migrationfolder + MENU_FILE).delete()
             }
             exportsettings(migrationfolder)
             exportendpoints(migrationfolder)

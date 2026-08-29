@@ -720,9 +720,9 @@ class PortalService {
     }
 
     @Transactional
-    def export_module(Long id,file_on,user_on,tree_on = false,targetfolder = null) {
+    def export_module(Long id,file_on,user_on,tree_on = false,targetfolder = null,menu_on = false) {
         def module = PortalModule.get(id)
-        module.exportmodule(file_on,user_on,tree_on,targetfolder)
+        module.exportmodule(file_on,user_on,tree_on,targetfolder,menu_on)
     }
 
     def static File compress(final File srcDir, final File zipFile) {
@@ -981,9 +981,9 @@ class PortalService {
     }
 
     @Transactional
-    def import_module(Long id,file_on,user_on,tree_on = false,settingchoices = null,endpoints_on = false) {
+    def import_module(Long id,file_on,user_on,tree_on = false,settingchoices = null,endpoints_on = false,menu_on = false) {
         def module = PortalModule.get(id)
-        module.importmodule(file_on,user_on,tree_on,settingchoices,endpoints_on)
+        module.importmodule(file_on,user_on,tree_on,settingchoices,endpoints_on,menu_on)
     }
 
     def update_module_list(params = null, curuser = null) {

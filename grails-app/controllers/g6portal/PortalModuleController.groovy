@@ -598,11 +598,19 @@ class PortalModuleController {
       return new File(modulemigrationfolder(module) + '/endpointlist.json').exists()
   }
 
-  private String generateimportdiff(module, file_on, staff_on, tree_on) {
+  private boolean migrationHasMenu(module) {
+      return new File(modulemigrationfolder(module) + '/menulist.json').exists()
+  }
+
+  // menu_on here is package presence, NOT the operator's checkbox: the temp export has to
+  // contain a menulist.json whenever the incoming package does, or the diff shows the whole
+  // menu file as a fresh addition every time even when nothing about it changed. The
+  // checkbox decides whether the import applies the menu, not what the comparison looks at.
+  private String generateimportdiff(module, file_on, staff_on, tree_on, menu_on) {
       def migrationfolder = modulemigrationfolder(module)
       def tmpdir = File.createTempDir('g6export_', '_' + module.name)
       try {
-          portalService.export_module(module.id, file_on, staff_on, tree_on, tmpdir.path)
+          portalService.export_module(module.id, file_on, staff_on, tree_on, tmpdir.path, menu_on)
           return PortalService.diff_module_folders(tmpdir, new File(migrationfolder))
       } finally {
           tmpdir.deleteDir()
@@ -629,9 +637,10 @@ class PortalModuleController {
       def file_on = (params.files ? true : false) && migrationHasFiles(module)
       def staff_on = (params.staff ? true : false) && migrationHasStaff(module)
       def tree_on = migrationHasTrees(module)
+      def menu_on = migrationHasMenu(module)
       def difftext = ''
       try {
-          difftext = generateimportdiff(module, file_on, staff_on, tree_on)
+          difftext = generateimportdiff(module, file_on, staff_on, tree_on, menu_on)
       } catch(Exception e) {
           println "Error generating import diff: " + e
           flash.message = "Error generating import diff: " + e.message
@@ -649,7 +658,8 @@ class PortalModuleController {
           flash.message = "Could not read settinglist.json: ${e.message}"
       }
       respond module, view:'importpreview', model:[curuser:curuser, diff:difftext,
-              file_on:file_on, staff_on:staff_on, tree_on:tree_on, settings:settings]
+              file_on:file_on, staff_on:staff_on, tree_on:tree_on, menu_on:menu_on,
+              settings:settings]
   }
 
   def confirmimport(Long id) {
@@ -684,6 +694,11 @@ class PortalModuleController {
       def file_on = (params.files ? true : false) && migrationHasFiles(module)
       def staff_on = (params.staff ? true : false) && migrationHasStaff(module)
       def tree_on = migrationHasTrees(module)
+      // The preview offers menus as a checkbox, ticked by default, so a portal with a
+      // curated menu can take the module without it. Unlike files/staff the diff always
+      // includes them - see generateimportdiff.
+      def menu_present = migrationHasMenu(module)
+      def menu_on = (params.menus ? true : false) && menu_present
       // Per-setting decisions from the preview form. Each row posts its key in a hidden
       // settingkey_<n> alongside its radio settingchoice_<n>, so the pairing travels with the
       // submission and does not depend on the settings file still being in the same order.
@@ -699,7 +714,7 @@ class PortalModuleController {
       try {
           // regenerate the diff at import time so the log records exactly
           // what changed even if the module was modified after the preview
-          def difftext = generateimportdiff(module, file_on, staff_on, tree_on)
+          def difftext = generateimportdiff(module, file_on, staff_on, tree_on, menu_present)
           // Record the settings deliberately not taken, so the log explains why the imported
           // module does not match its migration files.
           if(kept) {
@@ -740,6 +755,9 @@ class PortalModuleController {
           }
           if(endpoints_skipped) {
               notes << "endpoints not imported - a system administrator has to do that"
+          }
+          if(menu_skipped) {
+              notes << "menu entries not added"
           }
           flash.message = notes ? "Module imported (" + notes.join('; ') + ")" : "Module imported"
       } catch(Exception e) {
@@ -810,6 +828,7 @@ class PortalModuleController {
         def file_on = false
         def user_on = false
         def tree_on = false
+        def menu_on = false
         if(params.files) {
             file_on = true
         }
@@ -819,6 +838,9 @@ class PortalModuleController {
         if(params.trees) {
             tree_on = true
         }
+        if(params.menus) {
+            menu_on = true
+        }
         if(params.op=="Delete") {
           portalModuleService.delete(id)
             flash.message = message(code: 'default.deleted.message', args: [message(code: 'portalModule.label', default: 'PortalModule'), id])
@@ -827,7 +849,7 @@ class PortalModuleController {
             flash.message = "Module exported"
             def module = portalModuleService.get(id)
             if(module) {
-                portalService.export_module(id,file_on,user_on,tree_on)
+                portalService.export_module(id,file_on,user_on,tree_on,null,menu_on)
                 def curfolder = System.getProperty("user.dir")
                 def migrationfolder = PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration') + '/' + module.name
                 migrationfolder = migrationfolder.replaceAll('//','/')

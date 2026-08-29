@@ -27,6 +27,7 @@
                             <g:if test="${curuser?.isAdmin || curuser?.modulerole(this.portalModule.name)?.contains('Developer')}">
                                 <label for='files'>Files:</label><input type="checkbox" name="files" id="files" />
                                 <label for='trees'>Trees:</label><input type="checkbox" name="trees" id="trees" title="Include this module's trees in the export. On import trees are taken whenever the package has them." />
+                                <label for='menus'>Menus:</label><input type="checkbox" name="menus" id="menus" title="Include this module's menu entries in the export, so importing it elsewhere can wire up the megamenu and sidebar." />
                                 <label for='user'>user:</label><input type="checkbox" name="user" id="user" />
                                 <g:link class="edit" action="edit" resource="${this.portalModule}"><g:message code="default.button.edit.label" default="Edit" /></g:link>
                                 <input class="delete" type="submit" name="op" value="Export" onclick="return confirm('Export module ${this.portalModule.name}?');" />
@@ -336,6 +337,7 @@ ${role.user.name}
                             <g:if test="${curuser?.isAdmin || curuser?.modulerole(this.portalModule.name)?.contains('Developer')}">
                                 <label for='files'>Files:</label><input type="checkbox" name="files" id="files" />
                                 <label for='trees'>Trees:</label><input type="checkbox" name="trees" id="trees" title="Include this module's trees in the export. On import trees are taken whenever the package has them." />
+                                <label for='menus'>Menus:</label><input type="checkbox" name="menus" id="menus" title="Include this module's menu entries in the export, so importing it elsewhere can wire up the megamenu and sidebar." />
                                 <label for='user'>User:</label><input type="checkbox" name="user" id="user" />
                                 <g:link class="edit" action="edit" resource="${this.portalModule}"><g:message code="default.button.edit.label" default="Edit" /></g:link>
                                 <input class="delete" type="submit" name="op" value="Export" onclick="return confirm('Export module ${this.portalModule.name}?');" />

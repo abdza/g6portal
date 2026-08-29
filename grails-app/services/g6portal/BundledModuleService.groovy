@@ -109,6 +109,10 @@ class BundledModuleService {
         // box, so their presence is what says whether the package carries them.
         boolean fileOn = new File(migrationFolder, 'filelinklist.json').exists()
         boolean treeOn = new File(migrationFolder, 'treelist.json').exists()
+        // Menus wire themselves up here. The interactive import offers a checkbox because
+        // there is somebody to ask; at boot there is not, and a preconfigured instance that
+        // ships a module but leaves it unreachable from the menu is not preconfigured.
+        boolean menuOn = new File(migrationFolder, 'menulist.json').exists()
 
         // staff is always off. userrolelist.json names people by id on the machine the
         // package was exported from; on a fresh install those accounts do not exist, and
@@ -127,10 +131,10 @@ class BundledModuleService {
         // higher bar than being a superuser: they could edit application.yml or swap the jar.
         // There is no privilege to escalate here, and the first endpoint user (scm over
         // hgweb / git-http-backend) is exactly the kind of module shipped preconfigured.
-        module.importmodule(fileOn, false, treeOn, null, true)
+        module.importmodule(fileOn, false, treeOn, null, true, menuOn)
 
-        println "Bundled modules: imported ${moduleName} (files=${fileOn}, trees=${treeOn})"
-        recordImport(moduleName, pkg, fileOn, treeOn)
+        println "Bundled modules: imported ${moduleName} (files=${fileOn}, trees=${treeOn}, menu=${menuOn})"
+        recordImport(moduleName, pkg, fileOn, treeOn, menuOn)
     }
 
     private String migrationRoot() {
@@ -139,13 +143,13 @@ class BundledModuleService {
     }
 
     /** Same audit trail the interactive import writes, attributed to the package. */
-    private void recordImport(String moduleName, File pkg, boolean fileOn, boolean treeOn) {
+    private void recordImport(String moduleName, File pkg, boolean fileOn, boolean treeOn, boolean menuOn) {
         PortalModuleImportLog.withTransaction {
             new PortalModuleImportLog(
                 module: moduleName,
                 staffname: 'Bundled package',
                 remarks: "Imported automatically at startup from ${pkg.name} " +
-                         "(files=${fileOn}, trees=${treeOn}, endpoints included, " +
+                         "(files=${fileOn}, trees=${treeOn}, menu=${menuOn}, endpoints included, " +
                          "staff roles not imported)."
             ).save(flush: true, failOnError: true)
         }
