@@ -86,7 +86,7 @@ class PortalEndpointController {
             respond portalEndpoint.errors, view:'create', model:[curuser: session.curuser]
             return
         }
-        println "portalEndpoint: ${session.curuser?.staffID} created ${portalEndpoint}"
+        println "portalEndpoint: ${session.curuser?.userID} created ${portalEndpoint}"
         flash.message = "Endpoint ${portalEndpoint} created"
         redirect action:"show", id:portalEndpoint.id
     }
@@ -108,7 +108,7 @@ class PortalEndpointController {
             respond portalEndpoint.errors, view:'edit', model:[curuser: session.curuser]
             return
         }
-        println "portalEndpoint: ${session.curuser?.staffID} updated ${portalEndpoint}"
+        println "portalEndpoint: ${session.curuser?.userID} updated ${portalEndpoint}"
         flash.message = "Endpoint ${portalEndpoint} updated"
         redirect action:"show", id:portalEndpoint.id
     }
@@ -121,7 +121,7 @@ class PortalEndpointController {
         PortalEndpoint.withTransaction { tstatus ->
             endpoint.delete(flush:true)
         }
-        println "portalEndpoint: ${session.curuser?.staffID} deleted ${label}"
+        println "portalEndpoint: ${session.curuser?.userID} deleted ${label}"
         flash.message = "Endpoint ${label} deleted"
         redirect action:"index", method:"GET"
     }

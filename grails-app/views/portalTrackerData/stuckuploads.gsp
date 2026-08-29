@@ -50,7 +50,7 @@
                                         <td>${upd.module}</td>
                                         <td>${upd.tracker?.slug}</td>
                                         <td>${upd.path ? upd.path.tokenize('/')[-1] : '-'}</td>
-                                        <td>${upd.uploader?.staffID ?: '-'}</td>
+                                        <td>${upd.uploader?.userID ?: '-'}</td>
                                         <td>
                                             <g:if test="${upd.uploadStatus == -1}">Interrupted mid-processing</g:if>
                                             <g:else>Never started</g:else>

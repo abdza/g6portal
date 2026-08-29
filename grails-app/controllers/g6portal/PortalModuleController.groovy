@@ -33,13 +33,13 @@ class PortalModuleController {
       def sheet = wb.createSheet("User Roles")
 
       def headerRow = sheet.createRow(0)
-      headerRow.createCell(0).setCellValue("Staff ID")
+      headerRow.createCell(0).setCellValue("User ID")
       headerRow.createCell(1).setCellValue("Name")
       headerRow.createCell(2).setCellValue("Role")
 
       roles.eachWithIndex { ur, i ->
           def row = sheet.createRow(i + 1)
-          row.createCell(0).setCellValue(ur.user.staffID)
+          row.createCell(0).setCellValue(ur.user.userID)
           row.createCell(1).setCellValue(ur.user.name)
           row.createCell(2).setCellValue(ur.role)
       }
@@ -77,11 +77,11 @@ class PortalModuleController {
               sheet.eachWithIndex { row, i ->
                   if (i == 0) return // Skip header
 
-                  def staffID = dataFormatter.formatCellValue(row.getCell(0))?.trim()
+                  def userID = dataFormatter.formatCellValue(row.getCell(0))?.trim()
                   def roleName = dataFormatter.formatCellValue(row.getCell(2))?.trim()
 
-                  if (staffID && roleName) {
-                      def user = User.findByStaffID(staffID)
+                  if (userID && roleName) {
+                      def user = User.findByUserID(userID)
                       if (user) {
                           def userRole = UserRole.findByUserAndModuleAndRole(user, module.name, roleName)
                           if (!userRole) {
@@ -90,14 +90,14 @@ class PortalModuleController {
                                   successCount++
                               } else {
                                   errorCount++
-                                  errors << "Row ${i+1}: Failed to save role ${roleName} for ${staffID}"
+                                  errors << "Row ${i+1}: Failed to save role ${roleName} for ${userID}"
                               }
                           } else {
                               successCount++
                           }
                       } else {
                           errorCount++
-                          errors << "Row ${i+1}: User with Staff ID ${staffID} not found"
+                          errors << "Row ${i+1}: User with User ID ${userID} not found"
                       }
                   }
               }
@@ -717,9 +717,21 @@ class PortalModuleController {
               difftext = "Endpoints in this package were NOT imported: they define programs the\n" +
                          "server runs, so only a system administrator can bring them in.\n\n" + (difftext ?: '')
           }
-          portalService.import_module(id, file_on, staff_on, tree_on, settingchoices, endpoints_on)
+          def menu_skipped = menu_present && !menu_on
+          if(menu_skipped) {
+              // Say so rather than quietly dropping it, the same way endpoints do above -
+              // otherwise the module imports and its menu entries are simply absent.
+              difftext = "Menu entries in this package were NOT imported, because the menu box\n" +
+                         "was unticked. The module is reachable by URL; re-import with it ticked\n" +
+                         "to add them.\n\n" + (difftext ?: '')
+          }
+          portalService.import_module(id, file_on, staff_on, tree_on, settingchoices, endpoints_on, menu_on)
           PortalModuleImportLog.withTransaction {
-              new PortalModuleImportLog(module:module.name, staffid:curuser?.staffID,
+              // userID, not staffID: User has no staffID in g6portal (it is a g5portal name),
+              // and ?. does not guard a missing property - it threw MissingPropertyException
+              // after a successful import, so every import reported "Error importing module"
+              // and wrote no log at all.
+              new PortalModuleImportLog(module:module.name, staffid:curuser?.userID,
                   staffname:curuser?.name, remarks:params.remarks, diff:difftext).save(flush:true)
           }
           def notes = []
