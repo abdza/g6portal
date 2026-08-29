@@ -21,7 +21,11 @@ class PortalTrackerController {
 
     def sessionFactory
 
-    static allowedMethods = [save: "POST", update: "PUT", delete: "DELETE"]
+    static allowedMethods = [save: "POST", update: "PUT", delete: "DELETE",
+                             builder_add_fields: "POST", builder_save_field_order: "POST",
+                             builder_save_status: "POST", builder_delete_status: "POST",
+                             builder_save_transition: "POST", builder_delete_transition: "POST",
+                             builder_add_roles: "POST", builder_save_tracker_lists: "POST"]
 
     // Background Excel export jobs: token → [done, file, error, filename]
     static java.util.concurrent.ConcurrentHashMap excelJobs = new java.util.concurrent.ConcurrentHashMap()
@@ -1983,16 +1987,23 @@ setTimeout(check,2000);
         // Build edges (transitions)
         def edges = []
         tracker.transitions.each { transition ->
+            // A same_status transition leaves the record where it is, so it carries no
+            // next_status. Its target is whichever status it was invoked from, i.e. a
+            // self-loop - without this it lands with to:null and the view drops it.
+            def sameStatus = transition.same_status ?: false
+            def nextId = transition.next_status?.id?.toString()
+
             // Handle transitions with multiple previous statuses
             if (transition.prev_status && transition.prev_status.size() > 0) {
                 transition.prev_status.each { prevStatus ->
                     edges << [
                         id: transition.id.toString() + '_' + prevStatus.id.toString(),
                         from: prevStatus.id.toString(),
-                        to: transition.next_status?.id?.toString(),
+                        to: sameStatus ? prevStatus.id.toString() : nextId,
                         label: transition.name,
                         roles: transition.roles*.name.join(', '),
-                        displayName: transition.display_name ?: transition.name
+                        displayName: transition.display_name ?: transition.name,
+                        sameStatus: sameStatus
                     ]
                 }
             } else {
@@ -2000,21 +2011,527 @@ setTimeout(check,2000);
                 edges << [
                     id: transition.id.toString(),
                     from: null,
-                    to: transition.next_status?.id?.toString(),
+                    to: sameStatus ? tracker.initial_status?.id?.toString() : nextId,
                     label: transition.name,
                     roles: transition.roles*.name.join(', '),
                     displayName: transition.display_name ?: transition.name,
+                    sameStatus: sameStatus,
                     isNew: true
                 ]
             }
         }
+
+        def canEdit = canBuild(tracker)
 
         [
             tracker: tracker,
             nodes: nodes,
             edges: edges,
             nodesJson: JsonOutput.toJson(nodes),
-            edgesJson: JsonOutput.toJson(edges)
+            edgesJson: JsonOutput.toJson(edges),
+            canEdit: canEdit,
+            builderJson: JsonOutput.toJson(builderModel(tracker)),
+            // Serialised here, not in the GSP: encodeAsJSON()'s output gets run through
+            // the page's HTML codec on the way out and comes back as &quot;-riddled
+            // markup that breaks the script block.
+            fieldTypesJson: JsonOutput.toJson(new PortalTrackerField().constrainedProperties.field_type.inList),
+            roleTypesJson: JsonOutput.toJson(new PortalTrackerRole().constrainedProperties.role_type.inList)
         ]
+    }
+
+    // ---------------------------------------------------------------------------
+    // Workflow builder
+    //
+    // Everything below writes tracker *structure* (columns, statuses, transitions),
+    // so each action re-checks authorization itself rather than trusting
+    // SecurityInterceptor. The interceptor's portalTracker branch admits any user with
+    // a Developer role on ANY module once no `module` param is present - which is these
+    // actions exactly, since they are addressed by tracker id. That is fine for reading
+    // a graph and far too wide for editing one, so canBuild() narrows it to the
+    // tracker's OWN module, the way the portalTree branch does for trees.
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Developer (or system administrator) on this tracker's own module.
+     * Uses the real user when an admin is impersonating, matching SecurityInterceptor.
+     */
+    private boolean canBuild(tracker) {
+        if(!tracker) return false
+        def curuser = session?.curuser ?: (session?.userid ? User.get(session.userid) : null)
+        def realuser = session?.realuser ?: (session?.realuserid ? User.get(session.realuserid) : null)
+        def actor = realuser ?: curuser
+        if(!actor) return false
+        if(actor.isAdmin) return true
+        return tracker.module in (actor.developerlist() ?: [])
+    }
+
+    /** Resolves the tracker for a builder request, or renders the failure and returns null. */
+    private def builderTracker() {
+        // tracker_id arrives in the JSON body; Grails does not fold a raw JSON body into
+        // params, so read it from the payload and only fall back to a query param.
+        def tid = builderPayload().tracker_id ?: params.tracker_id
+        def tracker = null
+        try { tracker = tid ? portalTrackerService.get(tid.toString().toLong()) : null }
+        catch(NumberFormatException nfe) { tracker = null }
+        if(!tracker) {
+            render(status: NOT_FOUND, contentType: 'application/json',
+                   text: JsonOutput.toJson([error: 'Tracker not found']))
+            return null
+        }
+        if(!canBuild(tracker)) {
+            render(status: FORBIDDEN, contentType: 'application/json',
+                   text: JsonOutput.toJson([error: 'You need a Developer role on module ' + tracker.module + ' to edit this tracker']))
+            return null
+        }
+        return tracker
+    }
+
+    // Tracker-level field lists: same comma-separated-names-in-render-order shape as a
+    // status's displayfields, but scoped to the whole tracker.
+    private static final List TRACKER_FIELD_LISTS =
+        ['listfields', 'hiddenlistfields', 'excelfields', 'searchfields', 'filterfields']
+
+    /** The full editable picture of a tracker, as consumed by the builder UI. */
+    private Map builderModel(tracker) {
+        // Every collection is coalesced to a list before use. An empty GORM hasMany is
+        // null here, and Groovy's spread operator propagates that - `tr.roles*.id` on a
+        // transition with no roles is null, not [], which the browser then tries to map
+        // over. Same for a tracker that has no statuses or fields yet.
+        return [
+            tracker: [id: tracker.id, name: tracker.name, module: tracker.module, slug: tracker.slug,
+                      initial_status_id: tracker.initial_status?.id?.toString()],
+            lists: TRACKER_FIELD_LISTS.collectEntries { [(it): csvList(tracker[it])] },
+            fields: tracker.orderedFields().collect {
+                [id: it.id.toString(), name: it.name, label: it.label, field_type: it.field_type]
+            },
+            roles: (tracker.roles ?: []).sort { it.name }.collect {
+                [id: it.id.toString(), name: it.name, role_type: it.role_type]
+            },
+            statuses: (tracker.statuses ?: []).sort { it.name }.collect { st ->
+                [id: st.id.toString(), name: st.name,
+                 updateable: st.updateable ?: false, attachable: st.attachable ?: false,
+                 displayfields: csvList(st.displayfields), editfields: csvList(st.editfields),
+                 editroles: csvList(st.editroles), updateallowedroles: csvList(st.updateallowedroles)]
+            },
+            transitions: (tracker.transitions ?: []).sort { it.name }.collect { tr ->
+                [id: tr.id.toString(), name: tr.name, display_name: tr.display_name,
+                 same_status: tr.same_status ?: false,
+                 next_status_id: tr.next_status?.id?.toString(),
+                 prev_status_ids: (tr.prev_status ?: [])*.id*.toString(),
+                 role_ids: (tr.roles ?: [])*.id*.toString(),
+                 displayfields: csvList(tr.displayfields), editfields: csvList(tr.editfields)]
+            }
+        ]
+    }
+
+    private List csvList(String value) {
+        return value ? value.tokenize(',')*.trim().findAll { it } : []
+    }
+
+    /**
+     * Writes displayfields/editfields for a status or transition.
+     *
+     * Both are stored in the tracker's canonical field order rather than in whatever
+     * order the request happened to list them: the builder presents one ordered table,
+     * and TrackerTagLib renders strictly in CSV order, so letting the two lists drift
+     * apart here would silently reorder live forms.
+     */
+    private void applyFieldSelection(target, tracker, viewNames, editNames) {
+        def canonical = tracker.orderedFields()*.name
+        def inOrder = { names ->
+            def wanted = (names ?: []).findAll { it } as Set
+            canonical.findAll { it in wanted }.join(',')
+        }
+        target.displayfields = inOrder(viewNames)
+        target.editfields = inOrder(editNames)
+    }
+
+    /** Reads a JSON request body into a Map. */
+    private Map builderPayload() {
+        try {
+            return (request.JSON ?: [:]) as Map
+        }
+        catch(Exception e) {
+            return [:]
+        }
+    }
+
+    private void builderOk(tracker, extra = [:]) {
+        render(contentType: 'application/json',
+               text: JsonOutput.toJson([ok: true, model: builderModel(tracker)] + extra))
+    }
+
+    private void builderFail(String message) {
+        render(status: UNPROCESSABLE_ENTITY, contentType: 'application/json',
+               text: JsonOutput.toJson([error: message]))
+    }
+
+    /** Adds fields in one shot (the Multi Fields flow), then creates their DB columns. */
+    def builder_add_fields() {
+        def tracker = builderTracker()
+        if(!tracker) return
+        def payload = builderPayload()
+        def added = []
+        def skipped = []
+        try {
+            PortalTrackerField.withTransaction { trn ->
+                def nextOrder = (tracker.orderedFields()*.field_order.findAll { it != null }.max() ?: 0) + 1
+                (payload.fields ?: []).each { f ->
+                    def name = f.name?.toString()?.trim()
+                    if(!name) return
+                    // No anchors: String.matches() already requires the whole string to
+                    // match, and in a slashy string \$ is a literal '$' rather than the
+                    // end anchor - which rejected every legal name.
+                    if(!name.matches(/[a-zA-Z_][a-zA-Z0-9_]*/)) {
+                        skipped << "${name} (not a valid column name)"
+                        return
+                    }
+                    if(PortalTrackerField.findByTrackerAndName(tracker, name)) {
+                        skipped << "${name} (already exists)"
+                        return
+                    }
+                    def nf = new PortalTrackerField(tracker: tracker, name: name,
+                                                    label: f.label?.toString()?.trim() ?: name,
+                                                    field_type: f.field_type?.toString()?.trim() ?: 'Text',
+                                                    field_order: nextOrder++)
+                    if(!nf.validate()) {
+                        skipped << "${name} (${nf.errors.allErrors.collect { it.field }.join(', ')})"
+                        return
+                    }
+                    nf.save(flush: true)
+                    added << name
+                }
+            }
+        }
+        catch(Exception e) {
+            PortalErrorLog.capture(e, "workflow builder: adding fields to ${tracker.module}/${tracker.slug}",
+                                   [module: tracker.module, slug: tracker.slug, controller: 'portalTracker', action: 'builder_add_fields'])
+            builderFail('Could not add fields: ' + e.message)
+            return
+        }
+
+        // A field with no column is a field that breaks the form the moment it renders,
+        // so the column is created here rather than left to a separate Update DB click.
+        // The refresh is load-bearing: updatedb() iterates tracker.fields, and that
+        // collection was initialised before these rows existed - without it the fields
+        // save but their columns silently never appear.
+        def dbnote = null
+        if(added) {
+            tracker.refresh()
+            try { portalService.updateDb(tracker) }
+            catch(Exception e) {
+                PortalErrorLog.capture(e, "workflow builder: updateDb after adding ${added.join(',')} to ${tracker.module}/${tracker.slug}",
+                                       [module: tracker.module, slug: tracker.slug, controller: 'portalTracker', action: 'builder_add_fields'])
+                dbnote = 'Fields were saved but the database columns could not be created: ' + e.message + ' - use Update DB on the tracker page.'
+            }
+        }
+        tracker.refresh()
+        builderOk(tracker, [added: added, skipped: skipped, dbnote: dbnote])
+    }
+
+    /** Adds roles in one shot, mirroring the Add Fields flow. */
+    def builder_add_roles() {
+        def tracker = builderTracker()
+        if(!tracker) return
+        def payload = builderPayload()
+        def validTypes = new PortalTrackerRole().constrainedProperties.role_type.inList
+        def added = []
+        def skipped = []
+        try {
+            PortalTrackerRole.withTransaction { trn ->
+                (payload.roles ?: []).each { r ->
+                    def name = r.name?.toString()?.trim()
+                    if(!name) return
+                    // A status stores its roles as a comma-separated list of names
+                    // (PortalTrackerStatus.editroles), so a comma in a name would split
+                    // into two roles that match nothing.
+                    if(name.contains(',')) {
+                        skipped << "${name} (a role name cannot contain a comma)"
+                        return
+                    }
+                    if(PortalTrackerRole.findByTrackerAndName(tracker, name)) {
+                        skipped << "${name} (already exists)"
+                        return
+                    }
+                    def type = r.role_type?.toString()?.trim() ?: 'User Role'
+                    if(!(type in validTypes)) {
+                        skipped << "${name} (unknown role type '${type}')"
+                        return
+                    }
+                    def nr = new PortalTrackerRole(tracker: tracker, name: name, role_type: type,
+                                                   role_rule: r.role_rule?.toString()?.trim() ?: null)
+                    if(!nr.validate()) {
+                        skipped << "${name} (${nr.errors.allErrors.collect { it.field }.join(', ')})"
+                        return
+                    }
+                    nr.save(flush: true)
+                    added << name
+                }
+            }
+        }
+        catch(Exception e) {
+            PortalErrorLog.capture(e, "workflow builder: adding roles to ${tracker.module}/${tracker.slug}",
+                                   [module: tracker.module, slug: tracker.slug, controller: 'portalTracker', action: 'builder_add_roles'])
+            builderFail('Could not add roles: ' + e.message)
+            return
+        }
+        tracker.refresh()
+        builderOk(tracker, [added: added, skipped: skipped])
+    }
+
+    /** Persists the canonical field order (the row order of the builder's field table). */
+    def builder_save_field_order() {
+        def tracker = builderTracker()
+        if(!tracker) return
+        def payload = builderPayload()
+        try {
+            PortalTrackerField.withTransaction { trn ->
+                (payload.field_names ?: []).eachWithIndex { fname, i ->
+                    def field = PortalTrackerField.findByTrackerAndName(tracker, fname?.toString()?.trim())
+                    if(field) {
+                        field.field_order = i + 1
+                        field.save(flush: true)
+                    }
+                }
+                tracker.refresh()
+
+                // The order is tracker-wide, so every stored displayfields/editfields is
+                // rewritten into it. Without this the promise of a single order holds only
+                // for whatever was saved after the change, and older statuses keep
+                // rendering in the previous order with nothing on screen to say so.
+                // Membership is untouched - this only reorders.
+                (tracker.statuses ?: []).each { st ->
+                    applyFieldSelection(st, tracker, csvList(st.displayfields), csvList(st.editfields))
+                    st.save(flush: true)
+                }
+                (tracker.transitions ?: []).each { tr ->
+                    applyFieldSelection(tr, tracker, csvList(tr.displayfields), csvList(tr.editfields))
+                    tr.save(flush: true)
+                }
+                // listfields order is the list page's column order, so these follow the
+                // canonical order for exactly the same reason the per-status lists do.
+                def canonical = tracker.orderedFields()*.name
+                TRACKER_FIELD_LISTS.each { prop ->
+                    def wanted = csvList(tracker[prop]) as Set
+                    tracker[prop] = canonical.findAll { it in wanted }.join(',')
+                }
+                tracker.save(flush: true)
+            }
+        }
+        catch(Exception e) {
+            PortalErrorLog.capture(e, "workflow builder: saving field order for ${tracker.module}/${tracker.slug}",
+                                   [module: tracker.module, slug: tracker.slug, controller: 'portalTracker', action: 'builder_save_field_order'])
+            builderFail('Could not save the field order: ' + e.message)
+            return
+        }
+        tracker.refresh()
+        builderOk(tracker)
+    }
+
+    /**
+     * Writes the tracker-level field lists (list / hidden / excel / search / filter).
+     * Tracker-wide rather than per-selection, so the builder saves it alongside whatever
+     * status or transition happens to be open.
+     */
+    def builder_save_tracker_lists() {
+        def tracker = builderTracker()
+        if(!tracker) return
+        def payload = builderPayload()
+        def lists = payload.lists ?: [:]
+        try {
+            PortalTracker.withTransaction { trn ->
+                def canonical = tracker.orderedFields()*.name
+                TRACKER_FIELD_LISTS.each { prop ->
+                    if(!lists.containsKey(prop)) return
+                    def wanted = (lists[prop] ?: []).findAll { it } as Set
+                    tracker[prop] = canonical.findAll { it in wanted }.join(',')
+                }
+                tracker.save(flush: true)
+            }
+        }
+        catch(Exception e) {
+            PortalErrorLog.capture(e, "workflow builder: saving tracker field lists for ${tracker.module}/${tracker.slug}",
+                                   [module: tracker.module, slug: tracker.slug, controller: 'portalTracker', action: 'builder_save_tracker_lists'])
+            builderFail('Could not save the tracker field lists: ' + e.message)
+            return
+        }
+        tracker.refresh()
+        builderOk(tracker)
+    }
+
+    /** Creates or updates one status. */
+    def builder_save_status() {
+        def tracker = builderTracker()
+        if(!tracker) return
+        def payload = builderPayload()
+        def name = payload.name?.toString()?.trim()
+        if(!name) { builderFail('A status needs a name'); return }
+
+        def status = payload.id ? PortalTrackerStatus.get(payload.id.toString().toLong()) : null
+        if(status && status.tracker.id != tracker.id) { builderFail('That status belongs to another tracker'); return }
+
+        def clash = PortalTrackerStatus.findByTrackerAndName(tracker, name)
+        if(clash && (!status || clash.id != status.id)) { builderFail("This tracker already has a status called '${name}'"); return }
+
+        try {
+            PortalTrackerStatus.withTransaction { trn ->
+                if(!status) {
+                    status = new PortalTrackerStatus(tracker: tracker)
+                }
+                status.name = name
+                if(payload.containsKey('updateable')) status.updateable = payload.updateable as Boolean
+                if(payload.containsKey('attachable')) status.attachable = payload.attachable as Boolean
+                if(payload.containsKey('view_fields') || payload.containsKey('edit_fields')) {
+                    applyFieldSelection(status, tracker, payload.view_fields, payload.edit_fields)
+                }
+                if(payload.containsKey('editroles')) {
+                    status.editroles = (payload.editroles ?: []).join(',')
+                }
+                if(payload.containsKey('updateallowedroles')) {
+                    status.updateallowedroles = (payload.updateallowedroles ?: []).join(',')
+                }
+                if(!status.validate()) {
+                    throw new ValidationException('status', status.errors)
+                }
+                status.save(flush: true)
+            }
+        }
+        catch(ValidationException ve) {
+            builderFail('Could not save the status: ' + ve.errors.allErrors.collect { it.field }.join(', '))
+            return
+        }
+        catch(Exception e) {
+            PortalErrorLog.capture(e, "workflow builder: saving status '${name}' on ${tracker.module}/${tracker.slug}",
+                                   [module: tracker.module, slug: tracker.slug, controller: 'portalTracker', action: 'builder_save_status'])
+            builderFail('Could not save the status: ' + e.message)
+            return
+        }
+        tracker.refresh()
+        builderOk(tracker, [saved_id: status.id.toString()])
+    }
+
+    def builder_delete_status() {
+        def tracker = builderTracker()
+        if(!tracker) return
+        def payload = builderPayload()
+        def status = payload.id ? PortalTrackerStatus.get(payload.id.toString().toLong()) : null
+        if(!status || status.tracker.id != tracker.id) { builderFail('Status not found on this tracker'); return }
+
+        // Deleting a status out from under a transition leaves the workflow unreachable in
+        // ways that are hard to see afterwards, so the references are reported instead.
+        def usedBy = []
+        if(tracker.initial_status?.id == status.id) usedBy << 'it is this tracker\'s initial status'
+        def asNext = tracker.transitions.findAll { it.next_status?.id == status.id }
+        if(asNext) usedBy << 'it is the destination of: ' + asNext*.name.join(', ')
+        def asPrev = tracker.transitions.findAll { t -> t.prev_status.any { it.id == status.id } }
+        if(asPrev) usedBy << 'transitions start from it: ' + asPrev*.name.join(', ')
+        if(usedBy) { builderFail("Cannot delete '${status.name}' - " + usedBy.join('; ')); return }
+
+        try {
+            PortalTrackerStatus.withTransaction { trn -> status.delete(flush: true) }
+        }
+        catch(Exception e) {
+            PortalErrorLog.capture(e, "workflow builder: deleting status '${status.name}' on ${tracker.module}/${tracker.slug}",
+                                   [module: tracker.module, slug: tracker.slug, controller: 'portalTracker', action: 'builder_delete_status'])
+            builderFail('Could not delete the status: ' + e.message)
+            return
+        }
+        tracker.refresh()
+        builderOk(tracker)
+    }
+
+    /** Creates or updates one transition, including its prev/next statuses and roles. */
+    def builder_save_transition() {
+        def tracker = builderTracker()
+        if(!tracker) return
+        def payload = builderPayload()
+        def name = payload.name?.toString()?.trim()
+        if(!name) { builderFail('A transition needs a name'); return }
+
+        def transition = payload.id ? PortalTrackerTransition.get(payload.id.toString().toLong()) : null
+        if(transition && transition.tracker.id != tracker.id) { builderFail('That transition belongs to another tracker'); return }
+
+        def clash = PortalTrackerTransition.findByTrackerAndName(tracker, name)
+        if(clash && (!transition || clash.id != transition.id)) { builderFail("This tracker already has a transition called '${name}'"); return }
+
+        def sameStatus = payload.same_status as Boolean
+        def nextStatus = null
+        if(!sameStatus && payload.next_status_id) {
+            nextStatus = PortalTrackerStatus.get(payload.next_status_id.toString().toLong())
+            if(!nextStatus || nextStatus.tracker.id != tracker.id) { builderFail('Destination status not found on this tracker'); return }
+        }
+
+        try {
+            PortalTrackerTransition.withTransaction { trn ->
+                if(!transition) {
+                    transition = new PortalTrackerTransition(tracker: tracker)
+                }
+                transition.name = name
+                if(payload.containsKey('display_name')) {
+                    transition.display_name = payload.display_name?.toString()?.trim() ?: null
+                }
+                transition.same_status = sameStatus
+                // A same_status transition carries no destination by definition; clearing it
+                // keeps the two from contradicting each other after a round trip.
+                transition.next_status = sameStatus ? null : nextStatus
+
+                if(payload.containsKey('prev_status_ids')) {
+                    transition.prev_status?.toList()?.each { transition.removeFromPrev_status(it) }
+                    (payload.prev_status_ids ?: []).each { sid ->
+                        def st = PortalTrackerStatus.get(sid.toString().toLong())
+                        if(st && st.tracker.id == tracker.id) transition.addToPrev_status(st)
+                    }
+                }
+                if(payload.containsKey('role_ids')) {
+                    transition.roles?.toList()?.each { transition.removeFromRoles(it) }
+                    (payload.role_ids ?: []).each { rid ->
+                        def role = PortalTrackerRole.get(rid.toString().toLong())
+                        if(role && role.tracker.id == tracker.id) transition.addToRoles(role)
+                    }
+                }
+                if(payload.containsKey('view_fields') || payload.containsKey('edit_fields')) {
+                    applyFieldSelection(transition, tracker, payload.view_fields, payload.edit_fields)
+                }
+                if(!transition.validate()) {
+                    throw new ValidationException('transition', transition.errors)
+                }
+                transition.save(flush: true)
+            }
+        }
+        catch(ValidationException ve) {
+            builderFail('Could not save the transition: ' + ve.errors.allErrors.collect { it.field }.join(', '))
+            return
+        }
+        catch(Exception e) {
+            PortalErrorLog.capture(e, "workflow builder: saving transition '${name}' on ${tracker.module}/${tracker.slug}",
+                                   [module: tracker.module, slug: tracker.slug, controller: 'portalTracker', action: 'builder_save_transition'])
+            builderFail('Could not save the transition: ' + e.message)
+            return
+        }
+        tracker.refresh()
+        builderOk(tracker, [saved_id: transition.id.toString()])
+    }
+
+    def builder_delete_transition() {
+        def tracker = builderTracker()
+        if(!tracker) return
+        def payload = builderPayload()
+        def transition = payload.id ? PortalTrackerTransition.get(payload.id.toString().toLong()) : null
+        if(!transition || transition.tracker.id != tracker.id) { builderFail('Transition not found on this tracker'); return }
+        try {
+            PortalTrackerTransition.withTransaction { trn ->
+                transition.prev_status?.toList()?.each { transition.removeFromPrev_status(it) }
+                transition.roles?.toList()?.each { transition.removeFromRoles(it) }
+                transition.delete(flush: true)
+            }
+        }
+        catch(Exception e) {
+            PortalErrorLog.capture(e, "workflow builder: deleting transition '${transition.name}' on ${tracker.module}/${tracker.slug}",
+                                   [module: tracker.module, slug: tracker.slug, controller: 'portalTracker', action: 'builder_delete_transition'])
+            builderFail('Could not delete the transition: ' + e.message)
+            return
+        }
+        tracker.refresh()
+        builderOk(tracker)
     }
 }

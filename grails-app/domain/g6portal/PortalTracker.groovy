@@ -511,6 +511,24 @@ class PortalTracker {
         return '[' + id + ']'
     }
 
+    /**
+     * This tracker's fields in their canonical order - the single ordering the
+     * workflow builder maintains and that every status/transition's displayfields and
+     * editfields are written in.
+     *
+     * field_order is nullable because it was added after the fact and nothing backfills
+     * it wholesale: any field that predates the builder, or was created by an import or
+     * by From Table, has null there. Those sort last, alphabetically, so a tracker that
+     * has never been touched by the builder still lists in the order it always did.
+     */
+    def orderedFields() {
+        return (fields ?: []).sort { a, b ->
+            def ao = a.field_order == null ? Integer.MAX_VALUE : a.field_order
+            def bo = b.field_order == null ? Integer.MAX_VALUE : b.field_order
+            ao <=> bo ?: (a.name ?: '').compareToIgnoreCase(b.name ?: '')
+        }
+    }
+
     def data_table() {
         if(datatable){
             return datatable

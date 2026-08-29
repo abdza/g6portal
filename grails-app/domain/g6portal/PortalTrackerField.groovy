@@ -43,6 +43,7 @@ class PortalTrackerField {
         role_query(nullable:true)
         encode_exception(nullable:true)
         row_validation_regex(nullable:true) // Regex a raw cell value must fully match for bulk-upload row validation to accept the row
+        field_order(nullable:true)   // Position in the tracker's canonical field order; null sorts last
         suppress_follow_link(nullable:true)
         field_description(nullable:true)    // Descriptive text shown below the field label
         field_tooltip(nullable:true)        // Tooltip text shown on hover over the label
@@ -77,6 +78,7 @@ class PortalTrackerField {
     Boolean role_query
     Boolean encode_exception
     String row_validation_regex     // Regex the raw cell value must fully match for bulk-upload row validation (see PortalTracker.row_validation_fields)
+    Integer field_order             // Position in the tracker's canonical field order (see PortalTracker.orderedFields); null sorts last
     Boolean suppress_follow_link
     String field_description        // Descriptive text displayed below the field label
     String field_tooltip            // Tooltip text shown on hover over the label

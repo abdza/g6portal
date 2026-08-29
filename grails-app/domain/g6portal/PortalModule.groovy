@@ -493,6 +493,7 @@ class PortalModule {
                             curfield.role_query=ifield.role_query
                             curfield.encode_exception=ifield.encode_exception
                             curfield.row_validation_regex=ifield.row_validation_regex
+                            curfield.field_order=ifield.field_order
                             curfield.suppress_follow_link=ifield.suppress_follow_link
                             curfield.field_description=ifield.field_description
                             curfield.field_tooltip=ifield.field_tooltip
@@ -1127,6 +1128,7 @@ class PortalModule {
                         field_tooltip: field.field_tooltip,
                         field_placeholder: field.field_placeholder,
                         row_validation_regex: field.row_validation_regex,
+                        field_order: field.field_order,
                         error_checks: errorarray
                     ]
                 }
