@@ -1118,6 +1118,17 @@ class PortalModule {
         PortalTreeNode.findAllByParent(node).each { child ->
             deletemenunode(child)
         }
+        // Detach from the collections that still hold this row before deleting it.
+        // Hibernate treats a deleted instance that is still reachable from a loaded
+        // association as one to re-save, and refuses the flush outright - which is what
+        // happens the moment a declaration drops a whole group, since the group node is
+        // the first one here that has ever had children.
+        //
+        // The collections only, never node.parent or node.tree: beforeDelete reads both
+        // to close the nested-set gap, so nulling them - which is what removeFrom* does -
+        // would trade this failure for a worse one.
+        node.parent?.nodes?.remove(node)
+        node.tree?.nodes?.remove(node)
         node.delete(flush: true)
     }
 

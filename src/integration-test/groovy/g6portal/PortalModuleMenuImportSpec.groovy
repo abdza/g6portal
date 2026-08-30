@@ -169,6 +169,36 @@ class PortalModuleMenuImportSpec extends Specification {
             sidebaritems() == ['First', 'Tools']
     }
 
+    void "dropping a whole group takes its entries with it"() {
+        given: "a menu whose only grouped entry sits under Tools"
+            def module = makeModule()
+            PortalModule.withNewSession { module.importmodule(false, false, false, null, false, true) }
+            sidebaritems() == ['First', 'Second', 'Tools']
+
+        when: "the group is dropped, in a session that has already read the tree"
+            writemenu([
+                [name: 'First',  link: 'link:/one', icon: 'house', group: null],
+                [name: 'Second', link: 'link:/two', icon: null,    group: null],
+            ])
+            PortalModule.withNewSession {
+                // Loading the collections first is the whole point. A web request has
+                // rendered the menu through this same Hibernate session long before the
+                // import runs, so the parent holds its children in an initialised
+                // association - and that is what Hibernate refuses to flush a delete
+                // against. An import into a session that has read nothing never sees it.
+                def tree = PortalTree.findByModuleAndName('portal', MODULE + '_menu')
+                tree.nodes*.nodes*.size()
+                module.importmodule(false, false, false, null, false, true)
+            }
+
+        then: "the heading and the entry under it are both gone"
+            // Regression: deleting a group meant deleting a node that had children, and
+            // the parent's loaded `nodes` collection still held them - which Hibernate
+            // rejects as a deleted object it would have to re-save, aborting the whole
+            // import. Every earlier case here dropped a leaf, so nothing caught it.
+            sidebaritems() == ['First', 'Second']
+    }
+
     void "a node the module did not create survives a re-import"() {
         given:
             def module = makeModule()
