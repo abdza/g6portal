@@ -26,7 +26,103 @@ class PortalService {
     def sessionFactory
     LinkGenerator grailsLinkGenerator
     def groovyPagesTemplateEngine
+    // Seeded into every runPage() binding, so a page called from a postprocess has the same
+    // services to hand as one reached through /run. Injected here rather than passed by each
+    // caller, which was the first version and made every call site carry the plumbing.
+    def mailService
+    def userService
     private static final ThreadLocal<Set<String>> includeStack = ThreadLocal.withInitial { [] as Set }
+
+    private static final ThreadLocal<Set<String>> runStack = ThreadLocal.withInitial { [] as Set }
+    // module:slug -> [lastUpdated stamp, compiled Script class]. Compiling a page is the
+    // expensive part; the stamp means an edited page recompiles on its next call.
+    private static final Map<String,List> scriptCache = new java.util.concurrent.ConcurrentHashMap<String,List>()
+
+    /**
+     * Run another page's Groovy and hand back what it returns - the runnable counterpart of
+     * includePage(), which can only RENDER a page and so is no use from a postprocess, a
+     * runonupdate, a scheduled page or another runable page.
+     *
+     * Without this every caller hand-rolls the same four lines, and two of them go wrong:
+     *
+     *   - `new GroovyShell(binding)` with no classloader resolves domain classes through a
+     *     classloader of its own, so `g6portal.User` inside the script is a DIFFERENT class
+     *     from the one that loaded the object you passed in. It fails as
+     *     "Cannot cast object 'X' with class 'g6portal.User' to class 'g6portal.User'",
+     *     which reads like an authorisation bug rather than a classloading one. Several
+     *     sites in this codebase still construct GroovyShell that way.
+     *   - `shell.evaluate(content)` recompiles the script on every single call.
+     *
+     * Here the classloader is always this service's, and the compiled class is cached
+     * against the page's lastUpdated.
+     *
+     * Errors are recorded to PortalErrorLog and then RETHROWN, deliberately: a page run for
+     * its side effects that quietly does nothing is the failure mode that is hardest to
+     * notice. Callers that must survive a failure should wrap the call. Both controllers
+     * that invoke a postprocess already catch and report.
+     *
+     * @param module , @param slug   the page to run; must be published and runable:true
+     * @param vars                   the script's binding
+     * @return whatever the page's script returns
+     */
+    def runPage(String module, String slug, Map vars = [:]) {
+        def key = "${module}:${slug}".toString()
+        def stack = runStack.get()
+        if(key in stack) {
+            throw new IllegalStateException("runPage: circular call to ${key}")
+        }
+        def page = PortalPage.findByModuleAndSlug(module, slug)
+        if(!page) { throw new IllegalArgumentException("runPage: no page ${key}") }
+        if(!page.published) { throw new IllegalStateException("runPage: ${key} is not published") }
+        // A display page's content is a GSP template, not a script - running one would fail
+        // in a way that looks like a bug in the page rather than a bad call. Use includePage.
+        if(!page.runable) { throw new IllegalStateException("runPage: ${key} is not runable - use includePage to render it") }
+        stack.add(key)
+        try {
+            def stamp = page.lastUpdated?.toString()
+            def cached = scriptCache.get(key)
+            Class scriptClass
+            if(cached && cached[0] == stamp) {
+                scriptClass = (Class) cached[1]
+            }
+            else {
+                scriptClass = new GroovyShell(this.class.classLoader)
+                                  .parse(page.content, "runpage_${page.id}_${System.identityHashCode(page)}".toString())
+                                  .getClass()
+                scriptCache.put(key, [stamp, scriptClass])
+            }
+            // Standard binding first, caller's vars last so they win. Without this a called
+            // page cannot reach portalService, mailService or sql unless every call site
+            // forwards them by hand - and a page that works under /run then fails when it is
+            // called from a postprocess, for no reason the author can see.
+            def vals = [:]
+            vals['portalService'] = this
+            vals['sessionFactory'] = sessionFactory
+            vals['grailsLinkGenerator'] = grailsLinkGenerator
+            if(mailService) { vals['mailService'] = mailService }
+            if(userService) { vals['userService'] = userService }
+            try {
+                // The CURRENT session's connection, never a fresh one: a second connection
+                // opened inside the caller's transaction is the AKPK upload deadlock.
+                def conn = sessionFactory.currentSession.connection()
+                vals['datasource'] = conn
+                vals['sql'] = new Sql(conn)
+            } catch(Exception e) { }
+            if(vars) { vals.putAll(vars) }
+            def script = (Script) scriptClass.newInstance()
+            script.setBinding(new Binding(vals))
+            return script.run()
+        }
+        catch(Exception e) {
+            PortalErrorLog.capture(e, "page ${key} run by another page",
+                                   [module: module, slug: slug, controller: 'portalService',
+                                    action: 'runPage'])
+            throw e
+        }
+        finally {
+            stack.remove(key)
+        }
+    }
 
     String includePage(String module, String slug, Map binding = [:]) {
         def stack = includeStack.get()
