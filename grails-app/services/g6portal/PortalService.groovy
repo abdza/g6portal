@@ -981,9 +981,9 @@ class PortalService {
     }
 
     @Transactional
-    def import_module(Long id,file_on,user_on,tree_on = false,settingchoices = null,endpoints_on = false,menu_on = false) {
+    def import_module(Long id,file_on,user_on,tree_on = false,settingchoices = null,endpoints_on = false,menu_on = false,schedulerchoices = null) {
         def module = PortalModule.get(id)
-        module.importmodule(file_on,user_on,tree_on,settingchoices,endpoints_on,menu_on)
+        module.importmodule(file_on,user_on,tree_on,settingchoices,endpoints_on,menu_on,schedulerchoices)
     }
 
     def update_module_list(params = null, curuser = null) {

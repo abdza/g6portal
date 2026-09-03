@@ -33,6 +33,10 @@
                             <br/>Settings are listed separately below the diff, where each one that
                             would change can be kept or updated individually.
                         </g:if>
+                        <g:if test="${schedulers}">
+                            <br/>Scheduled jobs are listed the same way &mdash; each one that would change
+                            can be kept or updated individually.
+                        </g:if>
                     </p>
                     <g:if test="${diff}">
                         <g:render template="diffview" model="[diff:diff]"/>
@@ -111,6 +115,73 @@
                                             </label>
                                         </g:if>
                                         <g:elseif test="${s.status == 'new'}">
+                                            <span style="color:#1a7f37;">Will be created</span>
+                                        </g:elseif>
+                                        <g:else>
+                                            <span style="color:#666;">No change</span>
+                                        </g:else>
+                                    </td>
+                                </tr>
+                            </g:each>
+                            </tbody>
+                        </table>
+                        </g:if>
+                        <g:if test="${schedulers}">
+                        <h2>Scheduled Jobs</h2>
+                        <g:set var="schchanged" value="${schedulers.count { it.status == 'changed' }}"/>
+                        <g:set var="schnew" value="${schedulers.count { it.status == 'new' }}"/>
+                        <g:set var="schsame" value="${schedulers.count { it.status == 'same' }}"/>
+                        <p>
+                            ${schedulers.size()} scheduled job${schedulers.size() == 1 ? '' : 's'} in the migration files:
+                            <strong>${schchanged}</strong> would change,
+                            <strong>${schnew}</strong> new,
+                            <strong>${schsame}</strong> already identical.
+                            <g:if test="${schchanged > 0}">
+                                <br/>A schedule is often tuned on the server it runs on &mdash; an hour moved
+                                to spread load, a job switched off while something is investigated &mdash; so
+                                each changed job below defaults to
+                                <strong>keeping the schedule already in use here</strong>. Choose
+                                "Use schedule from migration files" for any you actually mean to update.
+                            </g:if>
+                            <br/><span style="color:#666;font-size:0.9em;">Day of week is 0&nbsp;=&nbsp;Sunday
+                            through 6&nbsp;=&nbsp;Saturday. The last-run time is never imported; it stays
+                            whatever this server recorded.</span>
+                        </p>
+                        <table class="table" style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th style="width:22%;">Job</th>
+                                    <th style="width:29%;">Current schedule on this server</th>
+                                    <th style="width:29%;">Schedule in migration files</th>
+                                    <th style="width:20%;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            <g:each in="${schedulers}" var="sc" status="j">
+                                <tr>
+                                    <td>
+                                        <strong>${sc.name}</strong>
+                                        <g:if test="${sc.module}"><br/><span style="color:#666;font-size:0.85em;">${sc.module}</span></g:if>
+                                        <g:if test="${sc.lastrun}"><br/><span style="color:#666;font-size:0.85em;">last run ${sc.lastrun}</span></g:if>
+                                    </td>
+                                    <td style="word-break:break-word;">
+                                        <g:if test="${sc.status == 'new'}"><em style="color:#666;">not scheduled here</em></g:if>
+                                        <g:else>${sc.current}</g:else>
+                                    </td>
+                                    <td style="word-break:break-word;">${sc.incoming}</td>
+                                    <td>
+                                        <g:if test="${sc.status == 'changed'}">
+                                            <input type="hidden" name="schedulerkey_${j}" value="${sc.key}"/>
+                                            <label style="display:block;">
+                                                <input type="radio" name="schedulerchoice_${j}" value="keep" checked="checked"/>
+                                                Keep current schedule
+                                            </label>
+                                            <label style="display:block;">
+                                                <input type="radio" name="schedulerchoice_${j}" value="import"/>
+                                                Use schedule from migration files
+                                            </label>
+                                        </g:if>
+                                        <g:elseif test="${sc.status == 'new'}">
                                             <span style="color:#1a7f37;">Will be created</span>
                                         </g:elseif>
                                         <g:else>
