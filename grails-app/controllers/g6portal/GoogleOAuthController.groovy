@@ -39,6 +39,34 @@ class GoogleOAuthController implements InitializingBean {
         }
     }
 
+    /**
+     * userID is unique:true and doubles as the login name (UserController.authenticate looks
+     * an account up by it), so it cannot just be the email local part: the first ali@gmail.com
+     * and ali@yahoo.com to sign in would collide, userService.save would throw
+     * ValidationException, and the second person would see nothing but "Authentication error".
+     * Numbered suffixes keep the readable name and stay stable once assigned.
+     *
+     * Two people signing in for the very first time at the same instant can still both pass the
+     * findByUserID check and race to save; the unique index catches that, one of them retries
+     * and gets the next number.
+     */
+    private String uniqueUserID(String email) {
+        def base = email.tokenize('@')[0].toLowerCase().replaceAll(/[^a-z0-9._-]/, '')
+        if (!base) {
+            base = 'user'
+        }
+        if (base.length() > 40) {
+            base = base.substring(0, 40)
+        }
+        def candidate = base
+        def suffix = 1
+        while (User.findByUserID(candidate, [cache: false])) {
+            suffix++
+            candidate = "${base}${suffix}"
+        }
+        return candidate
+    }
+
     private void validateConfig() {
         if (!clientId || !clientSecret || !callbackUrl) {
             throw new IllegalStateException("Google OAuth configuration is missing")
@@ -109,11 +137,14 @@ class GoogleOAuthController implements InitializingBean {
                 user = new User(
                     email: userInfo.email,
                     name: userInfo.name,
-                    userID: userInfo.email.tokenize('@')[0],
-                    isActive: true,
-                    password: UUID.randomUUID().toString()
+                    userID: uniqueUserID(userInfo.email),
+                    isActive: true
                 )
-                user.hashPassword(user.password)
+                // password is bindable:false, so it cannot travel through the map constructor
+                // above - anything passed there is dropped and the field stays null. It has to
+                // be assigned here. A Google account has no portal password of its own; this
+                // random one is never shown to anyone, so Google stays the only way in.
+                user.hashPassword(UUID.randomUUID().toString())
                 userService.save(user)
             }
 
