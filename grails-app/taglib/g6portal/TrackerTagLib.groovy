@@ -12,6 +12,28 @@ class TrackerTagLib {
     private static final Map<String, Map> dropdownCache = [:]
     private static final Map<String, Long> cacheTimestamps = [:]
     private static final Long CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
+
+    private static final int DEFAULT_SELECT2_THRESHOLD = 10
+
+    /**
+     * Option count above which a dropdown is rendered as a searchable select2 widget
+     * instead of a plain <select>. Tunable live through the 'select2_threshold'
+     * PortalSetting; falls back to the default when the setting is missing or holds
+     * something that will not coerce to a number.
+     *
+     * Deliberately NOT private: tag closures dispatch unqualified calls through the
+     * taglib's metaClass, which skips private methods and throws MissingMethodException.
+     */
+    int select2Threshold() {
+        def raw = PortalSetting.namedefault('select2_threshold', DEFAULT_SELECT2_THRESHOLD)
+        try {
+            return raw as Integer
+        }
+        catch(Exception e) {
+            println "Invalid select2_threshold setting (" + raw + "), falling back to " + DEFAULT_SELECT2_THRESHOLD
+            return DEFAULT_SELECT2_THRESHOLD
+        }
+    }
     
     /**
      * Get cached dropdown options for a tracker field
@@ -383,6 +405,7 @@ class TrackerTagLib {
                             def ddown = null
                             def opts = [name:attrs.field.name?.trim(),value:value]
                             def toout = ""
+                            def searchable = false
                             if(attrs.field.field_options) {
                                 ddown = attrs.field.evaloptions(session,attrs.datas,sql)
                                 if(ddown.class.simpleName=='ArrayList') {
@@ -390,6 +413,13 @@ class TrackerTagLib {
                                         opts += attrs.field.evalformat(session,attrs.datas)
                                     }
                                     opts['from'] = ddown
+                                    // Long option lists are unusable without a search box. The options are
+                                    // already evaluated here, so select2 goes on top of the rendered select
+                                    // rather than fetching them again over ajax.
+                                    if(ddown.size()>select2Threshold()) {
+                                        searchable = true
+                                        opts['id'] = attrs.field.name?.trim()
+                                    }
                                     toout = select(opts)
                                     if(value==null && ddown.size()) {
                                         value = ddown[0]
@@ -426,6 +456,9 @@ class TrackerTagLib {
                                 toout = toout.replace("<select ", "<select " + field_hyperscript)
                             }
                             out << toout
+                            if(searchable) {
+                                out << asset.script() { local_select2(property:attrs.field.name?.trim(),parent:'#' + attrs.field.name?.trim() + '_div') }
+                            }
                         }
                         else if(attrs.field.field_type=='BelongsTo'){
                             if(params[attrs.field.name?.trim()]){
@@ -455,7 +488,7 @@ class TrackerTagLib {
                                             }
                                         }
                                         def options = getCachedDropdownOptions(othertracker, otherfield, sql)
-                                        if(options.size()>10) {
+                                        if(options.size()>select2Threshold()) {
                                             out << select(name:attrs.field.name?.trim(),value:value,from:options,optionKey:"id",optionValue:otherfield,noSelection:['':'Please select'])
                                             out << asset.script() { user_selector(controller:"PortalTracker",action:"dropdownlist",id:attrs.field.id,property:attrs.field.name?.trim(),value:value,parent:'#' + attrs.field.name?.trim() + '_div') }
                                         }
