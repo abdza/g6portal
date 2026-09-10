@@ -244,9 +244,22 @@ class PortalService {
     public field_error_messages(curfield,val,params,curuser) {
         def errormsg = []
         def goterror = false
+        // val is whatever the field holds - a Date, a number, a List from a MultiSelect -
+        // not just a String, so work out emptiness once here instead of calling trim()
+        // on something that may not have one.
+        def empty = true
+        if(val) {
+            empty = false
+        }
+        if(val instanceof String || val instanceof GString) {
+            val = val.trim()
+            if(val=="") {
+                empty = true
+            }
+        }
         curfield.error_checks.each { error->
             if(error.error_type=='Not Empty') {
-                if(!val || (val instanceof String && val.trim().size()==0)) {
+                if(empty) {
                     if(error.error_msg) {
                         Binding binding = new Binding()
                         binding.setVariable("field",curfield)
@@ -270,9 +283,9 @@ class PortalService {
                 }
             }
             else if(error.error_type=='Unique') {
-                if(val && val.trim().size()>0) {
+                if(!empty) {
                     def qparams = [:]
-                    qparams[curfield.name] = val.trim()
+                    qparams[curfield.name] = val
                     def prevdata = curfield.tracker.rows(qparams)
                     // Editing a record resubmits its own value for every field, so
                     // without this the record always clashes with itself and no
@@ -285,7 +298,7 @@ class PortalService {
                     if(prevdata.size()>0) {
                         if(error.error_msg) {
                             Binding binding = new Binding()
-                            binding.setVariable("val",val.trim())
+                            binding.setVariable("val",val)
                             binding.setVariable("field",curfield)
                             binding.setVariable("datas",params)
                             binding.setVariable("params",params)
@@ -309,11 +322,11 @@ class PortalService {
                 }
             }
             else if(error.error_type=='Format') {
-                if(val && val.trim().size()>0) {
-                    if(!(val.trim() ==~ error.format)) {
+                if(!empty) {
+                    if(!(val ==~ error.format)) {
                         if(error.error_msg) {
                             Binding binding = new Binding()
-                            binding.setVariable("val",val.trim())
+                            binding.setVariable("val",val)
                             binding.setVariable("field",curfield)
                             binding.setVariable("datas",params)
                             binding.setVariable("params",params)
@@ -336,11 +349,11 @@ class PortalService {
                 }
             }
             else if(error.error_type=='E-mail') {
-                if(val && val.trim().size()>0) {
-                    if(!(val.trim() ==~ /[a-zA-Z0-9.!#$%&'*+=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*/)) {
+                if(!empty) {
+                    if(!(val ==~ /[a-zA-Z0-9.!#$%&'*+=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*/)) {
                         if(error.error_msg) {
                             Binding binding = new Binding()
-                            binding.setVariable("val",val.trim())
+                            binding.setVariable("val",val)
                             binding.setVariable("field",curfield)
                             binding.setVariable("datas",params)
                             binding.setVariable("params",params)
@@ -365,7 +378,7 @@ class PortalService {
             else if(error.error_type=='Custom') {
                 if(error.error_function) {
                     Binding binding = new Binding()
-                    binding.setVariable("val",val?.trim())
+                    binding.setVariable("val",val)
                     binding.setVariable("field",curfield)
                     binding.setVariable("datas",params)
                     binding.setVariable("params",params)

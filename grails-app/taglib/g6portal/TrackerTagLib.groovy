@@ -1574,6 +1574,10 @@ content: event.description
                 }
                 if(attrs.record_id){
                     out << hiddenField(name:"id",value:attrs.record_id)
+                    // the record's own id has to reach the error checks too, not just the
+                    // posted form - a Unique check with no id to recognise takes the record's
+                    // own stored value as a clash and reports it the moment the form opens.
+                    datas['id'] = attrs.record_id
                     def sql = new Sql(sessionFactory.currentSession.connection())
                     def query = "select * from " + attrs.transition.tracker.data_table() + " where id=" + attrs.record_id
                     sql.eachRow(query) { row->
