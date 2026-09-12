@@ -234,7 +234,7 @@ class SecurityInterceptor {
                         }
                     }
                     else {
-                        session['redirectAfterLogin'] = [ controller: controllerName, action: actionName, params: params ]
+                        rememberForLogin()
                         flash.message = "You need to login to view that page"
                         redirect(controller: "user", action: "login")
                         return false
@@ -336,7 +336,7 @@ class SecurityInterceptor {
                     else if(object.user_roles(curuser).size()){
                         return true
                     }
-                    session['redirectAfterLogin'] = [ controller: controllerName, action: actionName, params: params ]
+                    rememberForLogin()
                     flash.message = "Sorry but you do not have the credentials to view the system" 
                     redirect(controller: "portalPage", action: "home")
                     return false
@@ -349,7 +349,7 @@ class SecurityInterceptor {
                         return true
                     }
                 }
-                session['redirectAfterLogin'] = [ controller: controllerName, action: actionName, params: params ]
+                rememberForLogin()
                 flash.message = "Sorry but you need to login to view the system" 
                 redirect(controller: "user", action: "login")
                 return false
@@ -374,7 +374,7 @@ class SecurityInterceptor {
             redirect(controller: "portalPage", action: "home")
             return false
         }
-        session['redirectAfterLogin'] = [ controller: controllerName, action: actionName, params: params ]
+        rememberForLogin()
         flash.message = "You need to login to access that functionality"
         redirect(controller: "user", action: "login")
         return false
@@ -394,7 +394,7 @@ class SecurityInterceptor {
             redirect(controller: "portalPage", action: "home")
             return false
         }
-        session['redirectAfterLogin'] = [ controller: controllerName, action: actionName, params: params ]
+        rememberForLogin()
         flash.message = "You need to login to access that functionality"
         redirect(controller: "user", action: "login")
         return false
@@ -427,7 +427,7 @@ class SecurityInterceptor {
             return false
         }
         else {
-            session['redirectAfterLogin'] = [ controller: controllerName, action: actionName, params: params ]
+            rememberForLogin()
             flash.message = "You need to login to access that functionality"
             redirect(controller: "user", action: "login")
             return false
@@ -457,7 +457,7 @@ class SecurityInterceptor {
             }
         }
         else {
-            session['redirectAfterLogin'] = [ controller: controllerName, action: actionName, params: params ]
+            rememberForLogin()
             flash.message = "You need to login to access that functionality"
             redirect(controller: "user", action: "login")
             return false
@@ -489,4 +489,31 @@ class SecurityInterceptor {
     void afterView() {
         // no-op
     }
+
+    /**
+     * Stash where to come back to after logging in - but only if this request was a
+     * page somebody was actually looking at.
+     *
+     * A view with a RELATIVE asset URL makes the browser ask a controller for an
+     * image. login.gsp did exactly that: `src="assets/img/logo.png"` on a page served
+     * at /user/login had the browser fetch /user/assets/img/logo.png, which no asset
+     * handler serves, so it arrived here as controller `user`, action `assets` - and
+     * was duly remembered as the place to go after login. UserController has no such
+     * action, so Grails fell back to the controller's index and every login landed on
+     * the user list.
+     *
+     * The interceptor cannot tell a navigation from a sub-resource by controller and
+     * action alone, so it asks two independent questions. Sec-Fetch-Dest is the
+     * browser saying what it wants the bytes FOR, which is authoritative but absent on
+     * older browsers and on anything scripted. The path extension is a weaker signal
+     * that works everywhere. Either one saying "not a page" is enough.
+     */
+    private void rememberForLogin() {
+        def dest = request.getHeader('Sec-Fetch-Dest')
+        if(dest && dest != 'document') { return }
+        def uri = (request.forwardURI ?: '').toLowerCase()
+        if(uri ==~ /.*\.(png|jpe?g|gif|svg|ico|webp|avif|bmp|css|js|mjs|map|json|woff2?|ttf|otf|eot)$/) { return }
+        session['redirectAfterLogin'] = [ controller: controllerName, action: actionName, params: params ]
+    }
+
 }

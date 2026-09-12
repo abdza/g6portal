@@ -13,8 +13,13 @@
             <div class="col-lg-4 col-md-6 d-flex flex-column align-items-center justify-content-center">
 
               <div class="d-flex justify-content-center py-4">
-                <a href="index.html" class="logo d-flex align-items-center w-auto">
-                  <img src="assets/img/logo.png" alt="">
+                <%-- Both of these were NiceAdmin template leftovers. The src was
+                     relative, so from /user/login the browser asked for
+                     /user/assets/img/logo.png - a path the asset pipeline never
+                     serves, which landed on UserController and poisoned the
+                     post-login redirect. index.html does not exist either. --%>
+                <a href="${createLink(controller: 'portalPage', action: 'home')}" class="logo d-flex align-items-center w-auto">
+                  <asset:image src="logo.png" alt="G6 Portal"/>
                   <span class="d-none d-lg-block">G6 Portal</span>
                 </a>
               </div><!-- End Logo -->

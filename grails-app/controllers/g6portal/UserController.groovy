@@ -241,6 +241,16 @@ class UserController {
                 return
             }
 
+            // Decided BEFORE the password is replaced by its hash on the next line.
+            // The two checks below used to ask `params.password == params.password2`,
+            // which by then compares a bcrypt hash to the plaintext repeat and so is
+            // never true: every registration fell past the "please login" branch into
+            // the scaffold's redirect-to-user-detail, which an anonymous registrant
+            // cannot see. They are already known to match - the guard above returns if
+            // they do not - so all this needs to know is whether the register form was
+            // the way in, and password2 only exists on that form.
+            def viaRegisterForm = (params.password2 ? true : false)
+
             try {
                 params.password = user.hashPassword(params.password)
                 userService.save(user)
@@ -251,7 +261,7 @@ class UserController {
             }
 
             if(user) {
-                if(params.password2 && params.password==params.password2) {
+                if(viaRegisterForm) {
                     flash.message = 'User registered. Please login to continue'
                     redirect(controller:"user",action:"login")
                     return 
@@ -265,7 +275,7 @@ class UserController {
                 }
             }
             else {
-                if(params.password2 && params.password==params.password2) {
+                if(viaRegisterForm) {
                   flash.message = 'User registered. Please login to continue'
                 }
                 redirect(controller:"user",action:"login")
