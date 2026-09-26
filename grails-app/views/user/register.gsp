@@ -26,7 +26,7 @@
                     </g:hasErrors>
                     <g:form useToken="true" resource="${this.user}" method="POST">
                         <fieldset class="form">
-                            <f:all except='isAdmin,isActive,resetPassword,lanidexception,role,roletargetid,lastlogin,date_joined,nodes,profilepic,resetexception,secretquestion,secretanswer,treesdate,lastUpdated,lastInfoUpdate,lastReminder,password5' bean="user"/>
+                            <f:all except='isAdmin,isActive,resetPassword,lanidexception,role,roletargetid,lastlogin,date_joined,nodes,profilepic,resetexception,secretquestion,secretanswer,treesdate,lastUpdated,lastInfoUpdate,lastReminder,password5,activeSessionId,activeSessionUpdated' bean="user"/>
                             <div class="fieldcontain required">
                               <label for="password2">Repeat Password
                                 <span class="required-indicator">*</span>

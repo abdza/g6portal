@@ -148,7 +148,14 @@ class GoogleOAuthController implements InitializingBean {
                 userService.save(user)
             }
 
-            // Login the user
+            // Login the user. claimSession takes the single-session lock when
+            // server.enforce_single_session is on; without it the lock would be taken by
+            // the first request's validateSession instead and a second browser evicted.
+            if(!user.claimSession(session.id)){
+                flash.message = "This account is already logged in from another browser or device."
+                redirect(controller: 'user', action: 'login')
+                return
+            }
             session['userid'] = user.id
             session['curuser'] = user
             session['realuser'] = null

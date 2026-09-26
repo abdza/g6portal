@@ -1074,8 +1074,12 @@ class PortalService {
             }
             def alines = oldf.exists() ? oldf.text.split('\n', -1) as List : []
             def blines = newf.exists() ? newf.text.split('\n', -1) as List : []
-            if(alines && alines[-1] == '') { alines = alines[0..-2] }
-            if(blines && blines[-1] == '') { blines = blines[0..-2] }
+            // Drop the empty string after a trailing newline. subList, not [0..-2]: an empty
+            // file splits to [''], and [0..-2] on a one-element list is subList(0,-1) - it threw
+            // "fromIndex = -1" and killed the whole import preview for any module with an
+            // empty exported file.
+            if(alines && alines[-1] == '') { alines = alines.subList(0, alines.size() - 1) }
+            if(blines && blines[-1] == '') { blines = blines.subList(0, blines.size() - 1) }
             if(!oldf.exists()) {
                 out << "--- /dev/null\n+++ b/${rel}\n@@ -0,0 +1,${blines.size()} @@\n"
                 blines.each { out << '+' << it << '\n' }

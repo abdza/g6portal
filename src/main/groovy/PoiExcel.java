@@ -332,7 +332,9 @@ public class PoiExcel {
 				}
 				if(name.equals("row")) {
 					rowcount += 1;
-					if(cellAddress.getRow()+1>headerend+1){
+					// cellAddress is still null while the sheet opens with cell-less <row/>
+					// elements — there is nothing read yet, so keep going rather than NPE
+					if(cellAddress!=null && cellAddress.getRow()+1>headerend+1){
 						throw new SAXException("Done reading header and sample");
 					}
 				}
@@ -454,6 +456,11 @@ public class PoiExcel {
 		private Integer dataupdate_id;
 		private boolean gotupdate;
 		private CellAddress cellAddress;
+		// 1-based row number of the <row> currently being parsed. Taken from the row's own
+		// "r" attribute so that a row carrying no <c> cells at all (Excel writes these as
+		// <row r="1" .../>) still has a known position — cellAddress alone is null until the
+		// first cell of the file is seen, which used to NPE on a leading empty row.
+		private int currentRow = -1;
 
 		List<Object> statementfields;
 		HashMap<String, Object> qparam = new HashMap<String, Object>();
@@ -484,10 +491,19 @@ public class PoiExcel {
 					nextIsString = false;
 				}
 				nextIsInlineStr = "inlineStr".equals(cellType);
+				if(currentRow<0) {
+					currentRow = cellAddress.getRow()+1;
+				}
 			}
 			if(name.equals("row")) {
 				currow = new HashMap<Integer, Object>();
 				qparam = new HashMap<String, Object>();
+				String rowpos = attributes.getValue("r");
+				currentRow = -1;
+				if(rowpos!=null) {
+					try { currentRow = Integer.parseInt(rowpos); }
+					catch(NumberFormatException e) { currentRow = -1; }
+				}
 			}
 			// Clear contents cache
 			lastContents = "";
@@ -504,12 +520,13 @@ public class PoiExcel {
 				// v => contents of a cell
 				// Output after we've seen the string contents
 				if(name.equals("v") || (name.equals("t") && nextIsInlineStr)) {
-					if(cellAddress.getRow()+1>=datastart && (dataend<0 || cellAddress.getRow()+1<=dataend)){
+					if(cellAddress!=null && cellAddress.getRow()+1>=datastart && (dataend<0 || cellAddress.getRow()+1<=dataend)){
 						currow.put(cellAddress.getColumn(),lastContents);
 					}
 				}
 				if(name.equals("row")) {
-					if(cellAddress.getRow()+1>=datastart && (dataend<0 || cellAddress.getRow()+1<=dataend)){
+					// currentRow<0 means the row had no "r" attribute and no cells — nothing to load
+					if(currentRow>0 && currentRow>=datastart && (dataend<0 || currentRow<=dataend)){
 						String sqlfields="";
 						String paramsqlfields="";
 						String updatefields="";

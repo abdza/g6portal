@@ -51,4 +51,7 @@ interface UserService {
 
     @Query("from ${User user} where ${user.name} like ${query} or ${user.userID} like ${query} or ${user.email} like ${query} or ${user.lanid} like ${query}")
     List<User> list_query(String query, Map args)
+
+    @Query("from ${User user} where ${user.isActive} = ${isActive} and (${user.name} like ${query} or ${user.userID} like ${query} or ${user.email} like ${query} or ${user.lanid} like ${query})")
+    List<User> list_query(Boolean isActive, String query, Map args)
 }

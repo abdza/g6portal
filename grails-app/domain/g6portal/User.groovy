@@ -524,14 +524,28 @@ class User {
         }
     }
 
-    // Called only at real login time (authenticate/connexion). Returns false
-    // if another browser/device already owns this account and hasn't gone stale yet.
+    // Called only at real login time (authenticate/connexion).
+    //
+    // A FRESH LOGIN ALWAYS WINS (changed 2026-09-03, on the business's call). It used to
+    // refuse when another still-fresh session held the account, which locked people out of
+    // their own account for 10 to 15 minutes in the most ordinary situation there is:
+    // closing the browser. Closing a browser tells the server nothing, so the lock stayed
+    // until activeSessionUpdated went stale - the heartbeat writes at most every
+    // CONCURRENT_SESSION_HEARTBEAT_MINUTES (5) and the cutoff is 15, so the wait was
+    // 10-15 minutes. A server restart was worse: every session in the building is gone but
+    // every lock row survives, so nobody could log in until the cutoff passed.
+    //
+    // One session at a time is still enforced, by validateSession(): the superseded session
+    // fails its next request and is logged out with "You have been logged out because this
+    // account was logged in from another browser or device." What is gone is only the
+    // REFUSAL, which protected nothing - whoever is logging in has just proved they hold the
+    // credentials, and could have taken the account anyway by waiting for the cutoff.
+    //
+    // Still returns a boolean, and callers still check it: reverting is a one-line change,
+    // and their refusal branch stays written and correct for the day it is wanted back.
     def claimSession(sessionId) {
         if(allowConcurrentSessions()){
             return true
-        }
-        if(activeSessionId && activeSessionId != sessionId && activeSessionUpdated?.after(concurrentSessionStaleCutoff())){
-            return false
         }
         def now = new Date()
         _persistSessionClaim(sessionId, now)
@@ -546,21 +560,49 @@ class User {
         if(allowConcurrentSessions()){
             return true
         }
-        if(!activeSessionId || activeSessionId == sessionId){
-            // heartbeat, throttled so we don't write on literally every request
-            if(!activeSessionUpdated || activeSessionUpdated.before(new Date(System.currentTimeMillis() - CONCURRENT_SESSION_HEARTBEAT_MINUTES*60*1000))){
-                def now = new Date()
-                _persistSessionClaim(sessionId, now)
-                activeSessionId = sessionId
-                activeSessionUpdated = now
+        // The lock MUST be read from the database, never off this instance. SecurityInterceptor
+        // passes session.curuser - a User cached in the caller's OWN http session, whose
+        // activeSessionId is frozen at whatever it held when that session logged in. Compared
+        // against that, every session believes it still owns the lock, so a superseded session
+        // was never evicted and this method could only ever return true. Found 2026-09-03 while
+        // making a fresh login take the lock instead of being refused: the refusal had been
+        // doing all of the enforcing, and the eviction path below had never actually run.
+        // One scalar read on the primary key per authenticated request is the cost of the lock
+        // meaning anything at all.
+        def liveSessionId = activeSessionId
+        def liveUpdated = activeSessionUpdated
+        try {
+            def row = User.executeQuery(
+                "select u.activeSessionId, u.activeSessionUpdated from User u where u.id=:id",
+                [id: id])[0]
+            if(row != null) {
+                liveSessionId = row[0]
+                liveUpdated = row[1]
             }
-            return true
         }
-        if(!activeSessionUpdated?.after(concurrentSessionStaleCutoff())){
+        catch(Exception e) {
+            // Unreadable lock must not lock anybody out; fall back to what this instance holds.
+        }
+        def takeover = {
             def now = new Date()
             _persistSessionClaim(sessionId, now)
             activeSessionId = sessionId
             activeSessionUpdated = now
+        }
+        if(!liveSessionId || liveSessionId == sessionId){
+            // heartbeat, throttled so we don't write on literally every request
+            if(!liveUpdated || liveUpdated.before(new Date(System.currentTimeMillis() - CONCURRENT_SESSION_HEARTBEAT_MINUTES*60*1000))){
+                takeover()
+            }
+            else {
+                // keep the cached instance honest even when we do not write
+                activeSessionId = liveSessionId
+                activeSessionUpdated = liveUpdated
+            }
+            return true
+        }
+        if(!liveUpdated?.after(concurrentSessionStaleCutoff())){
+            takeover()
             return true
         }
         return false

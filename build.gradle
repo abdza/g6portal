@@ -99,6 +99,12 @@ dependencies {
     implementation 'org.commonmark:commonmark-ext-gfm-tables:0.24.0'
     implementation 'org.apache.tika:tika-core:3.0.0'
     implementation 'org.apache.commons:commons-text:1.12.0'
+    implementation 'org.jasypt:jasypt:1.9.3'
+    // Date.format(), Date.parse() and date arithmetic (date + 1) live in groovy-dateutil since
+    // Groovy 2.5, not in groovy core. Without it every one of those calls - in framework code
+    // and in module pages written for g5, which has always had this - throws
+    // MissingMethodException at runtime while compiling cleanly. Match the resolved groovy.
+    implementation 'org.codehaus.groovy:groovy-dateutil:3.0.23'
     implementation 'org.apache.directory.api:api-all:2.1.7'
     implementation 'at.favre.lib:bcrypt:0.10.2'
     implementation 'org.hibernate:hibernate-jcache'

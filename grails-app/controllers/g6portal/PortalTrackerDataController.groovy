@@ -16,6 +16,11 @@ class PortalTrackerDataController {
     PortalTrackerService portalTrackerService
     def mailService
     def sessionFactory
+    def dataSource
+
+    // Data Dump jobs in flight, keyed by the token handed to the browser. Same mechanism as
+    // PortalPageController.xlsxJobs: in-memory, so a restart loses any dump still building.
+    static java.util.concurrent.ConcurrentHashMap dumpJobs = new java.util.concurrent.ConcurrentHashMap()
 
     static allowedMethods = [save: "POST", update: "PUT", delete: "DELETE"]
 
@@ -346,15 +351,17 @@ class PortalTrackerDataController {
                 render(view: 'create')
                 return
             }
-            // Validate file security before processing
+            // Bulk-upload files were previously written to disk unchecked. Attachment
+            // mode blocks dangerous extensions and spoofed known types while still
+            // accepting the spreadsheet formats these uploads actually use.
             def filemanagermax = PortalSetting.namedefault('filemanager_max_' + session.curuser?.userID,50000000)
-            def validationResult = FileSecurityValidator.validateFile(f,null,filemanagermax)
-            if (!validationResult.valid) {
-                flash.message = "File upload failed: ${validationResult.errors.join(', ')}"
+            def uploadvalidation = FileSecurityValidator.validateAttachment(f,filemanagermax)
+            if (!uploadvalidation.valid) {
+                flash.message = "File upload failed: ${uploadvalidation.errors.join(', ')}"
                 render(view: 'create')
                 return
             }
-            def fileName = f.originalFilename
+            def fileName = uploadvalidation.sanitizedFilename
             def curfolder = System.getProperty("user.dir")
             def folderbase = PortalSetting.namedefault('uploadfolder',curfolder + '/uploads')
             folderbase += '/' + portalTrackerData.tracker.module + '/' + portalTrackerData.tracker.slug
@@ -362,7 +369,7 @@ class PortalTrackerDataController {
                 new File(folderbase).mkdirs()
             }
             if(new File(folderbase).exists()){
-              def copytarget = folderbase+'/'+fileName
+              def copytarget = FileSecurityValidator.createSecurePath(folderbase, fileName)
               f.transferTo(new File(copytarget))
               portalTrackerData.path = copytarget
             }
@@ -682,15 +689,15 @@ class PortalTrackerDataController {
         try {
             def f = request.getFile('fileupload')
             if (!f.empty) {
-                // Same validation as the create path
+                // Same validation as the create path — see comment there.
                 def filemanagermax = PortalSetting.namedefault('filemanager_max_' + session.curuser?.userID,50000000)
-                def validationResult = FileSecurityValidator.validateFile(f,null,filemanagermax)
-                if (!validationResult.valid) {
-                    flash.message = "File upload failed: ${validationResult.errors.join(', ')}"
+                def uploadvalidation = FileSecurityValidator.validateAttachment(f,filemanagermax)
+                if (!uploadvalidation.valid) {
+                    flash.message = "File upload failed: ${uploadvalidation.errors.join(', ')}"
                     respond portalTrackerData, view:'edit'
                     return
                 }
-                def fileName = f.originalFilename
+                def fileName = uploadvalidation.sanitizedFilename
                 def curfolder = System.getProperty("user.dir")
                 def folderbase = PortalSetting.namedefault('uploadfolder',curfolder + '/uploads')
                 folderbase += '/' + portalTrackerData.tracker.module + '/' + portalTrackerData.tracker.slug
@@ -698,7 +705,7 @@ class PortalTrackerDataController {
                     new File(folderbase).mkdirs()
                 }
                 if(new File(folderbase).exists()){
-                    def copytarget = folderbase+'/'+fileName
+                    def copytarget = FileSecurityValidator.createSecurePath(folderbase, fileName)
                     f.transferTo(new File(copytarget))
                     portalTrackerData.path = copytarget
                 } 
@@ -735,15 +742,179 @@ class PortalTrackerDataController {
             '*'{ render status: NO_CONTENT }
         }
     }
-
+    /**
+     * Data Dump. Asynchronous, the same shape as the XLSX report pages in PortalPageController:
+     * the first request starts a background build and immediately returns a small polling page,
+     * the poll asks whether the file is ready, and the third request streams it.
+     *
+     * Synchronous was not survivable on a large tracker. The browser - and anything proxying it -
+     * sat on an open connection for ten minutes with nothing to show, and the request eventually
+     * died carrying an xlsx filename on a 500, which renders as a broken download rather than an
+     * error. Both dumps go through here, readable and forimport alike.
+     */
     def datadump(Long id) {
-        def sessiondata = sessionFactory.currentSession.connection()
-        def sql = new Sql(sessiondata)
         if (id == null) {
             notFound()
             return
         }
-        def curuser = session.curuser
+
+        // Is it ready yet?
+        if(params.async_token && params.async_status) {
+            def job = dumpJobs[params.async_token as String]
+            if(!job) {
+                render(contentType: 'application/json', text: '{"ready":false,"error":"Job not found or expired"}')
+            } else if(job.error) {
+                render(contentType: 'application/json', text: new groovy.json.JsonBuilder([ready:false, error:job.error.toString()]).toString())
+            } else {
+                render(contentType: 'application/json', text: "{\"ready\":${job.done}}")
+            }
+            return
+        }
+
+        // Hand the file over, then forget the job and delete the temp file.
+        if(params.async_token && !params.async_status) {
+            def tkn = params.async_token as String
+            def job = dumpJobs[tkn]
+            if(job?.done && job?.file) {
+                def tmpFile = new File(job.file as String)
+                if(tmpFile.exists()) {
+                    dumpJobs.remove(tkn)
+                    response.setContentType("application/octet-stream")
+                    response.setHeader("Content-Disposition", "attachment;filename=${job.filename}.xlsx")
+                    response.setContentLength((int)tmpFile.length())
+                    tmpFile.withInputStream { is -> response.outputStream << is }
+                    response.outputStream.flush()
+                    tmpFile.delete()
+                } else {
+                    response.sendError(404, "Dump file not found")
+                }
+            } else if(job?.error) {
+                dumpJobs.remove(tkn)
+                response.sendError(500, "Dump failed: ${job.error}")
+            } else {
+                response.sendError(404, "Dump not ready or expired")
+            }
+            return
+        }
+
+        def tracker = PortalTracker.get(id)
+        if(!tracker) {
+            notFound()
+            return
+        }
+
+        // Everything the worker needs, captured while the request still exists.
+        def bgToken = java.util.UUID.randomUUID().toString()
+        def bgParams = new LinkedHashMap(params)
+        def bgCurUser = session.curuser
+        def bgSessionAttrs = [curuser: session.curuser, userid: session.userid]
+        def bgId = id
+        def label = tracker.slug + (bgParams.forimport?.toString() == '1' ? '_forimport' : '')
+
+        dumpJobs[bgToken] = [done: false, file: null, error: null, filename: label]
+
+        Thread.start {
+            try {
+                // Its own Hibernate session: the request's is gone the moment the polling page
+                // is returned, and the readable dump resolves names through GORM per row.
+                PortalTrackerData.withNewSession {
+                    def built = buildDumpFile(bgId, bgParams, bgCurUser, bgSessionAttrs)
+                    dumpJobs[bgToken] = [done: true, file: built.absolutePath, error: null, filename: label]
+                    println "Data dump completed: ${built.absolutePath} (${built.length()} bytes)"
+                }
+            } catch(Throwable e) {
+                // Throwable, not Exception: an Error (OutOfMemoryError on a big workbook,
+                // NoClassDefFoundError) left the job at done:false and the page spinning forever.
+                println "Data dump failed: " + e
+                e.printStackTrace()
+                PortalErrorLog.capture(e, "data dump of tracker ${bgId} (${label}) for ${bgCurUser?.userID}",
+                                       [controller: 'portalTrackerData', action: 'datadump',
+                                        params: bgParams, slug: label])
+                // e.message is null for an NPE or UnsupportedOperationException, which left the
+                // page saying only "Dump failed". The type at least says what kind of failure.
+                dumpJobs[bgToken] = [done: true, file: null,
+                                     error: "Dump failed: " + e.getClass().simpleName +
+                                            (e.message ? " - " + e.message : "") + " (details in the error log)"]
+            }
+        }
+
+        render(contentType: 'text/html', text: dumpWaitingPage(bgToken, tracker.name))
+    }
+
+    /** The page the browser sits on while the dump builds. */
+    private String dumpWaitingPage(String token, String trackerName) {
+        return """<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Preparing data dump\u2026</title>
+<style>
+body{font-family:Arial,Helvetica,sans-serif;text-align:center;padding:60px 20px;background:#f5f5f5;color:#333;}
+.box{background:#fff;border-radius:8px;padding:40px;display:inline-block;box-shadow:0 2px 8px rgba(0,0,0,.1);min-width:340px;}
+h2{margin:0 0 6px;font-size:20px;}
+.sub{color:#777;font-size:13px;margin:0 0 18px;}
+#status{color:#666;margin:16px 0 0;}
+.spinner{display:inline-block;width:40px;height:40px;border:4px solid #ddd;border-top-color:#0078d4;border-radius:50%;animation:spin .8s linear infinite;margin-bottom:16px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.error{color:#c00;}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="spinner" id="spinner"></div>
+  <h2>Preparing data dump</h2>
+  <p class="sub">${trackerName}</p>
+  <p id="status">Building the file on the server. A large tracker takes a minute or two &mdash; leave this tab open.</p>
+</div>
+<script>
+var token = '${token}';
+var baseUrl = window.location.href.split('?')[0];
+var checkUrl = baseUrl + '?async_token=' + token + '&async_status=1';
+var downloadUrl = baseUrl + '?async_token=' + token;
+var waited = 0;
+function check() {
+    fetch(checkUrl, {credentials:'same-origin'})
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+            if(data.ready){
+                document.getElementById('spinner').style.display='none';
+                document.getElementById('status').textContent='Ready \u2014 downloading\u2026';
+                var a=document.createElement('a');
+                a.href=downloadUrl; a.download='';
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                document.getElementById('status').textContent='Download started. You can close this tab.';
+            } else if(data.error){
+                document.getElementById('spinner').style.display='none';
+                var st=document.getElementById('status'); st.textContent=data.error; st.className='error';
+            } else {
+                waited += 2;
+                if(waited % 30 === 0){
+                    document.getElementById('status').textContent='Still building\u2026 ' + waited + 's so far.';
+                }
+                setTimeout(check, 2000);
+            }
+        })
+        .catch(function(){ setTimeout(check, 2000); });
+}
+setTimeout(check, 2000);
+</script>
+</body>
+</html>"""
+    }
+
+
+    /**
+     * Builds the dump workbook and returns the temp file it was written to.
+     *
+     * Runs on a background thread with no web request behind it, so everything it needs is
+     * passed in: `params` is a copy taken at request time, `curuser` the user who asked, and
+     * `sessionAttrs` stands in for the http session where a field query wants one.
+     */
+    private File buildDumpFile(Long id, Map params, def curuser, Map sessionAttrs) {
+        def session = sessionAttrs
+        def sessiondata = dataSource.getConnection()
+        def sql = new Sql(sessiondata)
+        try {
         def tracker = PortalTracker.get(id)
         def fields = []
         def ftags = null
@@ -769,17 +940,51 @@ class PortalTrackerDataController {
                 }
             }
         }
-        response.setContentType("application/octet-stream")
-
-        response.setHeader("Content-disposition", "attachment;filename=" + tracker.slug + ".xlsx")
-
+        // A FieldGroup is a rendering container with no column of its own, so reading it off
+        // the row failed the whole dump ("Column not found") for any tracker that has one.
+        fields = fields.findAll { !(it.field_type in ['FieldGroup','HasMany']) }
+        // ?computed=0 drops the fields whose value comes from a field_query rather than
+        // from the row. Two reasons to want that when the dump is being used to move data
+        // between environments, which is what this action is for:
+        //
+        //   it is not the row's data.  A field_query is evaluated at display time - aging
+        //   on itis_reporting is `datediff(day, tat_deadline, ...)`. Re-importing the
+        //   number it printed would freeze a value that is supposed to keep moving.
+        //
+        //   it is nearly all of the time.  The query runs once PER ROW. On the 125k-row
+        //   itis_reporting table that is 125k extra round trips for columns the importer
+        //   should ignore anyway.
+        //
+        // Left opt-out rather than opt-in so an existing dump keeps every column it had.
+        //
+        // ?forimport=1 is the switch to reach for when the dump is going to be fed back in
+        // through a data update - moving a tracker between environments, which is what this
+        // action is for. It implies computed=0 and turns on `raw` below.
+        def forimport = (params.forimport?.toString() == '1')
+        if(forimport || params.computed?.toString() == '0') {
+            fields = fields.findAll { !it.field_query }
+        }
+        // Reference fields normally export what a person needs to read - a user's name, a
+        // branch's name, the linked record's title, the file's name. None of those can go
+        // back where they came from: the columns behind them hold ids, so an import of the
+        // default dump dies on every row with "Error converting data type nvarchar to
+        // numeric". `raw` writes the stored value instead, at the cost of being unreadable.
+        def raw = forimport || (params.raw?.toString() == '1')
         def wb = new SXSSFWorkbook(100)
 
         Sheet sheet = wb.createSheet(tracker.name.replaceAll("[^A-Za-z0-9]"," "))
         Row headerRow = sheet.createRow(0)
         def curpos = 0
-        (fields*.label).each { dh->
-            Cell cell = headerRow.createCell(curpos++)            
+        // Field NAME, not label. This dump exists to be fed back in through a data update,
+        // and the importer matches a header against the field name and the field label by
+        // longest-common-subsequence, taking the better score - so a header that IS the name
+        // scores exactly and cannot be beaten by a near-miss on some other column. Labels are
+        // free text ("Customer Acct Number (Starworks)"), may be duplicated across fields and
+        // may be null; names are the identifiers the rest of the migration format already uses.
+        // The tracker list's own Download Excel still writes labels - that one is read by
+        // people, not by the importer.
+        (fields*.name).each { dh->
+            Cell cell = headerRow.createCell(curpos++)
             cell.setCellValue(dh)
         }
         if(tracker.excel_audit) {
@@ -799,6 +1004,30 @@ class PortalTrackerDataController {
         if('id' in params) {
             params.remove('id')
         }
+        // Which fields actually need fieldval(), decided ONCE rather than per cell.
+        //
+        // fieldval() opens with PortalSetting.namedefault("tracker_objects") - a GORM call - and
+        // for most field types it then just hands the value straight back. Calling it for every
+        // cell is ~57 x 125,138 = 7 million GORM calls on one dump of itis_reporting, and the
+        // connection behind them does not survive that: the readable dump died at ~624s with
+        // "The connection is closed" whether it ran in the request, in its own Hibernate
+        // session, or on a background thread.
+        //
+        // It genuinely transforms only these: User/File/TreeNode resolve to a name, Date blanks
+        // the 1900-01-01 sentinel, a type listed in tracker_objects (Branch, TreeReport) resolves
+        // through another tracker, and is_encrypted/encode_exception rewrite the value. Everything
+        // else falls through fieldval's else branch unchanged, so reading the row directly gives
+        // the identical cell. On itis_reporting that is 5 fields of 57 - a 91% cut.
+        def trackerObjectTypes = [:]
+        try { trackerObjectTypes = PortalSetting.namedefault("tracker_objects",[]) ?: [:] } catch(Exception e) { trackerObjectTypes = [:] }
+        def needsFieldval = [:]
+        fields.each { f ->
+            needsFieldval[f.id] = (f.field_type in ['User','File','TreeNode','Date']) ||
+                                  (f.field_type in trackerObjectTypes) ||
+                                  (f.is_encrypted ? true : false) ||
+                                  (f.encode_exception ? true : false)
+        }
+
         def query = tracker.listquery(params,curuser,"select all * ")
         def rename_checkbox = PortalSetting.namedefault(tracker.module + '.' + tracker.slug + '_rename_checkbox',[])
         sql.eachRow(query['query'],query['qparams']) { row->
@@ -806,15 +1035,63 @@ class PortalTrackerDataController {
             Row excelrow = sheet.createRow(currow)
             fields.each { field->
                 Cell cell = excelrow.createCell(curpos++)
-                def fieldval = field.fieldval(row[field.name])
+                // In raw mode take the column straight off the row and never call fieldval().
+                //
+                // Two reasons, and the second is why the full-table dump kept dying. fieldval()
+                // resolves a User/Branch/BelongsTo/File to its display value, which is exactly
+                // what raw mode does not want. And it opens with
+                // PortalSetting.namedefault("tracker_objects") - a GORM call, on the Hibernate
+                // session's connection, once per cell. That is ~56 x 125,138 = 7 million GORM
+                // calls for one dump of itis_reporting, and after about ten minutes that session's
+                // connection is gone: every row then threw "The connection is closed" from THIS
+                // line. Giving the cursor its own DataSource connection did not help, because the
+                // connection that died was never the cursor's.
+                def fieldval = (raw || !needsFieldval[field.id]) ? row[field.name]
+                                                                 : field.fieldval(row[field.name])
                 if(field.field_type=='Date'){
-                    if(fieldval){
-                        cell.setCellValue(fieldval.toLocalDate().toString())
+                    def ld = dumpLocalDateTime(fieldval)
+                    if(ld){
+                        cell.setCellValue(ld.toLocalDate().toString())
+                    }
+                    else if(fieldval){
+                        cell.setCellValue(fieldval.toString())
                     }
                 }
                 else if(field.field_type=='DateTime'){
-                    if(fieldval){
-                        cell.setCellValue(fieldval.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime().toString().replace('T',' ').substring(0,16))
+                    def ldt = dumpLocalDateTime(fieldval)
+                    if(!ldt && fieldval){
+                        cell.setCellValue(fieldval.toString())
+                    }
+                    if(ldt){
+                        if(raw) {
+                            // Seconds are not decoration here. The loader parses a DateTime with
+                            // Timestamp.valueOf(), which demands yyyy-MM-dd HH:mm:ss - the minute
+                            // form this dump has always written throws, and the column is dropped
+                            // from the insert without a word. Every DateTime on every row came
+                            // back null before this.
+                            cell.setCellValue(ldt.format(java.time.format.DateTimeFormatter.ofPattern('yyyy-MM-dd HH:mm:ss')))
+                        }
+                        else {
+                            cell.setCellValue(ldt.toString().replace('T',' ').substring(0,16))
+                        }
+                    }
+                }
+                else if(raw && field.field_type in ['User','Branch','BelongsTo','File']){
+                    // The id exactly as stored, and as TEXT with no decimal part. Writing it
+                    // as a POI number puts "246.0" in the sheet, and the loader hands that
+                    // straight to an integer column, which refuses it - the same conversion
+                    // error the display values caused, just further down the line.
+                    def stored = row[field.name]
+                    if(stored != null) {
+                        if(stored instanceof Number) {
+                            def n = (Number) stored
+                            cell.setCellValue(n.doubleValue() == Math.floor(n.doubleValue())
+                                                ? Long.toString(n.longValue())
+                                                : n.toString())
+                        }
+                        else {
+                            cell.setCellValue(stored.toString())
+                        }
                     }
                 }
                 else if(field.field_type=='BelongsTo'){
@@ -841,19 +1118,25 @@ class PortalTrackerDataController {
                     }
                 }
                 else if(field.field_type=='Checkbox'){
-                    if(rename_checkbox.size()) {
+                    if(rename_checkbox.size() && !raw) {
                         if (fieldval == true){
                             cell.setCellValue(rename_checkbox[0])
                         }else{
                             cell.setCellValue(rename_checkbox[1])
                         }
                     }
-                    else {
+                    else if(fieldval != null) {
                           cell.setCellValue(fieldval)
                     }
                 }
                 else if(field.field_type=='File'){
-                    cell.setCellValue(fieldval.name)
+                    // A File field is null on every row that never carried an upload, and
+                    // FileLink.get(null) hands back null - so reading .name off it aborted the
+                    // whole dump on its first empty row. Optional attachments are the norm:
+                    // all 125,138 itis_reporting cases have none.
+                    if(fieldval) {
+                        cell.setCellValue(fieldval.name)
+                    }
                 }
                 else if(field.field_query){
                     def curval = sql.firstRow(field.evalquery(session,row))?.value
@@ -906,21 +1189,48 @@ class PortalTrackerDataController {
                     } */
                     def updater = User.get(auditrow['updater_id'])
                     audit_trail += '\n\rUpdated by: ' + updater?.name
-                    audit_trail += '\n\rUpdated on: ' + formatDate(format:"HH:mm a dd-MMM-yy",date:auditrow['update_date'])
+                    audit_trail += '\n\rUpdated on: ' + (auditrow['update_date'] ? new java.text.SimpleDateFormat("HH:mm a dd-MMM-yy").format(auditrow['update_date']) : '')
                     audit_trail += '\n\r\n\r'
                 }
                 cell.setCellValue(audit_trail)
             }
             currow++
         }
-        try{
-            wb.write(response.outputStream)
-            response.outputStream.close()
-            wb.dispose()
+        def tmpFile = File.createTempFile("g5dump_", ".xlsx")
+        tmpFile.deleteOnExit()
+        tmpFile.withOutputStream { fos -> wb.write(fos) }
+        try { wb.dispose() } catch(Exception e) { }
+        return tmpFile
         }
-        catch(Exception exp){
-            println "Tracker download list excel error writing:" + exp
+        finally {
+            try { sql?.close() } catch(Exception ce) { }
+            try { sessiondata?.close() } catch(Exception ce) { println "datadump: could not close its connection: " + ce }
         }
+    }
+
+    /**
+     * Whatever the driver handed back for a Date/DateTime column, as a LocalDateTime - or null
+     * when there is nothing to convert.
+     *
+     * The column type does not always match the field type: the importer never alters an
+     * existing column, so a field switched from Date to DateTime still sits on a `date` column
+     * and comes back as java.sql.Date. java.sql.Date.toInstant() throws
+     * UnsupportedOperationException - with no message - and that one cell failed the whole dump
+     * with nothing but "Dump failed" to show for it. A varchar column hands back a String.
+     */
+    private static java.time.LocalDateTime dumpLocalDateTime(def v) {
+        if(v == null) return null
+        if(v instanceof java.time.LocalDateTime) return v
+        if(v instanceof java.time.LocalDate) return v.atStartOfDay()
+        if(v instanceof java.sql.Timestamp) return v.toLocalDateTime()
+        if(v instanceof java.sql.Date) return v.toLocalDate().atStartOfDay()
+        if(v instanceof Date) return v.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
+        if(v instanceof java.time.OffsetDateTime) return v.toLocalDateTime()
+        def txt = v.toString().trim()
+        if(!txt) return null
+        try { return java.sql.Timestamp.valueOf(txt.length() == 16 ? txt + ':00' : txt).toLocalDateTime() } catch(Exception ignored) { }
+        try { return java.time.LocalDate.parse(txt.take(10)).atStartOfDay() } catch(Exception ignored) { }
+        return null
     }
 
     protected void notFound() {

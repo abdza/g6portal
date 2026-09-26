@@ -1,0 +1,2 @@
+org.springframework.context.ApplicationContextInitializer=\
+g6portal.JasyptEarlyDecryptionInitializer

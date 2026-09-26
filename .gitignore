@@ -49,3 +49,4 @@ package-lock.json
 setup-token.txt
 /bundled-modules
 /modules
+app.log

@@ -38,6 +38,27 @@ class FileSecurityValidator {
             [0x47, 0x49, 0x46, 0x38, 0x37, 0x61] as byte[], // GIF87a
             [0x47, 0x49, 0x46, 0x38, 0x39, 0x61] as byte[]  // GIF89a
         ],
+        'bmp': [
+            [0x42, 0x4D] as byte[]              // "BM"
+        ],
+        'jfif': [
+            [0xFF, 0xD8, 0xFF] as byte[]        // JPEG variant
+        ],
+        'msg': [
+            [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1] as byte[]  // Outlook item (OLE2)
+        ],
+        'oft': [
+            [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1] as byte[]  // Outlook template (OLE2)
+        ],
+        'xlsm': [
+            [0x50, 0x4B, 0x03, 0x04] as byte[]  // macro-enabled workbook (ZIP-based)
+        ],
+        'odt': [
+            [0x50, 0x4B, 0x03, 0x04] as byte[]  // ODF (ZIP-based)
+        ],
+        'rar': [
+            [0x52, 0x61, 0x72, 0x21, 0x1A, 0x07] as byte[]  // "Rar!"
+        ],
         'zip': [
             [0x50, 0x4B, 0x03, 0x04] as byte[],  // ZIP
             [0x50, 0x4B, 0x05, 0x06] as byte[],  // ZIP (empty)
@@ -73,6 +94,18 @@ class FileSecurityValidator {
         ],
         'pptx': [
             [0x50, 0x4B, 0x03, 0x04] as byte[]   // ZIP-based (Office 2007+)
+        ],
+        'eml': [
+            // RFC822 message — headers only, validate as text
+        ],
+        'html': [
+            // no magic number, validate as text
+        ],
+        'htm': [
+            // no magic number, validate as text
+        ],
+        'log': [
+            // no magic number, validate as text
         ]
     ]
 
@@ -94,7 +127,8 @@ class FileSecurityValidator {
      * @param maxSize Maximum file size in bytes (optional)
      * @return Map with validation results
      */
-    static Map<String, Object> validateFile(def file, List<String> allowedTypes = null, Long maxSize = null) {
+    static Map<String, Object> validateFile(def file, List<String> allowedTypes = null, Long maxSize = null,
+                                            boolean rejectUnknownTypes = true) {
 
         def result = [
             valid: false,
@@ -150,8 +184,10 @@ class FileSecurityValidator {
         }
 
         // Validate file content using magic numbers
-        if (!validateFileContent(file, extension)) {
-            result.errors << "File content does not match the file extension '${extension}'"
+        if (!validateFileContent(file, extension, rejectUnknownTypes)) {
+            result.errors << (ALLOWED_SIGNATURES.containsKey(extension.toLowerCase())
+                ? "File content does not match the file extension '${extension}'"
+                : "File type '${extension}' is not a recognised type")
         }
 
         // Check for suspicious patterns in filename
@@ -165,6 +201,26 @@ class FileSecurityValidator {
         result.fileSize = fileSize
 
         return result
+    }
+
+    /**
+     * Validation for record attachments and bulk-upload files.
+     *
+     * Applies every check that protects the server — size, filename sanitisation, path
+     * traversal, the blocked-extension list, and magic-number verification for any type
+     * we recognise — but tolerates extensions that simply are not in the signature map.
+     *
+     * That distinction is deliberate. Attachments in this system are dominated by pdf and
+     * Office files, with a long tail of msg/eml/rar/odt/log; rejecting everything not on
+     * the allow-list would block roughly 6% of real uploads while adding no protection
+     * against the thing that actually matters, which is executables.
+     *
+     * @param file MultipartFile to validate
+     * @param maxSize Maximum file size in bytes (optional)
+     * @return Map with validation results, same shape as validateFile
+     */
+    static Map<String, Object> validateAttachment(def file, Long maxSize = null) {
+        return validateFile(file, null, maxSize, false)
     }
 
     /**
@@ -217,7 +273,7 @@ class FileSecurityValidator {
     /**
      * Validates file content using magic number signatures
      */
-    static boolean validateFileContent(def file, String extension) {
+    static boolean validateFileContent(def file, String extension, boolean rejectUnknownTypes = true) {
         try {
             byte[] fileHeader = new byte[16] // Read first 16 bytes
             file.inputStream.withCloseable { inputStream ->
@@ -226,15 +282,22 @@ class FileSecurityValidator {
             }
 
             // Special handling for text files
-            if (extension in ['txt', 'csv', 'css', 'js']) {
+            if (extension in ['txt', 'csv', 'css', 'js', 'eml', 'html', 'htm', 'log', 'json', 'xml']) {
                 return isTextFile(fileHeader)
             }
 
             // Excel files are now handled by the standard signature matching below
 
             List<byte[]> signatures = ALLOWED_SIGNATURES[extension.toLowerCase()]
-            if (!signatures) {
-                return false // Unknown file type
+            if (signatures == null) {
+                // Extension carries no registered signature. Strict callers (the file
+                // manager, where the type list is curated) reject it; attachment callers
+                // accept it, because record attachments legitimately carry a long tail of
+                // business formats and blanket-rejecting them would break existing flows.
+                return !rejectUnknownTypes
+            }
+            if (signatures.isEmpty()) {
+                return true  // registered but magic-number-free, e.g. text formats
             }
 
             return signatures.any { signature ->

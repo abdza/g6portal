@@ -326,6 +326,9 @@ class PortalModuleController {
     def treenodecounts = [:]
     trees.each { t -> treenodecounts[t.id] = PortalTreeNode.countByTree(t) }
     def endpoints = PortalEndpoint.findAllByModule(module.name,[sort:'slug'])
+    // Cron rows for this module. They travel in the module package (schedulerlist.json), so
+    // the details page has to show what is actually on this server to compare against.
+    def schedulers = PortalScheduler.findAllByModule(module.name,[sort:'name'])
 
     // Disk usage for this module's uploaded files. Done in the service so the SUM can
     // cast to bigint - an int SUM overflows for any module holding more than 2GB.
@@ -336,7 +339,7 @@ class PortalModuleController {
     def fileunsized = filestats.unsized
     def importlogs = PortalModuleImportLog.findAllByModule(module.name,[sort:'dateCreated',order:'desc',max:20])
 
-    respond module,model:[curuser:curuser,admins:admins,developers:developers,pages:pages,trackers:trackers,settings:settings,roles:roles,importlogs:importlogs,trees:trees,treenodecounts:treenodecounts,endpoints:endpoints,filesize:filesize,filecount:filecount,fileunsized:fileunsized]
+    respond module,model:[curuser:curuser,admins:admins,developers:developers,pages:pages,trackers:trackers,settings:settings,roles:roles,importlogs:importlogs,trees:trees,treenodecounts:treenodecounts,endpoints:endpoints,schedulers:schedulers,filesize:filesize,filecount:filecount,fileunsized:fileunsized]
   }
 
   def create() {
@@ -643,7 +646,8 @@ class PortalModuleController {
           difftext = generateimportdiff(module, file_on, staff_on, tree_on, menu_on)
       } catch(Exception e) {
           println "Error generating import diff: " + e
-          flash.message = "Error generating import diff: " + e.message
+          PortalErrorLog.record(params,curuser,controllerName,actionName,e,null,module.name)
+          flash.message = "Error generating import diff: " + (e.message ?: e.getClass().simpleName) + " (details in the error log)"
           redirect action:"show", method:"GET", id:id
           return
       }
@@ -655,6 +659,7 @@ class PortalModuleController {
           settings = module.previewsettings()
       } catch(Exception e) {
           println "Error building settings preview: " + e
+          PortalErrorLog.record(params,curuser,controllerName,actionName,e,null,module.name)
           flash.message = "Could not read settinglist.json: ${e.message}"
       }
       // Schedules get the same treatment for the same reason: an hour moved to spread load or
@@ -664,6 +669,7 @@ class PortalModuleController {
           schedulers = module.previewschedulers()
       } catch(Exception e) {
           println "Error building schedulers preview: " + e
+          PortalErrorLog.record(params,curuser,controllerName,actionName,e,null,module.name)
           flash.message = "Could not read schedulerlist.json: ${e.message}"
       }
       respond module, view:'importpreview', model:[curuser:curuser, diff:difftext,

@@ -129,10 +129,12 @@ class UserController {
         def dparam = [max:params.max?:10]
         if(params.q) {
             def query = '%' + params.q?.trim().replace(' ','%') + '%'
-            usersdata = userService.list_query(query,dparam)
+            // Pickers only offer active accounts - an inactive one can no longer log in to act
+            // on whatever it would be assigned.
+            usersdata = userService.list_query(true,query,dparam)
         }
         else {
-            usersdata = userService.list(dparam)
+            usersdata = userService.listByIsActive(true,dparam)
         }
         def ul = []
         if(params.id) {
@@ -157,6 +159,9 @@ class UserController {
         def thelist = null
         def userCount = null
         def rolelist = PortalTreeNodeUser.executeQuery("select distinct role from PortalTreeNodeUser where role is not null and role not like 'roleadmin%'").sort()
+        // 'all' means no isActive filtering at all; '0' means inactive-only;
+        // absent or '1' defaults to active-only.
+        def activeFilter = params.is_active=='0' ? false : true
         if(params.q) {
             def query = '%' + params.q?.trim().replace(' ','%') + '%'
             if(params.is_active && params.is_active=='all'){
@@ -171,12 +176,12 @@ class UserController {
             }
             else {
                 if(params.rolefilter && params.rolefilter!='All') {
-                    thelist = userService.list(params.rolefilter,true,query,dparam)
-                    userCount = userService.count(params.rolefilter,true,query)
+                    thelist = userService.list(params.rolefilter,activeFilter,query,dparam)
+                    userCount = userService.count(params.rolefilter,activeFilter,query)
                 }
                 else {
-                    thelist = userService.list(true,query,dparam)
-                    userCount = userService.count(true,query)
+                    thelist = userService.list(activeFilter,query,dparam)
+                    userCount = userService.count(activeFilter,query)
                 }
             }
             respond thelist, model:[curuser:curuser, userCount: userCount, params:params, rolelist:rolelist]
@@ -194,12 +199,12 @@ class UserController {
             }
             else {
                 if(params.rolefilter && params.rolefilter!='All') {
-                    thelist = userService.listByIsActiveAndRole(true,params.rolefilter,dparam)
-                    userCount = userService.countByIsActiveAndRole(true,params.rolefilter)
+                    thelist = userService.listByIsActiveAndRole(activeFilter,params.rolefilter,dparam)
+                    userCount = userService.countByIsActiveAndRole(activeFilter,params.rolefilter)
                 }
                 else {
-                    thelist = userService.listByIsActive(true,dparam)
-                    userCount = userService.countByIsActive(true)
+                    thelist = userService.listByIsActive(activeFilter,dparam)
+                    userCount = userService.countByIsActive(activeFilter)
                 }
             }
             respond thelist, model:[curuser:curuser, userCount: userCount, params:params, rolelist:rolelist]
@@ -566,6 +571,10 @@ class UserController {
                     user = pa.boss
                 }
 	    */
+                if(!user.claimSession(session.id)){
+                    flash.message = "This account is already logged in from another browser or device."
+                    return redirect(action:"login")
+                }
                 session['userid']=user.id
                 session['realuserid']=user.id
                 session['curuser']=user
@@ -629,17 +638,23 @@ class UserController {
             session['rolestext']=[]
             session['role']=[]
             session['roletargetid']=[]
-            def firstone = true
             if(troles){
                 troles.each {
                     session['role'] << it.role
                     session['roletargetid'] << it.id
                     session['rolestext'] << it
-                    if(firstone && !user.isAdmin){
-                        user.role = it.role
-                        user.roletargetid = it.id
-                        firstone = false
-                    }
+                }
+                if(!user.isAdmin){
+                    // Prefer the role the user was last using (persisted via
+                    // changerole, or from a previous login) if it's still
+                    // valid, instead of always resetting to treeroles()'s
+                    // first entry (an arbitrary node-id ordering that ignores
+                    // what the user actually had active).
+                    def existing = troles.find { it.id == user.roletargetid }
+                    def chosen = existing ?: troles[0]
+                    user.role = chosen.role
+                    user.roletargetid = chosen.id
+                    user.save()
                 }
                 return true
             }
@@ -733,9 +748,6 @@ class UserController {
             redirect(controller:"user",action:"login")
             return false
         }
-        // Captured before the branch below overwrites it: an account that has never had a
-        // password must not become locally loggable just because someone typed one here.
-        def had_password = user.password ? true : false
         def disable_lanid = config.server.disable_lanid
         // Claiming a password on first login only makes sense where local passwords are the
         // way in at all. With server.disable_lanid off, Active Directory is authoritative, and
@@ -745,123 +757,21 @@ class UserController {
             user.hashPassword(params.password)
             userService.save(user)
         } 
-        def loggedin = false
-        def adenabled = PortalSetting.namedefault("adenable",0)
-        // Explain up front whether AD will even be tried, and why not, since a silent skip
-        // here is the single most common reason "AD login doesn't work" reports turn out to
-        // be nothing to do with AD at all - disable_lanid true means it is never attempted.
-        if(disable_lanid) {
-            println "AD login for " + user.userID + ": skipped - server.disable_lanid is true, local password only"
-        }
-        else if(!user.lanid) {
-            println "AD login for " + user.userID + ": skipped - no lanid on record (use Update LAN ID first)"
-        }
-        else if(!adenabled) {
-            println "AD login for " + user.userID + ": skipped - the adenable setting is off"
-        }
-        if(!disable_lanid && !loggedin && user.lanid && adenabled){
-            println "AD login for " + user.userID + " (lanid " + user.lanid + "): attempting primary domain"
-            def connection = null
-            try{
-                def adserver = PortalSetting.namedefault("adserver","defaultadserver")
-                def adport = PortalSetting.namedefault("adport",636)
-                def adsecure = PortalSetting.namedefault("adsecure",true)
-                def addn = PortalSetting.namedefault("addn","defaultdn")
-                def topdn = PortalSetting.namedefault("topdn","defaulttopdn")
-                println "AD login (primary): connecting to " + adserver + ":" + adport + " (ssl=" + adsecure + ")"
-                connection = new LdapNetworkConnection(adserver, adport, adsecure)
-                connection.bind(addn, PortalSetting.namedefault("adpassword","defaultpass"))
-                println "AD login (primary): bound as service account " + addn
-                def usersearch = "(sAMAccountName=" + user.lanid + ")"
-                println "AD login (primary): searching base " + topdn + " filter " + usersearch
-                def cursor = connection.search(topdn,usersearch,SearchScope.SUBTREE,"*")
-                def found = false
-                while(cursor.next() && !loggedin){
-                    found = true
-                    def entry = cursor.get()
-                    println "AD login (primary): found entry " + entry.dn + ", attempting user bind"
-                    try{
-                        connection.bind(entry.dn,params.password)
-                        loggedin = true
-                        println "AD login (primary): succeeded for " + user.lanid
-                    }
-                    catch(Exception exp){
-                        println "AD login (primary): user bind failed for " + user.lanid + " - " + exp.class.simpleName + ": " + exp.message
-                    }
-                }
-                if(!found) {
-                    println "AD login (primary): no entry found for filter " + usersearch
-                }
-            }
-            catch(Exception exp){
-                println "AD login (primary): error connecting/searching - " + exp.class.name + ": " + exp.message
-                exp.printStackTrace()
-                PortalErrorLog.record(params,user,"user","authenticate","Error connecting to ldap server :" + PortalErrorLog.describe(exp))
-            }
-            finally {
-                if(connection) {
-                    try { connection.close() } catch(Exception ce) { println "AD login (primary): error closing connection - " + ce.message }
-                }
-            }
-            if(!loggedin){
-                println "AD login for " + user.userID + " (lanid " + user.lanid + "): primary did not succeed, attempting secondary domain"
-                def connection2 = null
-                try{
-                    def adserver2 = PortalSetting.namedefault("adserver2","defaultserver2")
-                    def adport2 = PortalSetting.namedefault("adport2",636)
-                    def adsecure2 = PortalSetting.namedefault("adsecure2",true)
-                    def addn2 = PortalSetting.namedefault("addn2","defaultad2")
-                    def topdn2 = PortalSetting.namedefault("topdn2","defaulttopdn2")
-                    println "AD login (secondary): connecting to " + adserver2 + ":" + adport2 + " (ssl=" + adsecure2 + ")"
-                    connection2 = new LdapNetworkConnection(adserver2, adport2, adsecure2)
-                    connection2.bind(addn2, PortalSetting.namedefault("adpassword2",'defaultpass2'))
-                    println "AD login (secondary): bound as service account " + addn2
-                    def usersearch2 = "(sAMAccountName=" + user.lanid + ")"
-                    println "AD login (secondary): searching base " + topdn2 + " filter " + usersearch2
-                    def cursor2 = connection2.search(topdn2,usersearch2,SearchScope.SUBTREE,"*")
-                    def found2 = false
-                    while(cursor2.next() && !loggedin){
-                        found2 = true
-                        def entry = cursor2.get()
-                        println "AD login (secondary): found entry " + entry.dn + ", attempting user bind"
-                        try{
-                            connection2.bind(entry.dn,params.password)
-                            loggedin = true
-                            println "AD login (secondary): succeeded for " + user.lanid
-                        }
-                        catch(Exception exp){
-                            println "AD login (secondary): user bind failed for " + user.lanid + " - " + exp.class.simpleName + ": " + exp.message
-                        }
-                    }
-                    if(!found2) {
-                        println "AD login (secondary): no entry found for filter " + usersearch2
-                    }
-                }
-                catch(Exception exp){
-                    println "AD login (secondary): error connecting/searching - " + exp.class.name + ": " + exp.message
-                    exp.printStackTrace()
-                    PortalErrorLog.record(params,user,"user","authenticate","Error connecting to ldap server:" + PortalErrorLog.describe(exp))
-                }
-                finally {
-                    if(connection2) {
-                        try { connection2.close() } catch(Exception ce) { println "AD login (secondary): error closing connection - " + ce.message }
-                    }
-                }
-            }
-        }
-        println "AD login for " + user.userID + ": " + (loggedin ? "succeeded via Active Directory" : "did not succeed via Active Directory, falling back to local password check")
-        // An account with no LAN ID has nothing to authenticate against Active Directory
-        // with, so its own password is the only credential it has: checking it must not depend
-        // on server.disable_lanid, or an instance where that key is unset cannot be logged into
-        // at all - including the administrator /setup has just created. Deliberately narrow:
-        // only accounts that ALREADY had a stored password qualify, so the legacy "empty
-        // password is claimed on first login" path stays behind disable_lanid and an account
-        // that never set one still cannot be claimed through here.
-        def localpassword = disable_lanid || (!user.lanid && had_password)
-        if(loggedin || (localpassword && (!(user.lanid && PortalSetting.namedefault("enforce_lanid",0)) || !PortalSetting.namedefault("enforce_lanid",0)) && user.verifyPassword(params.password))){
+        // Active Directory first, then the local password - shared with PortalEndpoint
+        // Basic auth, so whatever logs someone in here also lets their hg/git client in.
+        if(Credentials.check(user, params.password)){
             if(session.logintry){
                 session.removeAttribute('logintry')
                 session.removeAttribute('previd')
+            }
+            // Takes the single-session lock (only when server.enforce_single_session is on).
+            // A fresh login always wins, so this refuses nothing today; the branch is kept
+            // for the day a refusal is wanted back.
+            if(!user.claimSession(session.id)){
+                UserLog.record(user, 'concurrent_login_blocked', 'Login blocked - account already active on another session', null)
+                flash.message = "This account is already logged in from another browser or device."
+                redirect(controller:"user",action:"login")
+                return false
             }
             giverole(user.userID)
             def now = new Date()            

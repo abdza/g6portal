@@ -131,7 +131,9 @@ class FileLinkController {
         def dparam = [max:params.max?:10,offset:params.offset?:0]
         params.max = dparam.max
         if(params.q || (params.module && params.module!='All')) {
-            def query = '%' + params.q + '%'
+            // Guard against a null q: this branch is also reached with only a module
+            // filter, and '%' + null + '%' yields the literal '%null%', matching nothing.
+            def query = '%' + (params.q ?: '') + '%'
             if(params.module && params.module!='All') {
                 def thelist = fileLinkService.list(query,params.module,dparam)
                 respond thelist, model:[fileLinkCount: fileLinkService.count(query,params.module), params:params]
@@ -438,6 +440,13 @@ class FileLinkController {
                         def bis = new java.io.BufferedInputStream(thefile.newInputStream())
                         def guessed = URLConnection.guessContentTypeFromStream(bis)
                         bis.close()
+                        // The stream probe only recognises a handful of formats — BMP, for
+                        // one, comes back null — which would force an otherwise displayable
+                        // image to download as an attachment and skip thumbnail resizing.
+                        // Fall back to the filename before giving up.
+                        if (!guessed) {
+                            guessed = URLConnection.guessContentTypeFromName(thefile.getName())
+                        }
                         mimeType = guessed ?: "application/octet-stream"
                         if (mimeType == "application/octet-stream") { isAttachment = true }
                     }

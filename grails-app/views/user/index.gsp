@@ -17,6 +17,7 @@
   td:nth-of-type(6):before { content: "Roletargetid"; }
   td:nth-of-type(7):before { content: "Lastlogin"; }
     }
+    tr.inactive-user td { background-color: #f8d7da; color: #58151c; }
         </style>
     </head>
     <body>
@@ -56,7 +57,7 @@
                         <div class='fieldcontain' id='isactivediv'>
                         <label>Is Active:</label><select name='is_active' id='is_active'>
                         <option value='all' <g:if test="${params.is_active=='all'}">selected</g:if> >All</option>
-                        <option value='1' <g:if test="${params.is_active=='1'}">selected</g:if> >True</option>
+                        <option value='1' <g:if test="${!params.is_active || params.is_active=='1'}">selected</g:if> >True</option>
                         <option value='0' <g:if test="${params.is_active=='0'}">selected</g:if> >False</option>
                         </select>
                         </div>
@@ -65,7 +66,26 @@
                         </div>
 			</fieldset>
 		    </g:form>
-                    <f:table collection="${userList}" properties="['userID','name','email','role']"/>
+                    <table class="responsive">
+                        <thead>
+                            <tr>
+                                <g:sortableColumn property="userID" title="User ID"/>
+                                <g:sortableColumn property="name" title="Name"/>
+                                <g:sortableColumn property="email" title="Email"/>
+                                <g:sortableColumn property="role" title="Role"/>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <g:each in="${userList}" var="bean" status="i">
+                                <tr class="${(i % 2) == 0 ? 'even' : 'odd'} ${bean.isActive ? '' : 'inactive-user'}">
+                                    <td><g:link method="GET" resource="${bean}"><f:display bean="${bean}" property="userID" displayStyle="table"/></g:link>&nbsp;</td>
+                                    <td><f:display bean="${bean}" property="name" displayStyle="table"/>&nbsp;</td>
+                                    <td><f:display bean="${bean}" property="email" displayStyle="table"/>&nbsp;</td>
+                                    <td><f:display bean="${bean}" property="role" displayStyle="table"/>&nbsp;</td>
+                                </tr>
+                            </g:each>
+                        </tbody>
+                    </table>
 
                     <g:if test="${userCount > params.int('max')}">
                     <div class="pagination">

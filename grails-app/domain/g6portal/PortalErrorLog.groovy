@@ -163,10 +163,21 @@ class PortalErrorLog {
             errorlog.date = new Date()
             errorlog.user = curuser
             errorlog.errormsg = errormsg
-            GrailsWebRequest webUtils = WebUtils.retrieveGrailsWebRequest()
-            def request = webUtils.getCurrentRequest()
-            errorlog.ipaddr = request.getRemoteAddr()
-            errorlog.uri = request.forwardURI
+            // No request behind a background thread (data dump, async XLSX pages, scheduler).
+            // retrieveGrailsWebRequest() throws there, and the throw landed in capture()'s
+            // last-resort catch - so every failure on those threads went to stdout only and
+            // never reached this table. Record without the request details instead.
+            try {
+                GrailsWebRequest webUtils = WebUtils.retrieveGrailsWebRequest()
+                def request = webUtils?.getCurrentRequest()
+                if(request) {
+                    errorlog.ipaddr = request.getRemoteAddr()
+                    errorlog.uri = request.forwardURI
+                }
+            }
+            catch(Throwable noRequest) {
+                errorlog.uri = '(background: ' + Thread.currentThread().name + ')'
+            }
             println "Errormsg:" + errormsg
             try {
                 errorlog.save(flush:true)

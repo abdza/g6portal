@@ -32,12 +32,25 @@
                     <g:form useToken="true" action="my_profile_save" resource="${this.user}" method="PUT">
                         <g:hiddenField name="version" value="${this.user?.version}" />
                         <fieldset class="form">
-                            <f:all except='profile_id,role,roletargetid,lastlogin,nodes,profilepic,lastUpdated,lastInfoUpdate,lastReminder,password,resetexception,secretquestion,secretanswer,date_joined,lanid,treesdate,lanidexception,isActive,isAdmin,resetPassword,password5' bean="user"/>
+                            <f:all except='profile_id,role,roletargetid,lastlogin,nodes,profilepic,lastUpdated,lastInfoUpdate,lastReminder,password,resetexception,secretquestion,secretanswer,date_joined,lanid,treesdate,lanidexception,isActive,isAdmin,resetPassword,password5,activeSessionId,activeSessionUpdated' bean="user"/>
                         </fieldset>
                         <fieldset class="buttons">
                             <input class="save" type="submit" value="${message(code: 'default.button.update.label', default: 'Update')}" />
                         </fieldset>
                     </g:form>
+                    <g:if test="${this.user.moduleroles()}">
+                    <h3>My Module Roles</h3>
+                    <p>These module roles apply automatically at all times and don't require switching, so they won't show up next to your name above.</p>
+                    <table class='table'>
+                    <tr><th>Module</th><th>Role</th></tr>
+                    <g:each in="${this.user.moduleroles()}" var="mrole">
+                        <tr>
+                            <td>${mrole.module}</td>
+                            <td><g:link controller='userRole' action='show' params="[id:mrole.id]">${mrole.role}</g:link></td>
+                        </tr>
+                    </g:each>
+                    </table>
+                    </g:if>
                 </div>
             </section>
         </div>

@@ -33,6 +33,8 @@
     B.orderDirty = false;
     B.lists = null;        // working copy of the tracker-wide field lists
     B.colsExpanded = false;
+    B.expandedGroups = {};   // group name -> true while its members are shown
+    B.memberEdit = null;     // {name, id, members:[...]} while the member editor is open
 
     // Tracker-level lists, in the order their columns appear in the field table.
     var LISTS = ['listfields', 'hiddenlistfields', 'excelfields', 'searchfields', 'filterfields'];
@@ -245,6 +247,7 @@
         return {
             type: 'transition', id: t.id, name: t.name, display_name: t.display_name || '',
             same_status: !!t.same_status, next_status_id: t.next_status_id || '',
+            postprocess_id: t.postprocess_id || '',
             prev_status_ids: t.prev_status_ids.slice(),
             view: t.displayfields.slice(), edit: t.editfields.slice(),
             roles: t.role_ids.slice()
@@ -291,28 +294,152 @@
 
     // ------------------------------------------------------------- rendering
 
+    // ------------------------------------------------------- field groups
+    //
+    // Membership is held on the GROUP (its `members` list, from field_options); a member
+    // knows nothing about its groups. So "which groups is this field in?" is an inverted
+    // index built here, and a field appearing in two groups needs no special case - it is
+    // simply named by both.
+
+    function fieldsByName() {
+        var m = {};
+        B.model.fields.forEach(function (f) { m[f.name] = f; });
+        return m;
+    }
+
+    function membersOf(name) {
+        var f = fieldsByName()[name];
+        return (f && f.field_type === 'FieldGroup' && f.members) ? f.members : [];
+    }
+
+    /** name -> [group names naming it]. Rebuilt per render; the model is small. */
+    function groupIndex() {
+        var idx = {};
+        B.model.fields.forEach(function (g) {
+            if (g.field_type !== 'FieldGroup' || !g.members) { return; }
+            g.members.forEach(function (m) {
+                (idx[m] = idx[m] || []).push(g.name);
+            });
+        });
+        return idx;
+    }
+
+    /**
+     * Every field a selection actually renders, following groups into their members.
+     * Putting a group in displayfields/editfields makes TrackerTagLib render the whole
+     * fieldset, so the members are covered without ever being listed themselves - that
+     * is the coverage this returns, and what the greyed marks in the table show.
+     *
+     * `seen` also guards traversal: a group cycle would otherwise loop forever here even
+     * though the server refuses to create one.
+     */
+    function expandNames(names) {
+        var out = {}, seen = {}, stack = (names || []).slice();
+        while (stack.length) {
+            var n = stack.shift();
+            if (seen[n]) { continue; }
+            seen[n] = true;
+            out[n] = true;
+            membersOf(n).forEach(function (m) { stack.push(m); });
+        }
+        return out;
+    }
+
+    /** Nested preview rows under an expanded group. Read-only: the group's tick governs them. */
+    function renderSubRows(groupName, depth, impliedView, impliedEdit, trail, seen) {
+        var byName = fieldsByName();
+        var cols = LISTS.map(function () { return '<span class="tb-check tb-xtra"></span>'; }).join('');
+        var html = '';
+        var mems = membersOf(groupName);
+        mems.forEach(function (mname, i) {
+            var f = byName[mname];
+            var last = (i === mems.length - 1);
+            var branch = trail + (last ? '\u2514 ' : '\u251c ');
+            if (!f) {
+                html += '<div class="tb-subrow">' +
+                        '<span></span>' +
+                        '<span class="tb-name"><span class="tb-tree">' + branch + '</span>' + esc(mname) + '</span>' +
+                        '<span class="tb-label" style="color:#c62828">no such field on this tracker</span>' +
+                        '<span class="tb-type"></span><span class="tb-check"></span><span class="tb-check"></span>' +
+                        cols + '</div>';
+                return;
+            }
+            var isGroup = (f.field_type === 'FieldGroup');
+            // A cycle cannot be created through the builder, but one already in the data
+            // would hang the browser, so stop at the second visit and say so.
+            var looped = isGroup && seen[mname];
+            html += '<div class="tb-subrow">' +
+                    '<span></span>' +
+                    '<span class="tb-name"><span class="tb-tree">' + branch + '</span>' + esc(mname) + '</span>' +
+                    '<span class="tb-label">' + esc(f.label || '') + '</span>' +
+                    '<span class="tb-type">' + (isGroup ? 'group' : esc(f.field_type)) +
+                        (looped ? ' <span style="color:#c62828">(cycle)</span>' : '') + '</span>' +
+                    '<span class="tb-check">' + (impliedView[mname] ? '<span class="tb-dot" title="rendered because its group is ticked">&middot;</span>' : '') + '</span>' +
+                    '<span class="tb-check">' + (impliedEdit[mname] ? '<span class="tb-dot" title="editable because its group is ticked">&middot;</span>' : '') + '</span>' +
+                    cols + '</div>';
+            if (isGroup && !looped) {
+                var nseen = Object.assign({}, seen);
+                nseen[mname] = true;
+                html += renderSubRows(mname, depth + 1, impliedView, impliedEdit, trail + (last ? '\u00a0\u00a0 ' : '\u2502\u00a0 '), nseen);
+            }
+        });
+        return html;
+    }
+
     function renderFieldRows() {
         if (!B.model.fields.length) {
             return '<div class="tb-empty">This tracker has no fields yet. Use <strong>Add Fields</strong> above.</div>';
         }
-        var byName = {};
-        B.model.fields.forEach(function (f) { byName[f.name] = f; });
+        var byName = fieldsByName();
         var active = !!B.work;
+        var index = groupIndex();
+        // What the selection really renders once groups are followed into their members.
+        var impliedView = active ? expandNames(B.work.view) : {};
+        var impliedEdit = active ? expandNames(B.work.edit) : {};
 
         return B.order.map(function (name) {
             var f = byName[name];
             if (!f) { return ''; }
+            var isGroup = (f.field_type === 'FieldGroup');
             var viewOn = active && B.work.view.indexOf(name) >= 0;
             var editOn = active && B.work.edit.indexOf(name) >= 0;
-            return '<div class="tb-row" data-field="' + esc(name) + '">' +
+            // Covered through a group rather than ticked in its own right. The field keeps
+            // its own checkbox - listing it directly as well is legal and renders it
+            // outside the fieldset - so this only tints the row.
+            var viaView = !viewOn && !!impliedView[name];
+            var viaEdit = !editOn && !!impliedEdit[name];
+            var owners = index[name] || [];
+
+            var badge = '';
+            if (owners.length) {
+                var on = owners.some(function (g) { return impliedView[g] || impliedEdit[g]; });
+                badge = '<span class="tb-gbadge' + (on ? ' tb-gon' : '') + '" title="' +
+                        (on ? 'Included because ' + esc(owners.join(', ')) + ' is ticked'
+                            : 'Belongs to ' + esc(owners.join(', '))) + '">in ' +
+                        esc(owners.join(', ')) + '</span>';
+            }
+            // The caret lives in the NAME cell, not the first column: column one is the drag
+            // grip, and a group row has to stay draggable like any other row.
+            var caret = isGroup
+                ? '<span class="tb-caret" data-group="' + esc(name) + '" title="Show what this group contains">' +
+                  (B.expandedGroups[name] ? '\u25bc' : '\u25b6') + '</span> '
+                : '';
+            var groupBtn = isGroup
+                ? ' <button type="button" class="tb-groupbtn" data-editgroup="' + esc(name) + '">edit members</button>'
+                : '';
+
+            var row = '<div class="tb-row' + ((viaView || viaEdit) ? ' tb-implied' : '') + '" data-field="' + esc(name) + '">' +
                    '<span class="tb-grip" title="Drag to reorder">&#8942;&#8942;</span>' +
-                   '<span class="tb-name">' + esc(name) + '</span>' +
-                   '<span class="tb-label">' + esc(f.label || '') + '</span>' +
-                   '<span class="tb-type">' + esc(f.field_type) + '</span>' +
+                   '<span class="tb-name">' + caret + esc(name) + badge + '</span>' +
+                   '<span class="tb-label">' + esc(f.label || '') +
+                       (isGroup ? ' <span class="tb-type">(' + membersOf(name).length + ')</span>' : '') + '</span>' +
+                   '<span class="tb-type">' + esc(f.field_type) + groupBtn + '</span>' +
                    '<span class="tb-check"><input type="checkbox" class="tb-view" data-field="' + esc(name) + '"' +
-                       (viewOn ? ' checked' : '') + (active ? '' : ' disabled') + '></span>' +
+                       (viewOn ? ' checked' : '') + (active ? '' : ' disabled') + '>' +
+                       (viaView ? '<span class="tb-dot" title="already shown via its group">&middot;</span>' : '') + '</span>' +
                    '<span class="tb-check"><input type="checkbox" class="tb-edit" data-field="' + esc(name) + '"' +
-                       (editOn ? ' checked' : '') + (active ? '' : ' disabled') + '></span>' +
+                       (editOn ? ' checked' : '') + (active ? '' : ' disabled') + '>' +
+                       (viaEdit ? '<span class="tb-dot" title="already editable via its group">&middot;</span>' : '') + '</span>' +
                    // Tracker-wide, so these stay enabled even with nothing selected.
                    LISTS.map(function (key) {
                        var on = B.lists && B.lists[key].indexOf(name) >= 0;
@@ -321,7 +448,167 @@
                               (on ? ' checked' : '') + '></span>';
                    }).join('') +
                    '</div>';
+
+            // Sub-rows sit outside the .tb-row so the sorter neither drags them nor reads
+            // them back as field-order entries.
+            if (isGroup && B.expandedGroups[name]) {
+                var seen = {}; seen[name] = true;
+                row += renderSubRows(name, 1, impliedView, impliedEdit, '\u00a0\u00a0 ', seen);
+            }
+            return row;
         }).join('');
+    }
+
+    // --------------------------------------------------- inferring an order
+    //
+    // Every status and transition stores its fields as an ORDERED csv, so the forms
+    // themselves are dozens of partial opinions about what order the fields go in. This
+    // aggregates them into one.
+    //
+    // It is a proposal, not a rule: the result is loaded into the table as an unsaved
+    // order for review, and only the existing Save writes it. orderedFields() on the
+    // server stays cheap and deterministic.
+    //
+    // Note this is worth running exactly once per tracker - saving an order renormalises
+    // every csv into it, after which the lists all agree and re-inferring just echoes the
+    // current order back.
+
+    /** One csv, with groups expanded in place so members sit right after their group. */
+    function votingList(csv) {
+        var out = [], seen = {};
+        var byName = fieldsByName();
+        var walk = function (names, depth) {
+            (names || []).forEach(function (n) {
+                if (!byName[n] || seen[n]) { return; }
+                seen[n] = true;
+                out.push(n);
+                // Depth guard: TrackerTagLib itself only recurses three levels, and a
+                // cycle in the data would otherwise spin here.
+                if (byName[n].field_type === 'FieldGroup' && depth < 4) {
+                    walk(membersOf(n), depth + 1);
+                }
+            });
+        };
+        walk(csv, 0);
+        return out;
+    }
+
+    /**
+     * Consensus order across every form, by Copeland score: a field's score is the number
+     * of fields it usually precedes minus the number that usually precede it. Pairs that
+     * never share a form contribute nothing, so disjoint sets of fields do not fight, and
+     * a genuine disagreement is settled by the majority rather than by whichever form was
+     * read last. Cycles (a<b<c<a) cannot deadlock it the way a topological sort would.
+     */
+    B.inferOrder = function () {
+        var lists = [];
+        (B.model.statuses || []).forEach(function (s) {
+            lists.push(votingList(s.displayfields));
+            lists.push(votingList(s.editfields));
+        });
+        (B.model.transitions || []).forEach(function (t) {
+            lists.push(votingList(t.displayfields));
+            lists.push(votingList(t.editfields));
+        });
+        lists = lists.filter(function (l) { return l.length > 1; });
+
+        if (!lists.length) {
+            notify('No status or transition lists any fields yet - nothing to infer an order from.', 'warn');
+            return;
+        }
+
+        var before = {}, appears = {};
+        lists.forEach(function (l) {
+            l.forEach(function (n) { appears[n] = (appears[n] || 0) + 1; });
+            for (var i = 0; i < l.length; i++) {
+                for (var j = i + 1; j < l.length; j++) {
+                    var k = l[i] + '\u0000' + l[j];
+                    before[k] = (before[k] || 0) + 1;
+                }
+            }
+        });
+
+        var known = Object.keys(appears);
+        var score = {};
+        known.forEach(function (a) {
+            var sc = 0;
+            known.forEach(function (b) {
+                if (a === b) { return; }
+                var ab = before[a + '\u0000' + b] || 0;
+                var ba = before[b + '\u0000' + a] || 0;
+                if (ab > ba) { sc++; } else if (ba > ab) { sc--; }
+            });
+            score[a] = sc;
+        });
+
+        var pos = {};
+        B.order.forEach(function (n, i) { pos[n] = i; });
+        var ranked = known.slice().sort(function (a, b) {
+            if (score[b] !== score[a]) { return score[b] - score[a]; }
+            // A field on more forms is the more established one; then keep what we have,
+            // so the suggestion is stable and re-running it changes nothing.
+            if (appears[b] !== appears[a]) { return appears[b] - appears[a]; }
+            return pos[a] - pos[b];
+        });
+
+        // Fields no form mentions keep their current relative order and go last - there is
+        // no evidence about them, so inventing a position would be noise.
+        var seen = {};
+        ranked.forEach(function (n) { seen[n] = true; });
+        var rest = B.order.filter(function (n) { return !seen[n]; });
+
+        var next = ranked.concat(rest);
+        var changed = next.some(function (n, i) { return B.order[i] !== n; });
+        B.order = next;
+        B.orderDirty = changed;
+        B.renderPanel();
+        notify(changed
+            ? 'Order suggested from ' + lists.length + ' form list(s): ' + ranked.length +
+              ' field(s) placed by consensus, ' + rest.length + ' left in place at the end. ' +
+              'Review it, drag anything that looks wrong, then Save.'
+            : 'The forms already agree with the current order - nothing to change.', 'info');
+    };
+
+    /** The inline member editor for one group. */
+    function renderMemberEditor() {
+        var box = el('tb-groupbox');
+        if (!box) { return; }
+        if (!B.memberEdit) { box.style.display = 'none'; box.innerHTML = ''; return; }
+        var g = B.memberEdit;
+        var byName = fieldsByName();
+
+        // Anything that would put the group inside itself, directly or through a nested
+        // group, cannot be offered. The server refuses these too.
+        var forbidden = {};
+        forbidden[g.name] = true;
+        B.model.fields.forEach(function (f) {
+            if (f.field_type !== 'FieldGroup' || f.name === g.name) { return; }
+            if (expandNames([f.name])[g.name]) { forbidden[f.name] = true; }
+        });
+
+        var rows = B.order.map(function (name) {
+            var f = byName[name];
+            if (!f || name === g.name) { return ''; }
+            var checked = g.members.indexOf(name) >= 0;
+            var bad = !!forbidden[name];
+            var others = (groupIndex()[name] || []).filter(function (x) { return x !== g.name; });
+            return '<label class="' + (bad ? 'tb-mdis' : '') + '">' +
+                   '<input type="checkbox" class="tb-member" data-field="' + esc(name) + '"' +
+                   (checked ? ' checked' : '') + (bad ? ' disabled' : '') + '> ' +
+                   esc(name) + ' <span class="tb-mtype">' + esc(f.field_type) +
+                   (others.length ? ' &middot; also in ' + esc(others.join(', ')) : '') +
+                   (bad ? ' &middot; would nest this group inside itself' : '') +
+                   '</span></label>';
+        }).join('');
+
+        box.style.display = '';
+        box.innerHTML = '<strong>Members of ' + esc(g.name) + '</strong>' +
+            '<div class="tb-hint">Ticking this group on a status or transition renders every field below, ' +
+            'inside one fieldset. A field may belong to several groups - ticking any of them covers it. ' +
+            'Existing members keep their order (that is the order the fieldset renders in); new ones are appended.</div>' +
+            '<div class="tb-memberbox">' + (rows || '<div class="tb-empty">No other fields.</div>') + '</div>' +
+            '<button type="button" id="tb-group-save">Save members</button> ' +
+            '<button type="button" id="tb-group-cancel">Cancel</button>';
     }
 
     function renderRoleRows() {
@@ -357,6 +644,35 @@
         }).join('');
     }
 
+    /**
+     * Options for a transition's postprocess: a script run after the transition commits.
+     * Runable pages come first under their own heading because that is what a postprocess
+     * is meant to be, but the rest of the module's pages stay selectable - the framework
+     * only evaluates the page's content, and some trackers already point at a page that
+     * was never flagged runable. Labelled by slug, which is the identity the tracker
+     * export writes and the importer resolves.
+     */
+    function renderPostprocessOptions() {
+        var pages = B.model.pages || [];
+        var current = B.work.postprocess_id || '';
+        var opt = function (p) {
+            return '<option value="' + esc(p.id) + '"' + (p.id === current ? ' selected' : '') +
+                   ' title="' + esc(p.title || p.slug) + '">' + esc(p.slug) + '</option>';
+        };
+        var group = function (label, list) {
+            return list.length ? '<optgroup label="' + esc(label) + '">' + list.map(opt).join('') + '</optgroup>' : '';
+        };
+        var html = '<option value=""' + (current ? '' : ' selected') + '>(none)</option>' +
+                   group('Runable pages', pages.filter(function (p) { return p.runable; })) +
+                   group('Other pages',   pages.filter(function (p) { return !p.runable; }));
+        // A page that has since been deleted, or one from another module left over from
+        // before this picker existed, would otherwise silently reset itself to (none).
+        if (current && !pages.some(function (p) { return p.id === current; })) {
+            html += '<option value="' + esc(current) + '" selected>(page #' + esc(current) + ', not in this module)</option>';
+        }
+        return html;
+    }
+
     function renderProps() {
         if (!B.work) { return ''; }
         if (B.work.type === 'status') {
@@ -374,6 +690,7 @@
             '<label>Button text <input type="text" id="tb-prop-display" value="' + esc(B.work.display_name) + '"></label>' +
             '<label><input type="checkbox" id="tb-prop-same"' + (B.work.same_status ? ' checked' : '') + '> Stays in same status</label>' +
             '<label class="tb-next' + (B.work.same_status ? ' tb-off' : '') + '">Goes to <select id="tb-prop-next">' + opts + '</select></label>' +
+            '<label>Postprocess <select id="tb-prop-postprocess">' + renderPostprocessOptions() + '</select></label>' +
             '</div>';
     }
 
@@ -426,7 +743,9 @@
         del.textContent = B.confirmingDelete ? 'Really delete?' : 'Delete';
         del.className = B.confirmingDelete ? 'tb-danger tb-armed' : 'tb-danger';
 
+        renderMemberEditor();
         bindPanel();
+        B.applyCollapsed();
         B.attachDragSort();
     };
 
@@ -452,6 +771,37 @@
             cb.onchange = function () { toggleIn(B.work.prev_status_ids, this.dataset.status, this.checked); B.renderPanel(); };
         });
 
+        // Expanding a group is pure display state - it never marks the panel dirty.
+        wrap.querySelectorAll('.tb-caret').forEach(function (c) {
+            c.onmousedown = function (e) { e.stopPropagation(); };
+            c.onclick = function () {
+                var g = this.dataset.group;
+                if (B.expandedGroups[g]) { delete B.expandedGroups[g]; } else { B.expandedGroups[g] = true; }
+                B.renderPanel();
+            };
+        });
+        wrap.querySelectorAll('[data-editgroup]').forEach(function (btn) {
+            btn.onmousedown = function (e) { e.stopPropagation(); };
+            btn.onclick = function () {
+                var name = this.dataset.editgroup;
+                var f = fieldsByName()[name];
+                if (!f) { return; }
+                B.memberEdit = { name: name, id: f.id, members: (f.members || []).slice() };
+                B.expandedGroups[name] = true;
+                B.renderPanel();
+            };
+        });
+        wrap.querySelectorAll('.tb-member').forEach(function (cb) {
+            cb.onchange = function () {
+                if (!B.memberEdit) { return; }
+                toggleIn(B.memberEdit.members, this.dataset.field, this.checked);
+            };
+        });
+        var gsave = el('tb-group-save');
+        if (gsave) { gsave.onclick = function () { B.saveGroup(); }; }
+        var gcancel = el('tb-group-cancel');
+        if (gcancel) { gcancel.onclick = function () { B.memberEdit = null; B.renderPanel(); }; }
+
         var name = el('tb-prop-name');
         if (name) { name.oninput = function () { B.work.name = this.value; markDirtyOnly(); }; }
         var disp = el('tb-prop-display');
@@ -464,6 +814,10 @@
         if (same) { same.onchange = function () { B.work.same_status = this.checked; B.renderPanel(); }; }
         var next = el('tb-prop-next');
         if (next) { next.onchange = function () { B.work.next_status_id = this.value; B.renderPanel(); }; }
+        // Not named `post`: that is the module-level AJAX helper, and shadowing it here
+        // would be a live grenade for anything later added to this function.
+        var ppSel = el('tb-prop-postprocess');
+        if (ppSel) { ppSel.onchange = function () { B.work.postprocess_id = this.value; B.renderPanel(); }; }
     }
 
     // Text inputs re-render on every keystroke otherwise, which steals the caret.
@@ -478,6 +832,50 @@
         if (on && i < 0) { list.push(value); }
         if (!on && i >= 0) { list.splice(i, 1); }
     }
+
+    // ---------------------------------------------------- side-panel collapsing
+    //
+    // Fields, Roles and Comes-from share one flex row. Roles and Comes-from are short and
+    // narrow; Fields carries long names, labels, group badges and six-plus checkbox
+    // columns, so it is the one that runs out of room. Collapsing either neighbour hands
+    // the space back to it.
+    //
+    // The choice is remembered per browser: re-collapsing on every page load would make
+    // the option more annoying than the problem. It is a display preference only - never
+    // part of the model, and it never marks the panel dirty.
+    var COLLAPSE_KEY = 'g5.builder.collapsed';
+
+    function readCollapsed() {
+        try { return JSON.parse(localStorage.getItem(COLLAPSE_KEY)) || {}; }
+        catch (e) { return {}; }   // private windows and blocked site data both throw
+    }
+
+    function writeCollapsed(state) {
+        try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(state)); } catch (e) { }
+    }
+
+    B.applyCollapsed = function () {
+        var state = readCollapsed();
+        document.querySelectorAll('.tb-sidetoggle').forEach(function (btn) {
+            var panel = el(btn.dataset.panel);
+            if (!panel) { return; }
+            var on = !!state[btn.dataset.panel];
+            panel.classList.toggle('tb-collapsed', on);
+            btn.textContent = on ? 'show' : 'hide';
+        });
+    };
+
+    B.bindCollapse = function () {
+        document.querySelectorAll('.tb-sidetoggle').forEach(function (btn) {
+            btn.onclick = function () {
+                var state = readCollapsed();
+                var key = this.dataset.panel;
+                if (state[key]) { delete state[key]; } else { state[key] = true; }
+                writeCollapsed(state);
+                B.applyCollapsed();
+            };
+        });
+    };
 
     B.attachDragSort = function () {
         var rows = el('builder-field-rows');
@@ -532,6 +930,7 @@
                     tracker_id: B.cfg.trackerId, id: w.id, name: w.name,
                     display_name: w.display_name, same_status: w.same_status,
                     next_status_id: w.next_status_id, prev_status_ids: w.prev_status_ids,
+                    postprocess_id: w.postprocess_id,
                     role_ids: w.roles, view_fields: w.view, edit_fields: w.edit
                 });
             });
@@ -541,6 +940,25 @@
             if (!res) { notify('Nothing to save.', 'info'); return; }
             B.redraw(res.model, B.sel);
             notify('Saved.', 'ok');
+        }).catch(function (err) {
+            notify(err.message, 'error');
+        });
+    };
+
+    /**
+     * Membership saves on its own, not with the panel's Save: it belongs to the field, not
+     * to the selected status or transition, and the server rewrites field_options directly.
+     * The selection is re-applied from the returned model so nothing in the panel is lost.
+     */
+    B.saveGroup = function () {
+        if (!B.memberEdit) { return; }
+        var g = B.memberEdit;
+        post(B.cfg.urls.saveFieldGroup, {
+            tracker_id: B.cfg.trackerId, field_id: g.id, members: g.members
+        }).then(function (res) {
+            B.memberEdit = null;
+            B.redraw(res.model, B.sel);
+            notify('Members of ' + g.name + ' saved.', 'ok');
         }).catch(function (err) {
             notify(err.message, 'error');
         });
@@ -725,6 +1143,10 @@
         B.order = B.model.fields.map(function (f) { return f.name; });
         B.lists = JSON.parse(JSON.stringify(B.model.lists));
 
+        // Bound once: the toggles live in the GSP, not in any re-rendered block.
+        B.bindCollapse();
+        B.applyCollapsed();
+
         network.setOptions({
             manipulation: {
                 enabled: false,
@@ -779,6 +1201,11 @@
             B.colsExpanded = !B.colsExpanded;
             el('builder-fields-table').classList.toggle('tb-expanded', B.colsExpanded);
             this.textContent = B.colsExpanded ? 'hide tracker columns' : 'show tracker columns';
+        };
+
+        el('tb-infer-order').onclick = function () {
+            if (B.isDirty() && !confirm('This replaces the current unsaved order. Continue?')) { return; }
+            B.inferOrder();
         };
         el('tb-toggle-roles').onclick = function () {
             var box = el('tb-addroles-box');

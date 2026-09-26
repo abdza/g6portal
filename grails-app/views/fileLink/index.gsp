@@ -28,6 +28,11 @@
                     <ul>
                         <li><a class="home" href="${createLink(uri: '/')}"><g:message code="default.home.label"/></a></li>
                         <li><g:link class="create" action="create"><g:message code="default.new.label" args="[entityName]" /></g:link></li>
+                        <%-- FileLinkController does not put curuser in the model, so read it
+                             from the session the way the controllers themselves do. --%>
+                        <g:if test='${session.curuser?.isAdmin}'>
+                            <li><g:link class="list" action="jobstatus">File Size Job Status</g:link></li>
+                        </g:if>
                     </ul>
                 </div>
             </section>
@@ -53,7 +58,9 @@
                         </div>
 			</fieldset>
 		    </g:form>
-                    <f:table collection="${fileLinkList}" />
+                    <%-- 'size' is listed explicitly so disk usage is visible when drilling in
+                         from a module's Files section; the rest are f:table's previous defaults. --%>
+                    <f:table collection="${fileLinkList}" properties="name,module,slug,size,filegroup,sortnum,allowedroles,path" />
 
                     <g:if test="${fileLinkCount > params.int('max')}">
                     <div class="pagination">

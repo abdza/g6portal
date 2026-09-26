@@ -121,6 +121,39 @@ class PortalTrackerTransition {
         }
     }
 
+    /**
+     * Resolve the transition a request names (e.g. /proceed/12) to one row.
+     *
+     * A tracker can hold several transitions with the same name that differ by previous
+     * status - g2 identified a transition by name + prev_status, and migrated modules keep
+     * those variants as separate rows (MAPS has two Proceed, three AO Rework, four Reassign).
+     * Picking among them by role alone let the last role-enabled variant win whatever state
+     * the record was in: a Reassign on an AO Assigned application ran the AO Verified variant
+     * and moved the record to AO Verified. Prefer a variant whose prev_status (or a composite
+     * containing it) matches the record, as the action buttons already do; otherwise keep the
+     * old last-enabled behaviour.
+     */
+    static PortalTrackerTransition resolve(tracker, String tname, session, datas) {
+        def enabled = findAllByTrackerAndNameIlike(tracker, tname).findAll { it.testenabled(session, datas) }
+        if(!enabled) {
+            return null
+        }
+        def status = (datas instanceof Map && datas.containsKey('record_status')) ? datas['record_status'] : null
+        if(status) {
+            def matching = enabled.findAll { it.matchesprev(status) }
+            if(matching) {
+                return matching[-1]
+            }
+        }
+        return enabled[-1]
+    }
+
+    def matchesprev(status) {
+        return prev_status?.any { ps ->
+            ps.name == status || (ps.compositeStatuses && status in ps.compositeStatuses.tokenize(',')*.trim())
+        } ?: false
+    }
+
     def testenabled(session,datas){
       if(datas!=null && this.tracker.initial_status==this.next_status && this.prev_status.size()==0) {
           return false

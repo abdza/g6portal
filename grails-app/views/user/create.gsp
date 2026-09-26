@@ -32,7 +32,7 @@
                     </g:hasErrors>
                     <g:form useToken="true" resource="${this.user}" method="POST">
                         <fieldset class="form">
-                            <f:all except='isAdmin,isActive,resetPassword,lanidexception,role,roletargetid,lastlogin,date_joined,nodes,profilepic,resetexception,secretquestion,secretanswer,treesdate,lastUpdated,lastInfoUpdate,lastReminder,password5' bean="user"/>
+                            <f:all except='isAdmin,isActive,resetPassword,lanidexception,role,roletargetid,lastlogin,date_joined,nodes,profilepic,resetexception,secretquestion,secretanswer,treesdate,lastUpdated,lastInfoUpdate,lastReminder,password5,activeSessionId,activeSessionUpdated' bean="user"/>
                         </fieldset>
                         <fieldset class="buttons">
                             <g:submitButton name="create" class="save" value="${message(code: 'default.button.create.label', default: 'Create')}" />

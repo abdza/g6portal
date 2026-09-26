@@ -110,7 +110,7 @@
             .tb-table h5 { margin: 0 0 6px; font-size: 13px; }
             /* Rows are divs, not a real <table>: the drag-sorter animates the drop gap
                with margins, which table rows ignore. */
-            .tb-head, .tb-row {
+            .tb-head, .tb-row, .tb-subrow {
                 display: grid;
                 grid-template-columns: 22px 1.4fr 1.4fr 1fr 46px 46px;
                 align-items: center;
@@ -126,7 +126,8 @@
             #builder-fields-table.tb-expanded { flex-basis: 100%; }
             #builder-fields-table.tb-expanded .tb-xtra { display: block; }
             #builder-fields-table.tb-expanded .tb-head,
-            #builder-fields-table.tb-expanded .tb-row {
+            #builder-fields-table.tb-expanded .tb-row,
+            #builder-fields-table.tb-expanded .tb-subrow {
                 grid-template-columns: 22px 1.4fr 1.4fr 1fr 46px 46px 46px 56px 46px 56px 46px;
             }
             #builder-fields-table.tb-expanded .tb-hint.tb-xtra { display: block; margin-top: 6px; }
@@ -145,6 +146,48 @@
             .tb-check { text-align: center; }
             .tb-empty { padding: 12px; color: #888; font-size: 12px; }
             .dragsort--dragElem { opacity: 0.4; }
+
+            /* ---- field groups -------------------------------------------------
+               Sub-rows are deliberately NOT .tb-row: the drag sorter's selector and
+               its dragEnd handler both key on that class, so giving a nested preview
+               row the same class would make it draggable and inject it into the saved
+               field order. */
+            .tb-subrow { background: #fbfcfe; border-bottom: 1px dotted #eef1f4; color: #666; }
+            .tb-subrow .tb-name { font-size: 11px; }
+            .tb-subrow .tb-type { font-size: 11px; font-style: italic; }
+            .tb-caret {
+                cursor: pointer; user-select: none; color: #2B7CE9;
+                text-align: center; font-size: 10px;
+            }
+            .tb-tree { color: #c3c9d1; font-family: monospace; white-space: pre; }
+            .tb-gbadge {
+                font-size: 10px; color: #5a6472; background: #eef1f4;
+                border-radius: 3px; padding: 0 4px; margin-left: 5px; white-space: nowrap;
+            }
+            .tb-gbadge.tb-gon { background: #e0efe6; color: #2c6b4f; }
+            .tb-implied { background: #f4fbf7; }
+            .tb-dot { color: #2c6b4f; font-weight: bold; }
+            .tb-groupbtn {
+                border: none !important; background: none !important; color: #2B7CE9;
+                cursor: pointer; font-size: 11px; padding: 0 !important; text-decoration: underline;
+            }
+            .tb-memberbox { max-height: 260px; overflow-y: auto; border: 1px solid #ddd;
+                            background: #fff; padding: 6px; margin: 6px 0; }
+            .tb-memberbox label { display: block; font-size: 12px; padding: 1px 0; }
+            .tb-memberbox .tb-mtype { color: #888; font-size: 11px; }
+            .tb-memberbox .tb-mdis { opacity: 0.45; }
+
+            /* ---- collapsing the side tables ----------------------------------
+               Fields, Roles and Comes-from share one flex row, so Fields gets a third of
+               the width however little the other two need. Collapsing one leaves just its
+               heading and hands the freed space back to Fields, which is the table that
+               actually has to hold long names, labels and six-plus checkbox columns. */
+            .tb-table.tb-collapsed { flex: 0 0 auto; min-width: 0; }
+            .tb-table.tb-collapsed .tb-head,
+            .tb-table.tb-collapsed .tb-rows,
+            .tb-table.tb-collapsed .tb-hint { display: none; }
+            .tb-table.tb-collapsed h5 { margin-bottom: 0; white-space: nowrap; opacity: 0.7; }
+            .tb-sidetoggle { margin-left: 6px; font-weight: normal; }
 
             .tb-actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
             .tb-actions button, .tb-inline button {
@@ -208,6 +251,8 @@
                                     <h5>Fields
                                         <span class="tb-hint" style="display:inline">drag a row to set the tracker's field order</span>
                                         <button type="button" id="tb-toggle-cols" class="tb-linkish">show tracker columns</button>
+                                        <button type="button" id="tb-infer-order" class="tb-linkish"
+                                            title="Work out an order from the field lists already stored on every status and transition">suggest order from forms</button>
                                     </h5>
                                     <div class="tb-head">
                                         <span></span><span>Name</span><span>Label</span><span>Type</span>
@@ -219,17 +264,27 @@
                                         <span class="tb-check tb-xtra" title="Fields offered as filters on the list page">Filter</span>
                                     </div>
                                     <div class="tb-rows" id="builder-field-rows"></div>
+                                    <div class="tb-hint">A <strong>Field Group</strong> row expands (&#9654;) to show what it contains.
+                                        Ticking the group renders every field inside it as one fieldset, so its members show a
+                                        &middot; rather than needing their own tick.</div>
                                     <div class="tb-hint tb-xtra">These five are tracker-wide, not per status or transition - they save with the same Save button.</div>
                                 </div>
-                                <div class="tb-table">
-                                    <h5 id="builder-roles-title">Roles</h5>
+                                <div class="tb-table" id="builder-roles-table">
+                                    <%-- The title is a span of its own: renderPanel() rewrites its
+                                         textContent every render, which would wipe a sibling button
+                                         placed directly inside the h5. --%>
+                                    <h5><span id="builder-roles-title">Roles</span>
+                                        <button type="button" class="tb-linkish tb-sidetoggle"
+                                                data-panel="builder-roles-table">hide</button></h5>
                                     <div class="tb-head tb-rolehead">
                                         <span>Role</span><span>Type</span><span class="tb-check">On</span>
                                     </div>
                                     <div class="tb-rows" id="builder-role-rows"></div>
                                 </div>
                                 <div class="tb-table" id="builder-prev-table" style="display:none">
-                                    <h5>Comes from <span class="tb-hint" style="display:inline">which statuses this transition starts from</span></h5>
+                                    <h5>Comes from <span class="tb-hint" style="display:inline">which statuses this transition starts from</span>
+                                        <button type="button" class="tb-linkish tb-sidetoggle"
+                                                data-panel="builder-prev-table">hide</button></h5>
                                     <div class="tb-head tb-prevhead">
                                         <span>Status</span><span class="tb-check">On</span>
                                     </div>
@@ -246,6 +301,8 @@
                                 <button id="tb-toggle-fields">Add Fields</button>
                                 <button id="tb-toggle-roles">Add Roles</button>
                             </div>
+
+                            <div class="tb-inline" id="tb-groupbox" style="display:none"></div>
 
                             <div class="tb-inline" id="tb-addfields-box" style="display:none">
                                 <strong>Add fields</strong>
@@ -333,12 +390,47 @@
             var edgesData = ${raw(edgesJson)};
             var initialStatusId = "${tracker.initial_status?.id ?: ''}";
 
+            // Self-loops get their own pass. vis draws every self-reference at the same
+            // angle and radius, so two transitions looping on one status (itis_reporting
+            // has Admin Edit and Update TAT both on New) come out as a single loop with
+            // two labels on top of each other. v10 exposes per-edge selfReference, so
+            // each loop gets its own corner AND its own radius: the angle alone separates
+            // the arcs but leaves the labels ~3px apart, which any longer transition name
+            // would close up. Angles go round the diagonals first - that is where ordinary
+            // edges are least likely to attach - and wrap after four, by which point the
+            // growing radius is what keeps them apart.
+            //
+            // A status carrying a single loop is left on the library default, so a graph
+            // that never had the problem renders exactly as it did before.
+            var SELF_ANGLE_SLOTS = 4;
+            function spreadSelfLoops(edgeArray) {
+                var byNode = {};
+                edgeArray.forEach(function(e) {
+                    if (e.from !== e.to) { return; }
+                    (byNode[e.from] = byNode[e.from] || []).push(e);
+                });
+                Object.keys(byNode).forEach(function(nodeId) {
+                    var group = byNode[nodeId];
+                    if (group.length < 2) { return; }
+                    group.forEach(function(e, i) {
+                        e.selfReference = {
+                            size: 20 + i * 14,
+                            angle: (Math.PI / 4) + (i % SELF_ANGLE_SLOTS) * (Math.PI / 2),
+                            renderBehindTheNode: true
+                        };
+                    });
+                });
+            }
+
             /**
-             * Fans out edges that share a pair of statuses so they stop lying on top of
-             * each other. Two cases both occur in real trackers: antiparallel (ae_submission
-             * has Submitted->Rework "Rework" against Rework->Submitted "Submit") and
-             * parallel (two different transitions START->New). Both render at exactly the
-             * same midpoint under the default cubicBezier, so one is unclickable.
+             * Fans out edges that would otherwise lie on top of each other. Three cases
+             * all occur in real trackers: antiparallel (ae_submission has Submitted->Rework
+             * "Rework" against Rework->Submitted "Submit"), parallel (two different
+             * transitions START->New), and several self-loops on one status (itis_reporting
+             * has both "Admin Edit" and "Update TAT" sitting on New). The first two render
+             * at exactly the same midpoint under the default cubicBezier; the third is
+             * worse, because vis gives every self-reference the same angle and radius, so
+             * the loops coincide exactly and only the topmost label is legible.
              *
              * curvedCW/CCW is relative to each edge's own from->to direction, so for an
              * edge running against the pair's canonical order the type is flipped - that
@@ -347,9 +439,10 @@
              * unchanged.
              */
             window.spreadParallelEdges = function(edgeArray) {
+                spreadSelfLoops(edgeArray);
                 var groups = {};
                 edgeArray.forEach(function(e) {
-                    if (e.from === e.to) { return; }   // self-loops: vis places these itself
+                    if (e.from === e.to) { return; }   // handled by spreadSelfLoops above
                     var key = [e.from, e.to].sort().join('\u0000');
                     (groups[key] = groups[key] || []).push(e);
                 });
@@ -386,7 +479,8 @@
                     saveStatus:       '<g:createLink action="builder_save_status"/>',
                     deleteStatus:     '<g:createLink action="builder_delete_status"/>',
                     saveTransition:   '<g:createLink action="builder_save_transition"/>',
-                    deleteTransition: '<g:createLink action="builder_delete_transition"/>'
+                    deleteTransition: '<g:createLink action="builder_delete_transition"/>',
+                    saveFieldGroup:   '<g:createLink action="builder_save_field_group"/>'
                 }
             }</g:if><g:else>null</g:else>;
 
@@ -507,17 +601,25 @@
                 edges: edges
             };
 
-            var hierarchicalLayout = {
-                enabled: true,
-                direction: 'LR',
-                sortMethod: 'directed',
-                nodeSpacing: 150,
-                levelSeparation: 200
-            };
+            // Spacing is worked out from the graph's own shape rather than fixed - see
+            // applyLayout(). This first pass only has to produce *something* for the
+            // initial draw; applyLayout() runs immediately after it and replaces it.
+            function hierarchicalLayout(nodeSpacing, levelSeparation) {
+                return {
+                    enabled: true,
+                    direction: 'LR',
+                    sortMethod: 'directed',
+                    nodeSpacing: nodeSpacing,
+                    levelSeparation: levelSeparation,
+                    // Statuses nothing points at are each their own tree, and the default
+                    // treeSpacing of 200 lays a blank band between every one of them.
+                    treeSpacing: 60
+                };
+            }
 
             var options = {
                 layout: {
-                    hierarchical: hierarchicalLayout
+                    hierarchical: hierarchicalLayout(100, 200)
                 },
                 physics: {
                     enabled: false
@@ -664,22 +766,255 @@
                 }));
             }
 
-            // Re-runs the hierarchical layout, then releases it again - the way back
-            // to a tidy graph after dragging nodes around.
-            function relayout() {
-                // Register before setOptions: the layout change redraws synchronously,
-                // so a handler attached afterwards misses the event and the nodes stay
-                // pinned to their level axis.
-                network.once('afterDrawing', function() {
-                    releaseHierarchy();
-                    network.fit();
+            // Statuses that no transition enters or leaves. A self-transition does not
+            // connect a status to anything, so it does not count as flow.
+            function isolatedNodeIds() {
+                var degree = {};
+                nodes.getIds().forEach(function(id) { degree[id] = 0; });
+                edges.forEach(function(edge) {
+                    if (edge.from === edge.to) { return; }
+                    if (degree[edge.from] !== undefined) { degree[edge.from]++; }
+                    if (degree[edge.to] !== undefined) { degree[edge.to]++; }
                 });
-                network.setOptions({ layout: { hierarchical: hierarchicalLayout } });
+                return nodes.getIds().filter(function(id) { return !degree[id]; });
+            }
+
+            // How many levels the flow occupies, and how many statuses sit on its
+            // busiest one. With direction 'LR' a level is an x coordinate. Isolated
+            // statuses are excluded: they all land on one level and would make every
+            // graph look far busier than its flow actually is.
+            function flowShape(isolated) {
+                var isIsolated = {};
+                isolated.forEach(function(id) { isIsolated[id] = true; });
+                var positions = network.getPositions();
+                var perLevel = {};
+                Object.keys(positions).forEach(function(id) {
+                    if (isIsolated[id]) { return; }
+                    var level = Math.round(positions[id].x);
+                    perLevel[level] = (perLevel[level] || 0) + 1;
+                });
+                var levels = Object.keys(perLevel);
+                return {
+                    levels: levels.length,
+                    busiest: levels.reduce(function(most, level) {
+                        return Math.max(most, perLevel[level]);
+                    }, 0)
+                };
+            }
+
+            var ISOLATED_ROW = 70;   // row pitch of the unwired-status block
+
+            // Packs the isolated statuses into rows beneath the flow. Left to the
+            // hierarchical layout they get a full row each: ecdd2 has 10 of them against
+            // 10 statuses of actual flow, which stretched the graph to 3650px tall for
+            // 1000px of width, and fit() then had to zoom out to 17% to show it.
+            function gridIsolated(isolated) {
+                if (!isolated.length) { return; }
+                var isIsolated = {};
+                isolated.forEach(function(id) { isIsolated[id] = true; });
+                var flow = nodes.getIds().filter(function(id) { return !isIsolated[id]; });
+                var positions = network.getPositions();
+
+                var left = 0, flowWidth = 0, bottom = -140;
+                if (flow.length) {
+                    var xs = flow.map(function(id) { return positions[id].x; });
+                    var ys = flow.map(function(id) { return positions[id].y; });
+                    left = Math.min.apply(null, xs);
+                    flowWidth = Math.max.apply(null, xs) - left;
+                    bottom = Math.max.apply(null, ys);
+                }
+
+                // Wrap at the width of the flow above, so the block sits under it rather
+                // than widening the graph - but never narrower than a readable few nodes.
+                var rowWidth = Math.max(flowWidth, 600);
+                var x = left, y = bottom + 140;
+                isolated.forEach(function(id) {
+                    var box = network.getBoundingBox(id);
+                    var width = (box && box.right - box.left) || 120;
+                    if (x > left && (x + width) > (left + rowWidth)) {
+                        x = left;
+                        y += ISOLATED_ROW;
+                    }
+                    nodes.update({ id: id, x: x + width / 2, y: y, fixed: false });
+                    x += width + 26;
+                });
+            }
+
+            function clamp(value, low, high) {
+                return Math.max(low, Math.min(high, value));
+            }
+
+            // Which level (with direction 'LR', which column) each status sits in, as its
+            // distance from the start of the flow. vis can work levels out itself, but
+            // 'directed' is a heuristic that turns order-sensitive as soon as the flow has
+            // a cycle - and a rework loop is a cycle, so nearly every tracker has one.
+            // On ecdd2 it put New, the entry status, three columns in, behind statuses
+            // that only New leads to. Walking out from the statuses nothing enters is both
+            // stable and the order a workflow is meant to be read in.
+            function assignLevels() {
+                var ids = nodes.getIds();
+                var outgoing = {}, incoming = {};
+                ids.forEach(function(id) { outgoing[id] = []; incoming[id] = 0; });
+                edges.forEach(function(edge) {
+                    // A self-transition says nothing about ordering.
+                    if (edge.from === edge.to) { return; }
+                    if (!outgoing[edge.from] || incoming[edge.to] === undefined) { return; }
+                    outgoing[edge.from].push(edge.to);
+                    incoming[edge.to]++;
+                });
+
+                var level = {};
+                var queue = ids.filter(function(id) { return !incoming[id]; });
+                // A flow that is one closed loop has nothing with a free entry point;
+                // start from the initial status so the walk still has somewhere to begin.
+                if (!queue.length && ids.length) {
+                    queue = [ids.indexOf(initialStatusId) >= 0 ? initialStatusId : ids[0]];
+                }
+                queue.forEach(function(id) { level[id] = 0; });
+                for (var i = 0; i < queue.length; i++) {
+                    var here = queue[i];
+                    outgoing[here].forEach(function(next) {
+                        if (level[next] !== undefined) { return; }
+                        level[next] = level[here] + 1;
+                        queue.push(next);
+                    });
+                }
+
+                // Only reachable from a cycle the walk never entered - park it at the front
+                // rather than leave vis to guess.
+                nodes.update(ids.map(function(id) {
+                    return { id: id, level: level[id] === undefined ? 0 : level[id] };
+                }));
+            }
+
+            // One level can hold more statuses than the canvas is tall, and no amount of
+            // spacing tuning helps: ecdd2's rfi tracker has 20 statuses that nothing
+            // transitions into, so every one of them sits on the first level as a single
+            // 1200px column with all its edges converging into a tangle. A level taller
+            // than the canvas is dealt out into sub-columns instead, keeping the order vis
+            // chose for it (its crossing-minimisation is worth reusing) and shifting the
+            // levels after it across to make room.
+            //
+            // Graphs where every level fits are left exactly where vis put them.
+            function wrapCrowdedLevels(availableHeight) {
+                var positions = network.getPositions();
+                var byLevel = {};
+                nodes.get().forEach(function(node) {
+                    var level = node.level || 0;
+                    (byLevel[level] = byLevel[level] || []).push(node.id);
+                });
+
+                var rowPitch = 62;   // a box is 46 high
+                var capacity = Math.max(3, Math.floor(availableHeight / rowPitch));
+                var levels = Object.keys(byLevel).sort(function(a, b) { return a - b; });
+                var crowded = levels.some(function(level) { return byLevel[level].length > capacity; });
+                if (!crowded) { return; }
+
+                var cursor = 0;
+                levels.forEach(function(level) {
+                    // vis's vertical order within the level is the one to preserve.
+                    var column = byLevel[level].sort(function(a, b) {
+                        return positions[a].y - positions[b].y;
+                    });
+                    var widest = column.reduce(function(most, id) {
+                        var box = network.getBoundingBox(id);
+                        return Math.max(most, (box && box.right - box.left) || 120);
+                    }, 0);
+
+                    var rows = Math.min(column.length, capacity);
+                    var columnPitch = widest + 60;
+                    var top = -((rows - 1) * rowPitch) / 2;
+                    column.forEach(function(id, index) {
+                        nodes.update({
+                            id: id,
+                            x: cursor + Math.floor(index / rows) * columnPitch,
+                            y: top + (index % rows) * rowPitch,
+                            fixed: false
+                        });
+                    });
+                    cursor += Math.ceil(column.length / rows) * columnPitch + 80;
+                });
+            }
+
+            // Lays the graph out so it roughly fills the canvas, then hands back free
+            // coordinates. Spacing has to be derived rather than fixed: ecdd2's flow puts
+            // only 3 statuses on its busiest level and wants them far apart, while a
+            // tracker with 15 on one level needs them tight or the graph smears over
+            // several thousand pixels and fit() zooms out past the point of legibility.
+            // Two passes - the first is only measured, never shown, because the layout is
+            // what decides the levels and we need those before we can pick the spacing.
+            function applyLayout() {
+                var isolated = isolatedNodeIds();
+                var isIsolated = {};
+                isolated.forEach(function(id) { isIsolated[id] = true; });
+
+                // The isolated statuses come out of the graph while the layout runs. vis
+                // gives every node on a level a row to itself, so ecdd2's ten unwired
+                // statuses - all of which land on one level - were shoving the flow's own
+                // statuses thousands of pixels apart, which is the real reason the graph
+                // was unreadable. They go back afterwards, in a block of their own.
+                var parkedNodes = nodes.get(isolated);
+                var parkedEdges = edges.get({
+                    filter: function(edge) { return isIsolated[edge.from] || isIsolated[edge.to]; }
+                });
+                var selected = network.getSelectedNodes();
+
+                if (parkedNodes.length) {
+                    edges.remove(parkedEdges.map(function(edge) { return edge.id; }));
+                    nodes.remove(isolated);
+                }
+
+                if (nodes.length) {
+                    assignLevels();
+                    network.setOptions({ layout: { hierarchical: hierarchicalLayout(100, 200) } });
+                    var shape = flowShape([]);
+
+                    // The block of unwired statuses goes below the flow, so its rows come
+                    // out of the height the flow has to play with - otherwise the two
+                    // together overshoot the canvas and fit() shrinks everything again.
+                    // Two rows is an estimate: the real count depends on name lengths,
+                    // which are not known until the block is packed.
+                    var canvas = container.getBoundingClientRect();
+                    var reserved = 120 + (isolated.length ? 140 + ISOLATED_ROW * 2 : 0);
+                    var nodeSpacing = clamp((canvas.height - reserved) / Math.max(shape.busiest, 1), 55, 200);
+                    var levelSeparation = clamp((canvas.width - 160) / Math.max(shape.levels - 1, 1), 170, 320);
+
+                    network.setOptions({
+                        layout: { hierarchical: hierarchicalLayout(nodeSpacing, levelSeparation) }
+                    });
+                    releaseHierarchy();
+                    // Deliberately the whole canvas height, not the flow's share of it: a
+                    // sub-column short of rows is a sub-column wide of extra width, and
+                    // overshooting the height slightly costs far less than that.
+                    wrapCrowdedLevels(canvas.height - 100);
+                }
+                else {
+                    // Nothing but unwired statuses: the layout never ran, so turn it off
+                    // by hand or it would re-pin them the moment they are added back.
+                    network.setOptions({ layout: { hierarchical: { enabled: false } } });
+                }
+
+                if (parkedNodes.length) {
+                    nodes.add(parkedNodes);
+                    edges.add(parkedEdges);
+                    // getBoundingBox only knows a node's width once it has been drawn, and
+                    // the widths are what the block is packed by.
+                    network.redraw();
+                    gridIsolated(isolated);
+                    if (selected.length) { network.selectNodes(selected, false); }
+                }
+                network.fit();
+            }
+
+            // Re-runs the layout - the way back to a tidy graph after dragging nodes
+            // around. setOptions applies the layout synchronously, so the positions are
+            // there to be read and released as soon as it returns.
+            function relayout() {
+                applyLayout();
             }
 
             network.once('afterDrawing', function() {
-                releaseHierarchy();
-                network.fit();
+                applyLayout();
             });
 
             if (builderEnabled) {

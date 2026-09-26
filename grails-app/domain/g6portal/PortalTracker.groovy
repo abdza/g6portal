@@ -77,9 +77,63 @@ class PortalTracker {
 
     static transients = ['sqlfieldnames','sqlvalues','curdatas']
 
-    private String sanitizeSearchInput(String input) {
+    /**
+     * Prepares a list-page search term for use inside a LIKE pattern.
+     *
+     * This does NOT defend against SQL injection and does not need to: every branch of the
+     * search builder below binds the term as a named parameter and puts column and table
+     * names through validateIdentifier(), so the value never reaches the SQL text. The
+     * previous version of this method stripped ' ; / * and - outright, which protected
+     * nothing and silently broke every search for data containing them - a ticket number
+     * like IQC/2026/BO/0005, a reference like FM-2608069464153, any yyyy-MM-dd date.
+     *
+     * '%' is left alone: it is a deliberate, well-understood user-facing wildcard.
+     * Everything else LIKE treats as special is escaped so it matches literally:
+     *
+     *   '_'  matches any single character. People type it meaning a literal (e-mail local
+     *        parts, codes), and leaving it live over-matches SILENTLY - extra rows that
+     *        look right. Escaped.
+     *   '['  opens a character class on SQL Server only. Postgres and h2 LIKE have no such
+     *        thing.
+     *
+     * Escaping is done in the VALUE rather than with an ESCAPE clause so the LIKE fragments
+     * built below need no change: SQL Server takes [_] and [[] as literals, and backslash is
+     * already the default LIKE escape character on Postgres and h2.
+     */
+    private String escapeSearchWildcards(String input) {
         if (!input) return ""
-        return input.replaceAll(/[';\/\*-]/, "").trim()
+        def term = input.trim()
+        if (config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")) {
+            // Backslash first, or the ones added for '_' get doubled a second time.
+            return term.replace('\\', '\\\\').replace('_', '\\_')
+        }
+        // '[' first for the same reason - afterwards the '[' introduced by [_] is not
+        // reprocessed. ']' on its own is already a literal to SQL Server.
+        return term.replace('[', '[[]').replace('_', '[_]')
+    }
+
+    /**
+     * True when the value is a real yyyy-MM-dd date usable in a list filter.
+     * Filter values arrive straight from the query string, so anything that
+     * fails this check must be dropped rather than passed on to the database.
+     */
+    private boolean isFilterDate(String value) {
+        if (!value || !(value ==~ /^\d{4}-\d{1,2}-\d{1,2}$/)) return false
+        try {
+            new java.text.SimpleDateFormat('yyyy-MM-dd').parse(value)
+            return true
+        } catch (Exception e) {
+            return false
+        }
+    }
+
+    /** The day after a yyyy-MM-dd filter date, same format - the exclusive end of that day. */
+    private static String nextFilterDay(String value) {
+        def fmt = new java.text.SimpleDateFormat('yyyy-MM-dd')
+        def c = Calendar.getInstance()
+        c.setTime(fmt.parse(value))
+        c.add(Calendar.DAY_OF_MONTH, 1)
+        return fmt.format(c.getTime())
     }
 
     private String validateIdentifier(String identifier) {
@@ -521,11 +575,44 @@ class PortalTracker {
      * by From Table, has null there. Those sort last, alphabetically, so a tracker that
      * has never been touched by the builder still lists in the order it always did.
      */
+    /**
+     * The tracker's canonical field order, best evidence first:
+     *
+     *   1. field_order          - set explicitly, by dragging in the workflow builder.
+     *   2. listfields order     - the list page's own column order, curated by hand.
+     *   3. excelfields order    - same idea, for the download.
+     *   4. alphabetical         - nothing else to go on.
+     *
+     * Only tier 1 is an actual decision by someone; 2 and 3 are the next best guesses, and
+     * they matter because a tracker that has never been through the builder has field_order
+     * null on every field, which used to leave the whole list alphabetical. A field carrying
+     * an explicit field_order still precedes every field that does not, as before.
+     *
+     * Called from the workflow builder only - it decides the order an admin is presented
+     * with before they reorder anything, and the canonical order that displayfields /
+     * editfields are written in. Saving an order in the builder populates field_order for
+     * every field, after which tiers 2-4 no longer apply to that tracker.
+     */
     def orderedFields() {
+        // First mention wins, so listfields beats excelfields for a field in both.
+        def rank = [:]
+        [listfields, excelfields].each { csv ->
+            csv?.tokenize(',')*.trim()?.findAll { it }?.each { n ->
+                if(!rank.containsKey(n)) rank[n] = rank.size()
+            }
+        }
         return (fields ?: []).sort { a, b ->
-            def ao = a.field_order == null ? Integer.MAX_VALUE : a.field_order
-            def bo = b.field_order == null ? Integer.MAX_VALUE : b.field_order
-            ao <=> bo ?: (a.name ?: '').compareToIgnoreCase(b.name ?: '')
+            def ao = a.field_order
+            def bo = b.field_order
+            if(ao != null || bo != null) {
+                if(ao == null) return 1
+                if(bo == null) return -1
+                if(ao != bo) return ao <=> bo
+            }
+            def ar = rank.containsKey(a.name) ? rank[a.name] : Integer.MAX_VALUE
+            def br = rank.containsKey(b.name) ? rank[b.name] : Integer.MAX_VALUE
+            if(ar != br) return ar <=> br
+            return (a.name ?: '').compareToIgnoreCase(b.name ?: '')
         }
     }
 
@@ -777,9 +864,6 @@ class PortalTracker {
                     datas['id'] = maxid[0][0]
                 }
             }
-            else{
-                datas['id'] = 1
-            }
         }
         return datas
     }
@@ -935,6 +1019,20 @@ class PortalTracker {
                 }
                 if(uploadedfile){
                     if(uploadedfile.originalFilename.size()>0){
+                        // Record attachments previously went straight to disk with no
+                        // checks at all — an executable attached to a record was stored
+                        // as-is. Attachment mode blocks dangerous extensions and catches
+                        // spoofed known types, without rejecting the long tail of
+                        // legitimate business formats (msg, eml, rar, odt...).
+                        def attachvalidation = FileSecurityValidator.validateAttachment(uploadedfile)
+                        if(!attachvalidation.valid){
+                            println "Rejected attachment '" + uploadedfile.originalFilename +
+                                    "' on " + module + "/" + slug + " record " + params?.id +
+                                    ": " + attachvalidation.errors.join(', ')
+                            PortalErrorLog.record(null,null,'portalTracker','attachment_rejected',
+                                                  uploadedfile.originalFilename + ': ' + attachvalidation.errors.join(', '))
+                            throw new RuntimeException("Attachment rejected: " + attachvalidation.errors.join(', '))
+                        }
                         def settingname = slug + '_attachment_path'
                         def defaultfolder = System.getProperty("user.dir").toString() + '/uploads/' + slug
                         def folderbasepath = PortalSetting.namedefault(settingname,defaultfolder) + '/' + params.id
@@ -946,7 +1044,9 @@ class PortalTracker {
                             if(!folderbase.exists()){
                                 folderbase.mkdirs()
                             }
-                            def copytarget = folderbasepath+'/'+uploadedfile.originalFilename
+                            // Sanitized name, not the raw one: the original filename was
+                            // being interpolated straight into the path.
+                            def copytarget = folderbasepath+'/'+attachvalidation.sanitizedFilename
                             uploadedfile.transferTo(new File(copytarget))
                             if(new File(copytarget).exists()){
                                 attachment = new FileLink(
@@ -1311,6 +1411,10 @@ class PortalTracker {
             catch(Exception e){
                 def msg = "Error with raw_rows query -- " + query + " -- " + params + " -- " + e
                 PortalErrorLog.record(null,null,'tracker','raw rows',msg,null,null)
+                // Without this the catch block implicitly returned the PortalErrorLog, and callers
+                // iterated it as if it were a row (e.g. "No such property: approver for class:
+                // g6portal.PortalErrorLog"), hiding the real SQL error behind a misleading one.
+                return []
             }
         }
     }
@@ -1418,7 +1522,12 @@ class PortalTracker {
         }
         if(params.id){
             curdatas = getdatas(params['id'],sql)
-            session['prevdata'] = curdatas
+            // A copy, not the live object: the field loop below writes each new value into
+            // curdatas (see `curdatas[pfield.name] = value`), so storing the reference made
+            // session['prevdata'] hold POST-update values by the time anything could read it -
+            // the opposite of what the name promises. A snapshot lets a postprocess diff
+            // old vs new and record what actually changed.
+            session['prevdata'] = curdatas ? new LinkedHashMap(curdatas) : null
             def next_status = PortalTrackerStatus.get(params['next_status'])
             if(next_status?.name?.toLowerCase()=='delete'){
                 query = "select * from " + validateIdentifier(data_table()) + " where id=:id"
@@ -1497,10 +1606,6 @@ class PortalTracker {
                 if(maxid['id']){
                     curdatas['id']=maxid['id']
                     params.id = curdatas['id']
-                }
-                else{
-                    curdatas['id']=1
-                    params.id = 1
                 }
             }
         }
@@ -1768,11 +1873,27 @@ class PortalTracker {
                                                     }
                                                     uploadedfile.transferTo(thetarget)
                                                     if(thetarget.exists()){
+                                                        // FileLink.slug is unique:true. This used to be
+                                                        // key + recordid + 'yyyyMMddHHmm', but on a NEW record
+                                                        // curdatas['id'] is still null, so the slug was unique
+                                                        // only per MINUTE per field - a second new record
+                                                        // uploaded in the same minute produced a duplicate
+                                                        // slug, save() returned null, validfield stayed false,
+                                                        // and the file column was silently left empty while
+                                                        // the file itself sat on disk. Seconds plus a
+                                                        // collision counter make it deterministic instead.
+                                                        def baseslug = key+'_'+curdatas['id']+'_'+new java.text.SimpleDateFormat('yyyyMMddHHmmss').format(new Date())
+                                                        def uniqueslug = baseslug
+                                                        def slugsuffix = 1
+                                                        while(FileLink.countBySlug(uniqueslug) > 0 && slugsuffix < 1000){
+                                                            uniqueslug = baseslug + '_' + slugsuffix
+                                                            slugsuffix++
+                                                        }
                                                         attachment = new FileLink(
                                                             name: sanitizedFilename,
                                                             path: thetarget,
                                                             module: module,
-                                                            slug: key+'_'+curdatas['id']+'_'+new java.text.SimpleDateFormat('yyyyMMddHHmm').format(new Date()),
+                                                            slug: uniqueslug,
                                                             tracker_data_id: params.id,
                                                             tracker_id: this.id,
                                                             size: (int) uploadedfile.size
@@ -1780,6 +1901,18 @@ class PortalTracker {
                                                         if(attachment.save()){
                                                             validfield = true
                                                             value = attachment.id
+                                                        }
+                                                        else {
+                                                            // Never fail silently again: the file is on disk but
+                                                            // nothing points at it, which looks like "the upload
+                                                            // did nothing" to the user.
+                                                            println "FileLink save FAILED for " + uploadedfile.originalFilename +
+                                                                    " on " + module + "/" + this.slug + " field " + key +
+                                                                    ": " + attachment.errors
+                                                            PortalErrorLog.record(null,null,'tracker','filelink_save_failed',
+                                                                    'FileLink save failed for ' + uploadedfile.originalFilename +
+                                                                    ' (slug ' + uniqueslug + '): ' + attachment.errors,
+                                                                    this.slug, module)
                                                         }
                                                     }
                                                 }
@@ -1810,6 +1943,18 @@ class PortalTracker {
                     binding.setVariable("params",params)
                     def shell = new GroovyShell(this.class.classLoader,binding)
                     def defaultval = shell.evaluate(pfield.field_default)
+                    // A default skips the Checkbox conversion typed-in values get above, so a
+                    // "return 1" default reached a boolean column (Postgres, h2) as an integer
+                    // and the insert failed, aborting the transaction. Normalise it the same way.
+                    if(pfield.field_type=='Checkbox' && !pfield.field_options && defaultval!=null) {
+                        def checked = defaultval in [true, 1, '1', 'on', 'true']
+                        if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
+                            defaultval = checked
+                        }
+                        else {
+                            defaultval = checked ? 1 : 0
+                        }
+                    }
                     if(defaultval != null) {
                         fieldnames << pfield.name
                         fieldvalues << defaultval
@@ -1876,9 +2021,6 @@ class PortalTracker {
                         if(maxid?.id){
                             curdatas['id']=maxid.id
                         }
-                        else{
-                            curdatas['id']=1
-                        }
                     }
                 }
             }
@@ -1943,12 +2085,16 @@ class PortalTracker {
             if(curval){
                 if(curkey=='search'){
                     def likequery = []
-                    def searchTerm = sanitizeSearchInput(curval)
+                    def searchTerm = escapeSearchWildcards(curval)
 
-                    if (searchTerm) {
+                    // A tracker with no searchfields configured has nothing to search on.
+                    // Without this guard the tokenize() below NPEs and the whole list page
+                    // 500s the moment anything puts a search term in the URL.
+                    def searchnames = searchfields?.tokenize(',')*.trim()?.findAll { it } ?: []
+                    if (searchTerm && searchnames) {
                     def tfields = PortalTrackerField.createCriteria().list(){
                         'eq'('tracker',this)
-                        'in'('name',searchfields.tokenize(',')*.trim())
+                        'in'('name',searchnames)
                     }
                     tfields.each { tfield->
                         try {
@@ -2038,39 +2184,53 @@ class PortalTracker {
                         'eq'('name',curkey)
                     }
                     if(tfield){
+                        def qk = qcol(curkey)
                         if(tfield.field_type in ['Text','Text Area','Date','DateTime','Drop Down']){
                             if(tfield.field_type in ['Date','DateTime']) {
-                                def dparts = curval.tokenize('-')
-                                if(dparts.size()==2){
-                                    def yearKey = curkey + "_year"
-                                    def monthKey = curkey + "_month"
-                                    try {
-                                        def year = Integer.parseInt(dparts[0])
-                                        def month = Integer.parseInt(dparts[1])
-                                        condition << "datepart(YEAR," + curkey + ")=:" + yearKey + " and datepart(MONTH," + curkey + ")=:" + monthKey + " "
-                                        qparams[yearKey] = year
-                                        qparams[monthKey] = month
-                                    } catch(NumberFormatException e) {
-                                        // Invalid date format, skip condition
+                                // Anything that is not a shape we recognise is dropped instead of being
+                                // spliced into the SQL - a stray value (e.g. the literal "null") used to
+                                // fall through to the ">" branch and fail the whole list query.
+                                def dval = curval.toString().trim()
+                                def ymonth = dval =~ /^(\d{4})-(\d{1,2})$/
+                                if(ymonth.matches()){
+                                    if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
+                                        condition << "extract(YEAR from " + qk + ")= :${curkey}_y and extract(MONTH from " + qk + ")= :${curkey}_m "
                                     }
+                                    else {
+                                        condition << "datepart(YEAR," + qk + ")= :${curkey}_y and datepart(MONTH," + qk + ")= :${curkey}_m "
+                                    }
+                                    qparams[curkey + '_y'] = ymonth[0][1].toInteger()
+                                    qparams[curkey + '_m'] = ymonth[0][2].toInteger()
                                 }
-                                else {
-                                    if(curval.size()>8 && curval[0..6]=='between'){
-                                        def ddates = curval[8..-1].tokenize('_')*.trim()
-                                        condition << curkey + " between :${curkey}_1 and :${curkey}_2"
+                                else if(dval.startsWith('between_')){
+                                    def ddates = dval.substring(8).tokenize('_')*.trim()
+                                    if(ddates.size()==2 && ddates.every { isFilterDate(it) }){
+                                        condition << qk + " between :${curkey}_1 and :${curkey}_2"
                                         qparams[curkey + '_1'] = ddates[0]
                                         qparams[curkey + '_2'] = ddates[1]
                                     }
                                     else {
-                                        if(curval[0]=='<') {
-                                            condition << curkey + " < :${curkey}"
-                                        }
-                                        else {
-                                            condition << curkey + " > :${curkey}"
-                                        }
-                                        qparams[curkey] = curval[1..-1]
-
+                                        log.warn "Ignoring invalid date range filter for ${curkey}: ${dval}"
                                     }
+                                }
+                                else if(dval.startsWith('<') || dval.startsWith('>')){
+                                    def dbound = dval.substring(1).trim()
+                                    if(isFilterDate(dbound)){
+                                        condition << qk + (dval.startsWith('<') ? " < :" : " > :") + curkey
+                                        qparams[curkey] = dbound
+                                    }
+                                    else {
+                                        log.warn "Ignoring invalid date filter for ${curkey}: ${dval}"
+                                    }
+                                }
+                                else if(isFilterDate(dval)){
+                                    // Bare date - match the whole day so DateTime columns still hit.
+                                    condition << qk + " >= :${curkey}_1 and " + qk + " < :${curkey}_2"
+                                    qparams[curkey + '_1'] = dval
+                                    qparams[curkey + '_2'] = nextFilterDay(dval)
+                                }
+                                else {
+                                    log.warn "Ignoring unrecognised date filter for ${curkey}: ${dval}"
                                 }
                             }
                             else if(tfield.field_type=='Text' && curval.size()>8 && curval[0..6]=='between'){
@@ -2078,7 +2238,7 @@ class PortalTracker {
                                 if(ddates.size() == 2) {
                                     def betweenStartKey = curkey + "_between_start"
                                     def betweenEndKey = curkey + "_between_end"
-                                    condition << curkey + " between :" + betweenStartKey + " and :" + betweenEndKey
+                                    condition << qk + " between :" + betweenStartKey + " and :" + betweenEndKey
                                     qparams[betweenStartKey] = ddates[0]
                                     qparams[betweenEndKey] = ddates[1]
                                 }
@@ -2086,32 +2246,35 @@ class PortalTracker {
                             else{
                                 if(tfield.field_type == 'Drop Down'){
                                     if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
-                                        condition << curkey + "= :" + curkey
+                                        condition << qk + "= :" + curkey
                                     }
                                     else {
-                                        condition << "convert(nvarchar(max)," + curkey + ")= :" + curkey
+                                        condition << "convert(nvarchar(max)," + qk + ")= :" + curkey
                                     }
                                     qparams[curkey] = curval
                                 }
                                 else {
-                                    condition << curkey + "= :" + curkey
+                                    condition << qk + "= :" + curkey
                                     qparams[curkey] = curval
                                 }
                                 // condition << curkey + "='" + curval + "'"
                             }
                         }
                         else if(tfield.field_type == 'Checkbox'){
+                            // Postgres and h2 store a Checkbox as boolean, which will not compare
+                            // with 1/0 - the filter used to fail the whole list query there.
+                            def boolcol = config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")
                             if(curval=='true'){
-                                condition << curkey + "=1"
+                                condition << qk + (boolcol ? "=true" : "=1")
                             }
                             else if(curval=='false'){
-                                condition << curkey + "=0"
+                                condition << qk + (boolcol ? "=false" : "=0")
                             }
                             else{
                             }
                         }
                         else{
-                            condition << curkey + "=:" + curkey
+                            condition << qk + "=:" + curkey
                             qparams[curkey] = curval
                             if(tfield.field_type=='BelongsTo'){
                                 querylinked = true

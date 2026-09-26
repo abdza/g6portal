@@ -34,7 +34,7 @@
                     <g:form useToken="true" resource="${this.user}" method="PUT">
                         <g:hiddenField name="version" value="${this.user?.version}" />
                         <fieldset class="form">
-                            <f:all except='lastlogin,nodes,profilepic,lastUpdated,lastInfoUpdate,lastReminder,password,password5' bean="user"/>
+                            <f:all except='lastlogin,nodes,profilepic,lastUpdated,lastInfoUpdate,lastReminder,password,password5,activeSessionId,activeSessionUpdated' bean="user"/>
                         </fieldset>
                         <fieldset class="buttons">
                             <input class="save" type="submit" value="${message(code: 'default.button.update.label', default: 'Update')}" />

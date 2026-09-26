@@ -234,6 +234,48 @@ ${role.user.name}
                     </g:each>
                     </table>
                     <br/>
+                    <h3>Schedules</h3>
+                    <div class="nav" role="navigation">
+                        <ul>
+                        <g:if test="${this.portalModule.name in session['developermodules']}">
+                            <li><g:link controller='portalScheduler' class="create" action="create" params="['module':this.portalModule.name]">Add Schedule</g:link></li>
+                        </g:if>
+                        </ul>
+                    </div>
+                    <%-- These are the rows that travel in the package as schedulerlist.json, so
+                         the columns here are the same five the import diff compares, in the same
+                         order. lastrun is per-server runtime state and is not exported; it is
+                         shown because it is the quickest way to tell whether a schedule is
+                         actually firing on THIS server. --%>
+                    <table class='table js-collapse' data-collapse-rows='20' data-collapse-label='schedules'>
+                    <tr><th>#</th><th>Name</th><th>Pages</th><th>Hour</th><th title="0 is Sunday">Day Of Week</th><th>Day Of Month</th><th>Enabled</th><th>Last Run</th><th>Action</th></tr>
+                    <g:each in='${schedulers}' var='scheduler' status='i'>
+                        <tr>
+                        <td>${i+1}</td>
+                        <td>${scheduler.name}</td>
+                        <td>${scheduler.slugs}</td>
+                        <td>${scheduler.hour_of_day}</td>
+                        <td>${scheduler.day_of_week}</td>
+                        <td>${scheduler.day_of_month}</td>
+                        <td>
+                            <g:if test="${scheduler.enabled}"><span class="badge bg-success">Yes</span></g:if>
+                            <g:else><span class="badge bg-secondary">No</span></g:else>
+                        </td>
+                        <td><g:formatDate date="${scheduler.lastrun}" format="yyyy-MM-dd HH:mm"/></td>
+                        <td>
+                        <g:link controller='portalScheduler' action='show' id='${scheduler.id}'>View</g:link>
+                        <g:if test="${scheduler.module in session['developermodules']}">
+                          &nbsp;&nbsp;
+                          <g:link controller='portalScheduler' action='edit' id='${scheduler.id}'>Edit</g:link>
+                        </g:if>
+                        </td>
+                        </tr>
+                    </g:each>
+                    <g:if test="${!schedulers}">
+                        <tr><td colspan="9">No schedules in this module.</td></tr>
+                    </g:if>
+                    </table>
+                    <br/>
                     <h3>Trees</h3>
                     <div class="nav" role="navigation">
                         <ul>
@@ -354,5 +396,63 @@ ${role.user.name}
             </section>
         </div>
     </div>
+
+    <script type="text/javascript">
+    // Collapses long tables on this page down to a preview, since modules with many
+    // pages/settings/roles otherwise make it very long to scroll. Purely presentational:
+    // every row is still in the DOM, so browser find-in-page and copy still see them
+    // once expanded, and nothing changes if scripting is unavailable.
+    (function () {
+        function collapsibleTables() {
+            var tables = document.querySelectorAll('table.js-collapse');
+            Array.prototype.forEach.call(tables, function (table) {
+                var limit = parseInt(table.getAttribute('data-collapse-rows'), 10) || 20;
+                var label = table.getAttribute('data-collapse-label') || 'rows';
+
+                // Only count data rows; the header row holds th, not td.
+                var rows = Array.prototype.filter.call(table.rows, function (r) {
+                    return r.getElementsByTagName('td').length > 0;
+                });
+                if (rows.length <= limit) {
+                    return;
+                }
+
+                var hidden = rows.slice(limit);
+                var expanded = false;
+
+                var toggle = document.createElement('button');
+                toggle.type = 'button';
+                toggle.className = 'btn btn-sm btn-secondary';
+                toggle.style.marginTop = '4px';
+
+                var holder = document.createElement('div');
+                holder.appendChild(toggle);
+                table.parentNode.insertBefore(holder, table.nextSibling);
+
+                function render() {
+                    hidden.forEach(function (r) {
+                        r.style.display = expanded ? '' : 'none';
+                    });
+                    toggle.textContent = expanded
+                        ? 'Show first ' + limit + ' ' + label
+                        : 'Show all ' + rows.length + ' ' + label + ' (' + hidden.length + ' hidden)';
+                }
+
+                toggle.addEventListener('click', function () {
+                    expanded = !expanded;
+                    render();
+                });
+
+                render();
+            });
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', collapsibleTables);
+        } else {
+            collapsibleTables();
+        }
+    })();
+    </script>
     </body>
 </html>

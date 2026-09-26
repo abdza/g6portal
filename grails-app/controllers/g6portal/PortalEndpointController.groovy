@@ -227,15 +227,33 @@ class PortalEndpointController {
 
         def user = User.findByUserID(username, [cache: false]) ?:
                    User.findByLanid(username, [cache: false])
-        // verifyPassword() returns TRUE when the stored hash is blank, which
-        // would let an unset account through on any password. Refuse those.
-        if(!user || !user.password || !user.verifyPassword(password)) {
-            log.warn("endpoint ${endpoint}: failed basic auth for '${username}'")
+        // Same check as the login form (Active Directory, then local password).
+        // A push is several requests, so a success is remembered briefly rather
+        // than binding to AD for each one.
+        def key = credentialKey(decoded)
+        if(!user || !(recentlyVerified(key) || Credentials.check(user, password, "endpoint ${endpoint.module}/${endpoint.slug}"))) {
+            println "endpoint ${endpoint.module}/${endpoint.slug}: failed basic auth for '${username}'" + (user ? '' : ' (no such user)')
             return challenge(endpoint)
         }
+        verified.put(key, System.currentTimeMillis())
         if(user.isActive == false) { fail(403, "Account is not active"); return null }
         if(!roleOk(endpoint, user)) { fail(403, "Not authorised for this endpoint"); return null }
         return user.userID
+    }
+
+    // sha-256 of "user:password" -> when it last passed. Never the password itself.
+    private static final Map<String, Long> verified = new java.util.concurrent.ConcurrentHashMap<>()
+    private static final long VERIFIED_MS = 5 * 60 * 1000L
+
+    private static String credentialKey(String userpass) {
+        java.security.MessageDigest.getInstance('SHA-256').digest(userpass.getBytes('UTF-8')).encodeHex().toString()
+    }
+
+    private static boolean recentlyVerified(String key) {
+        def at = verified.get(key)
+        if(at == null) return false
+        if(System.currentTimeMillis() - at > VERIFIED_MS) { verified.remove(key); return false }
+        return true
     }
 
     private boolean roleOk(PortalEndpoint endpoint, User user) {

@@ -25,7 +25,8 @@ class PortalTrackerController {
                              builder_add_fields: "POST", builder_save_field_order: "POST",
                              builder_save_status: "POST", builder_delete_status: "POST",
                              builder_save_transition: "POST", builder_delete_transition: "POST",
-                             builder_add_roles: "POST", builder_save_tracker_lists: "POST"]
+                             builder_add_roles: "POST", builder_save_tracker_lists: "POST",
+                             builder_save_field_group: "POST"]
 
     // Background Excel export jobs: token → [done, file, error, filename]
     static java.util.concurrent.ConcurrentHashMap excelJobs = new java.util.concurrent.ConcurrentHashMap()
@@ -803,7 +804,7 @@ class PortalTrackerController {
                                         cell.setCellValue(rename_checkbox[1])
                                     }
                                 }
-                                else {
+                                else if(fieldval != null) {
                                     cell.setCellValue(fieldval)
                                 }
                             }
@@ -1153,7 +1154,6 @@ setTimeout(check,2000);
             curuser = session.curuser
         }
         def tname = params.transition.replace("_"," ").capitalize()
-        def ctransall = PortalTrackerTransition.findAllByTrackerAndNameIlike(tracker,tname)
         def ctrans = null
         def abandon = false
         if(params.id) {
@@ -1170,13 +1170,7 @@ setTimeout(check,2000);
             }
             abandon = true
         }
-        if(ctransall) {
-            ctransall.each { cc->
-                 if(cc.testenabled(session,datas)) {
-                    ctrans = cc
-                 }
-            }
-        }
+        ctrans = PortalTrackerTransition.resolve(tracker, tname, session, datas)
         if(!ctrans) { 
             // make sure the transition can be done by the user
             flash.message = "You are not authorized to do that"
@@ -1329,6 +1323,24 @@ setTimeout(check,2000);
                                                        [params: params, user: curuser, controller: 'portalTracker',
                                                         action: 'transition_submit postprocess', module: tracker.module, slug: tracker.slug])
                                 flash.message = e.getMessage() ?: "An unexpected error occurred during processing. Please check the server log."
+                                // A failing postprocess may have cleared the Hibernate session on
+                                // its way out (PortalTrackerData.update does exactly that), which
+                                // detaches ctrans/tracker. Reading ctrans.emails below would then
+                                // throw LazyInitializationException and the user would get a 500
+                                // page instead of the flash message above — so re-attach them.
+                                try {
+                                    if(ctrans?.id) {
+                                        def freshtrans = PortalTrackerTransition.get(ctrans.id)
+                                        if(freshtrans) { ctrans = freshtrans }
+                                    }
+                                    if(tracker?.id) {
+                                        def freshtracker = PortalTracker.get(tracker.id)
+                                        if(freshtracker) { tracker = freshtracker }
+                                    }
+                                }
+                                catch(Exception re) {
+                                    println "Could not re-attach transition after postprocess failure: " + re
+                                }
                             }
                         }
                         datas = tracker.getdatas(datas['id'])
@@ -1587,15 +1599,7 @@ setTimeout(check,2000);
             datas = tracker.getdatas(params.id)
         }
         def tname = params.transition?.replace("_", " ")?.capitalize()
-        def ctransall = PortalTrackerTransition.findAllByTrackerAndNameIlike(tracker, tname)
-        def ctrans = null
-        if (ctransall) {
-            ctransall.each { cc ->
-                if (cc.testenabled(session, datas)) {
-                    ctrans = cc
-                }
-            }
-        }
+        def ctrans = PortalTrackerTransition.resolve(tracker, tname, session, datas)
         if (!ctrans || !ctrans.immediate_submission) {
             flash.message = "You are not authorized to do that"
             redirect(controller: 'portalPage', action: 'index')
@@ -1744,19 +1748,12 @@ setTimeout(check,2000);
       }
       def tracker = PortalTracker.findByModuleAndSlug(params.module,params.slug)
       def tname = params.transition?.replace("_"," ")?.capitalize()
-      def ctransall = PortalTrackerTransition.findAllByTrackerAndNameIlike(tracker,tname)
       def ctrans = null
       def datas = null
       if(params.id) {
           datas = tracker.getdatas(params.id)
       }
-      if(ctransall) {
-          ctransall.each { cc->
-               if(cc.testenabled(session,datas)) {
-                  ctrans = cc
-               }
-          }
-      }
+      ctrans = PortalTrackerTransition.resolve(tracker, tname, session, datas)
       if(!ctrans) { 
           // make sure the transition can be done by the user
           flash.message = "You are not authorized to do that"
@@ -2101,11 +2098,32 @@ setTimeout(check,2000);
             tracker: [id: tracker.id, name: tracker.name, module: tracker.module, slug: tracker.slug,
                       initial_status_id: tracker.initial_status?.id?.toString()],
             lists: TRACKER_FIELD_LISTS.collectEntries { [(it): csvList(tracker[it])] },
-            fields: tracker.orderedFields().collect {
-                [id: it.id.toString(), name: it.name, label: it.label, field_type: it.field_type]
+            fields: tracker.orderedFields().collect { f ->
+                def m = [id: f.id.toString(), name: f.name, label: f.label, field_type: f.field_type]
+                // A FieldGroup's membership lives in its OWN field_options, as a CSV of
+                // member names; nothing on a member points back at its group. So the tree
+                // can only be built from these lists, and a field naturally belongs to as
+                // many groups as happen to name it.
+                //
+                // Order matters and is NOT the tracker's global field order: TrackerTagLib
+                // renders a fieldset in field_options order, so this list is the group's
+                // own internal render order and is preserved verbatim.
+                if(f.field_type == 'FieldGroup') m.members = csvList(f.field_options)
+                return m
             },
             roles: (tracker.roles ?: []).sort { it.name }.collect {
                 [id: it.id.toString(), name: it.name, role_type: it.role_type]
+            },
+            // Candidates for a transition's postprocess. Scoped to the tracker's OWN
+            // module because that is the only place the importer looks: PortalModule
+            // stores a postprocess as a bare slug and re-resolves it with
+            // findByModuleAndSlug(tracker.module, slug), so a page from anywhere else
+            // would be silently dropped the first time the module travelled.
+            // Non-runable pages are still listed - transition_submit only evaluates
+            // .content and some trackers already point at one - but the flag rides
+            // along so the picker can put the runable ones first.
+            pages: PortalPage.findAllByModule(tracker.module, [sort: 'slug']).collect {
+                [id: it.id.toString(), slug: it.slug, title: it.title, runable: it.runable ?: false]
             },
             statuses: (tracker.statuses ?: []).sort { it.name }.collect { st ->
                 [id: st.id.toString(), name: st.name,
@@ -2117,6 +2135,7 @@ setTimeout(check,2000);
                 [id: tr.id.toString(), name: tr.name, display_name: tr.display_name,
                  same_status: tr.same_status ?: false,
                  next_status_id: tr.next_status?.id?.toString(),
+                 postprocess_id: tr.postprocess?.id?.toString(),
                  prev_status_ids: (tr.prev_status ?: [])*.id*.toString(),
                  role_ids: (tr.roles ?: [])*.id*.toString(),
                  displayfields: csvList(tr.displayfields), editfields: csvList(tr.editfields)]
@@ -2277,6 +2296,70 @@ setTimeout(check,2000);
         }
         tracker.refresh()
         builderOk(tracker, [added: added, skipped: skipped])
+    }
+
+    /**
+     * Rewrites one FieldGroup's membership (its field_options CSV).
+     *
+     * Membership is owned by the group, not the member, which is why a field can sit in
+     * more than one group: two groups simply both name it. Nothing here forbids that.
+     *
+     * Existing member ORDER is preserved and new members are appended. The group's
+     * field_options order is the order TrackerTagLib renders the fieldset in - it is NOT
+     * the tracker's global field order - so renormalising it would silently reshuffle
+     * live forms (every ecdd/ecdd2 group would reorder, since field_order is unset there
+     * and the global order is therefore alphabetical).
+     */
+    def builder_save_field_group() {
+        def tracker = builderTracker()
+        if(!tracker) return
+        def payload = builderPayload()
+
+        def group = (tracker.fields ?: []).find { it.id.toString() == payload.field_id?.toString() }
+        if(!group) { builderFail('That field is not on this tracker.'); return }
+        if(group.field_type != 'FieldGroup') { builderFail("${group.name} is not a Field Group."); return }
+
+        def byName = (tracker.fields ?: []).collectEntries { [(it.name): it] }
+        def wanted = (payload.members ?: []).collect { it?.toString()?.trim() }.findAll { it }.unique()
+
+        def unknown = wanted.findAll { !byName.containsKey(it) }
+        if(unknown) { builderFail('Not fields on this tracker: ' + unknown.join(', ')); return }
+        if(group.name in wanted) { builderFail('A group cannot contain itself.'); return }
+
+        // A group may contain another group (ecdd nests three deep). A cycle would make
+        // the form renderer recurse forever, so walk the graph as it would be AFTER this
+        // save and refuse anything that leads back to the group being edited.
+        def membersOf = { String gname ->
+            gname == group.name ? wanted : csvList(byName[gname]?.field_options)
+        }
+        def seen = [] as Set
+        def stack = wanted.findAll { byName[it]?.field_type == 'FieldGroup' } as List
+        while(stack) {
+            def cur = stack.remove(0)
+            if(cur == group.name) { builderFail('That would make ' + group.name + ' contain itself through a nested group.'); return }
+            if(!seen.add(cur)) continue
+            membersOf(cur).each { m -> if(byName[m]?.field_type == 'FieldGroup') stack << m }
+        }
+
+        try {
+            PortalTrackerField.withTransaction { trn ->
+                def existing = csvList(group.field_options)
+                // Keep what is still wanted in its current order, then append the new ones
+                // in the order the editor listed them.
+                def kept = existing.findAll { it in wanted }
+                def added = wanted.findAll { !(it in existing) }
+                group.field_options = (kept + added).join(',')
+                group.save(flush: true)
+            }
+        }
+        catch(Exception e) {
+            PortalErrorLog.capture(e, "workflow builder: saving group ${group.name} on ${tracker.module}/${tracker.slug}",
+                                   [module: tracker.module, slug: tracker.slug, controller: 'portalTracker', action: 'builder_save_field_group'])
+            builderFail('Could not save the group: ' + e.message)
+            return
+        }
+        tracker.refresh()
+        builderOk(tracker)
     }
 
     /** Persists the canonical field order (the row order of the builder's field table). */
@@ -2461,6 +2544,26 @@ setTimeout(check,2000);
             if(!nextStatus || nextStatus.tracker.id != tracker.id) { builderFail('Destination status not found on this tracker'); return }
         }
 
+        // Resolved out here rather than inside withTransaction below: a `return` from
+        // inside that closure leaves only the closure, and the action would carry on to
+        // builderOk as though the save had succeeded.
+        def postprocessGiven = payload.containsKey('postprocess_id')
+        def postprocessPage = null
+        if(postprocessGiven) {
+            def ppid = payload.postprocess_id?.toString()?.trim()
+            if(ppid) {
+                if(!ppid.isLong()) { builderFail('That postprocess page id is not a number'); return }
+                postprocessPage = PortalPage.get(ppid.toLong())
+                // Same module as the tracker: PortalModule exports a postprocess as a bare
+                // slug and re-resolves it against the tracker's module, so a page from
+                // elsewhere would work here and vanish on the next import.
+                if(!postprocessPage) { builderFail('That postprocess page no longer exists'); return }
+                if(postprocessPage.module != tracker.module) {
+                    builderFail("A postprocess page has to live in this tracker's module (${tracker.module})"); return
+                }
+            }
+        }
+
         try {
             PortalTrackerTransition.withTransaction { trn ->
                 if(!transition) {
@@ -2491,6 +2594,10 @@ setTimeout(check,2000);
                 }
                 if(payload.containsKey('view_fields') || payload.containsKey('edit_fields')) {
                     applyFieldSelection(transition, tracker, payload.view_fields, payload.edit_fields)
+                }
+                // Absent key = leave alone; present but blank = clear it.
+                if(postprocessGiven) {
+                    transition.postprocess = postprocessPage
                 }
                 if(!transition.validate()) {
                     throw new ValidationException('transition', transition.errors)

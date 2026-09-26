@@ -27,26 +27,30 @@ class PortalSearchController {
             
             def dparam = '%' + query.replace(' ','%') + '%'
             
-            // Search users with error handling
-            try {
-                users = User.createCriteria().list() {
-                    or{
-                        'ilike'('name',dparam)
-                        'ilike'('userID',dparam)
-                        'ilike'('email',dparam)
-                        'ilike'('lanid',dparam)
-                        'ilike'('role',dparam)
+            // Search users with error handling. User results are only exposed to
+            // Admin/Developer of at least one module - everyone else gets zero user results
+            // from global search (pages/trackers below are unaffected).
+            if(curuser?.adminlist()) {
+                try {
+                    users = User.createCriteria().list() {
+                        or{
+                            'ilike'('name',dparam)
+                            'ilike'('userID',dparam)
+                            'ilike'('email',dparam)
+                            'ilike'('lanid',dparam)
+                            'ilike'('role',dparam)
+                        }
+                        'eq'('isActive',true)
+                        maxResults(20)
+                        order("id","asc")
                     }
-                    'eq'('isActive',true)
-                    maxResults(20)
-                    order("id","asc")
+                } catch(Exception e) {
+                    PortalErrorLog.record(params, curuser, 'search', 'user_search_error', 
+                        "Error searching users: " + e.toString(), null, null)
+                    users = []
                 }
-            } catch(Exception e) {
-                PortalErrorLog.record(params, curuser, 'search', 'user_search_error', 
-                    "Error searching users: " + e.toString(), null, null)
-                users = []
             }
-            
+
             // Search pages with error handling
             try {
                 pages = PortalPage.createCriteria().list() {

@@ -433,6 +433,49 @@ class SecurityInterceptor {
             return false
         }
 		}
+		else if(controllerName in ['portalTree','portalTreeNode','portalTreeNodeUser']) {
+        // Trees hold the portal's global navigation (portal/main_menu) and the org
+        // hierarchies other modules derive their permissions from. Without an
+        // object-aware check these controllers fall into the generic branch below,
+        // where being Admin/Developer of ANY single module grants write access to
+        // EVERY tree - the same flaw already fixed for userRole above. Reads stay
+        // open to any module admin; writes must be on the tree's OWN module.
+        if(curuser?.isAdmin) {
+            return true
+        }
+        if(curuser) {
+            // movenode drags a node to a new parent; user_form adds, changes and removes the
+            // users holding roles on a node. Both write, so both are scoped to the tree's module.
+            def writeactions = ['create','save','edit','update','delete','fixnodes','movenode','user_form']
+            // Importing a tree from a file also writes, but the module it writes to is named
+            // INSIDE the uploaded file, which treemodule() cannot see. These actions are let
+            // through to any module admin here and the per-module check is enforced in
+            // PortalTreeController.unauthorizedmodules(), where the file has been parsed.
+            def fileimportactions = ['importtreeform','importtree','importtreepreview','confirmimporttree']
+            if(actionName in fileimportactions) {
+                if(curuser.adminlist()?.size()>0) {
+                    return true
+                }
+            }
+            else if(!(actionName in writeactions)) {
+                if(curuser.adminlist()?.size()>0) {
+                    return true
+                }
+            }
+            else if(treemodule() in curuser.adminlist()) {
+                return true
+            }
+            flash.message = "You need admin rights on that tree's module to access that functionality"
+            redirect(controller: "portalPage", action: "home")
+            return false
+        }
+        else {
+            rememberForLogin()
+            flash.message = "You need to login to access that functionality"
+            redirect(controller: "user", action: "login")
+            return false
+        }
+		}
 		else {
         if(curuser) {
             if(actionName in ['api_list']) {
@@ -480,6 +523,59 @@ class SecurityInterceptor {
 		flash.message = "You lack the rights to access that functionality"
 		redirect(controller: "portalPage", action: "home")
 		return false
+    }
+
+    /**
+     * Resolves which tree a portalTree / portalTreeNode / portalTreeNodeUser request
+     * targets, and returns that tree's module. Used to scope write access so that
+     * being admin of one module cannot rewrite another module's tree (or the portal's
+     * global navigation menu).
+     *
+     * Returns null when the target cannot be determined, which callers treat as "deny"
+     * for write actions.
+     */
+    private String treemodule() {
+        try {
+            // Moving a node: o is the node, r its new parent. Both must sit in trees of the
+            // same module, or a node could be dragged out of a tree the user may not touch.
+            if(controllerName=='portalTreeNode' && actionName=='movenode') {
+                def moved = params.o ? PortalTreeNode.get(params.o)?.tree?.module : null
+                def target = params.r ? PortalTreeNode.get(params.r)?.tree?.module : null
+                return (moved && moved == target) ? moved : null
+            }
+            // Node users: the node comes as hidenodeid, and an edit/delete names an existing
+            // assignment by usernodeid, which must belong to a node of that same module - or
+            // an assignment in another module's tree could be rewritten through a node here.
+            if(controllerName=='portalTreeNode' && actionName=='user_form') {
+                def nodemodule = params.hidenodeid ? PortalTreeNode.get(params.hidenodeid)?.tree?.module : null
+                if(params.usernodeid) {
+                    def assignmodule = PortalTreeNodeUser.get(params.usernodeid)?.node?.tree?.module
+                    return (nodemodule && nodemodule == assignmodule) ? nodemodule : null
+                }
+                return nodemodule
+            }
+            // Creating a node: it inherits its tree from the parent (see
+            // PortalTreeNodeController.save), so parentid identifies the target tree.
+            if(params.parentid) {
+                return PortalTreeNode.get(params.parentid)?.tree?.module
+            }
+            if(controllerName=='portalTree') {
+                if(params.id) {
+                    return PortalTree.get(params.id)?.module
+                }
+                return params.module   // creating a brand new tree
+            }
+            if(controllerName=='portalTreeNode' && params.id) {
+                return PortalTreeNode.get(params.id)?.tree?.module
+            }
+            if(controllerName=='portalTreeNodeUser' && params.id) {
+                return PortalTreeNodeUser.get(params.id)?.node?.tree?.module
+            }
+        }
+        catch(Exception e) {
+            println "Error resolving tree module for ${controllerName}.${actionName}: ${e}"
+        }
+        return null
     }
 
     boolean after() { 

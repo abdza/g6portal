@@ -76,17 +76,27 @@ class TrackerTagLib {
         }
     }
 
+    // Bound to the transition form by trackerForm. Two things it is careful about, both of
+    // which made it useless before: it must hook the tracker's OWN form (hooking every form on
+    // the page put these checks on the header search box, whose fields are all absent, so the
+    // first search alerted "required"), and it must not call $.isNumeric, which jQuery 4
+    // removed - the TypeError aborted the handler before its return false, which submits the
+    // form unvalidated instead of blocking it.
     def trackerErrorHandler = { attrs->
         if(attrs.tracker){
-            out << "\$('form').on('submit',function() {"
+            def formid = attrs.formid ?: (attrs.tracker.slug + '_form')
+            out << "\$('#${formid}').on('submit',function() {"
+            out << "var afsnum = function(v){ return v!==null && v!=='' && !isNaN(Number(v)); };"
             attrs.tracker.fields.each { field->
                 if(attrs.transition && attrs.transition.requiredfields){
                     if(field.name?.trim() in attrs.transition.requiredfields.tokenize(',')*.trim()){
+                        // A field with no options to offer is not rendered at all, so an absent
+                        // element counts as empty and is reported like one.
                         out << "if(!\$('#" + field.name?.trim() + "').val()){ alert('Value for " + field.label + " is required'); \$('#" + field.name?.trim() + "').focus(); return false; }"
                     }
                 }
                 if(field.field_type in ['Integer','Number']){
-                    out << "if(\$('#" + field.name?.trim() + "').val() && \$('#" + field.name?.trim() + "').val()!='default' && !\$.isNumeric(\$('#" + field.name?.trim() + "').val())){ alert('Please use only numbers for " + field.label + "'); \$('#" + field.name?.trim() + "').focus(); return false; }"
+                    out << "if(\$('#" + field.name?.trim() + "').length && \$('#" + field.name?.trim() + "').val() && \$('#" + field.name?.trim() + "').val()!='default' && !afsnum(\$('#" + field.name?.trim() + "').val())){ alert('Please use only numbers for " + field.label + "'); \$('#" + field.name?.trim() + "').focus(); return false; }"
                 }
             }
             out << "});"
@@ -285,7 +295,11 @@ class TrackerTagLib {
     }
                                     }
                                     else{
-                                        out << "<select name='${attrs.field.name?.trim()}' style='width: 40%;'>"
+                                        // id as well as name: the short-list branches used to emit
+                                        // a nameless-to-jQuery select, so anything addressing the
+                                        // field by #id (required-field checks, toggleAll, HTMX)
+                                        // could not see it. The select2 branches above always did.
+                                        out << "<select name='${attrs.field.name?.trim()}' id='${attrs.field.name?.trim()}' style='width: 40%;'>"
                                         nodes.each { optnode->
                                             if(optnode.id==value){
                                                 out << "<option selected value='${optnode.id}'>${optnode.name}</option>"
@@ -309,7 +323,11 @@ class TrackerTagLib {
     }
                                     }
                                     else{
-                                        out << "<select name='${attrs.field.name?.trim()}' style='width: 40%;'>"
+                                        // id as well as name: the short-list branches used to emit
+                                        // a nameless-to-jQuery select, so anything addressing the
+                                        // field by #id (required-field checks, toggleAll, HTMX)
+                                        // could not see it. The select2 branches above always did.
+                                        out << "<select name='${attrs.field.name?.trim()}' id='${attrs.field.name?.trim()}' style='width: 40%;'>"
                                         branches.each { optbranch->
                                             def objname = optbranch[attrs.field.trackerobject()['name']]
                                             if(optbranch.id==value){
@@ -344,7 +362,11 @@ class TrackerTagLib {
     }
                                     }
                                     else{
-                                        out << "<select name='${attrs.field.name?.trim()}' style='width: 40%;'>"
+                                        // id as well as name: the short-list branches used to emit
+                                        // a nameless-to-jQuery select, so anything addressing the
+                                        // field by #id (required-field checks, toggleAll, HTMX)
+                                        // could not see it. The select2 branches above always did.
+                                        out << "<select name='${attrs.field.name?.trim()}' id='${attrs.field.name?.trim()}' style='width: 40%;'>"
                                         users.each { optuser->
                                             if(optuser.id==value){
                                                 out << "<option selected value='${optuser.id}'>${optuser.name}</option>"
@@ -557,7 +579,7 @@ class TrackerTagLib {
                                     if(othertracker.defaultsort) {
                                         orderby = " order by " + othertracker.defaultsort
                                     }
-                                    def query = "select * from " + othertracker.data_table() + " where " + linkback.name + "=" + params.id + orderby
+                                    def query = "select * from " + othertracker.data_table() + " where " + PortalTracker.qcol(linkback.name) + "=" + params.id + orderby
                                     def curcount = 1
                                     sql.eachRow(query) { row->
                                         def rowclass = ""
@@ -781,7 +803,7 @@ class TrackerTagLib {
                         }
                         def query = ''
                         if(!attrs.ajaxrowid){
-                            query = "select * from " + othertracker.data_table() + " where " + linkback.name + "=" + params.id
+                            query = "select * from " + othertracker.data_table() + " where " + PortalTracker.qcol(linkback.name) + "=" + params.id
                             if(attrs.field_filters && attrs.field.name?.trim() in attrs.field_filters){
                                 if(params[attrs.field.field_options + '.record_status']){
                                     if(params[attrs.field.field_options + '.record_status']!='All'){
@@ -816,7 +838,7 @@ class TrackerTagLib {
                             }
                         }
                         else{
-                            query = "select * from " + othertracker.data_table() + " where " + linkback.name + "=" + params.id + " and id=" + attrs.ajaxrowid
+                            query = "select * from " + othertracker.data_table() + " where " + PortalTracker.qcol(linkback.name) + "=" + params.id + " and id=" + attrs.ajaxrowid
                         }
                         def curcount = 1
                         def orderby = ""
@@ -937,14 +959,17 @@ class TrackerTagLib {
                         out << "<label>" + field.label + "</label>"
                         if(field.field_type in ['Date','DateTime']) {
                             def filterid = 'date_filter_type_' + field.name?.trim()
-                            out << "<input type='hidden' name='${field.name?.trim()}' id='${field.name?.trim()}'/>"
-                            out << "<select class='datefilter' id='${filterid}' name='${filterid}' value='${params[filterid]?.toString()?.encodeAsHTML()}'>"
-                            out << "<option ${if(params[filterid]=='Before'){ 'selected' }}>Before</option>"
-                            out << "<option ${if(params[filterid]=='After'){ 'selected' }}>After</option>"
-                            out << "<option ${if(params[filterid]=='Between'){ 'selected' }}>Between</option>"
+                            // A missing param interpolates as the literal string "null" inside a GString,
+                            // which used to be posted back as the filter value and blew up the SQL.
+                            def paramval = { key-> params[key]?.toString()?.encodeAsHTML() ?: '' }
+                            out << "<input type='hidden' name='${field.name?.trim()}' id='${field.name?.trim()}' value='${paramval(field.name?.trim())}'/>"
+                            out << "<select class='datefilter' id='${filterid}' name='${filterid}'>"
+                            out << "<option ${params[filterid]=='Before' ? 'selected' : ''}>Before</option>"
+                            out << "<option ${params[filterid]=='After' ? 'selected' : ''}>After</option>"
+                            out << "<option ${params[filterid]=='Between' ? 'selected' : ''}>Between</option>"
                             out << "</select>"
-                            out << " <input type='date' class='${field.name?.trim()}_date' id='${field.name?.trim()}_first' name='${field.name?.trim()}_first' value='${params[field.name?.trim() + '_first']?.toString()?.encodeAsHTML()}'/>"
-                            out << " <span id='${field.name?.trim()}_second_span'>- <input class='${field.name?.trim()}_date' type='date' id='${field.name?.trim()}_second' name='${field.name?.trim()}_second' value='${params[field.name?.trim() + '_second']?.toString()?.encodeAsHTML()}'/></span>"
+                            out << " <input type='date' class='${field.name?.trim()}_date' id='${field.name?.trim()}_first' name='${field.name?.trim()}_first' value='${paramval(field.name?.trim() + '_first')}'/>"
+                            out << " <span id='${field.name?.trim()}_second_span'>- <input class='${field.name?.trim()}_date' type='date' id='${field.name?.trim()}_second' name='${field.name?.trim()}_second' value='${paramval(field.name?.trim() + '_second')}'/></span>"
                             out << asset.script() { """
                                 \$('#${filterid}').on('change',function() {
                                     var df = \$('#${filterid}').val();
@@ -956,20 +981,20 @@ class TrackerTagLib {
                                     }
                                 });
                                 \$('.${field.name?.trim()}_date').on('change',function() {
+                                    // Only update the hidden filter-value field here — do NOT auto-submit.
+                                    // The user must click Search; see the value= restore on the hidden
+                                    // field above for why that button click now reliably keeps the date filter.
                                     var df = \$('#${filterid}').val();
                                     var first = \$('#${field.name?.trim()}_first').val();
                                     var second = \$('#${field.name?.trim()}_second').val();
                                     if(df=='Before') {
-                                        \$('#${field.name?.trim()}').val('<' + first);
-                                        if(first) { \$('#trackfilter').submit(); }
+                                        \$('#${field.name?.trim()}').val(first ? ('<' + first) : '');
                                     }
                                     else if(df=='After') {
-                                        \$('#${field.name?.trim()}').val('>' + first);
-                                        if(first) { \$('#trackfilter').submit(); }
+                                        \$('#${field.name?.trim()}').val(first ? ('>' + first) : '');
                                     }
                                     else {
-                                        \$('#${field.name?.trim()}').val('between_' + first + '_' + second);
-                                        if(first && second) { \$('#trackfilter').submit(); }
+                                        \$('#${field.name?.trim()}').val((first && second) ? ('between_' + first + '_' + second) : '');
                                     }
                                 });
                                 ${if(params[filterid]!='Between'){
@@ -1676,6 +1701,10 @@ content: event.description
                 if(attrs.transition.immediate_submission) {
                     out << asset.script() { """\$(window).on('load',function() { \$('#${attrs.transition.tracker.slug}_form').find('input[type="submit"]').click();});"""}
                 }
+                // The transition's requiredfields are checked here. Nothing called
+                // trackerErrorHandler before, so requiredfields was dead configuration on every
+                // transition that declared it.
+                out << asset.script() { trackerErrorHandler(tracker: attrs.transition.tracker, transition: attrs.transition, formid: attrs.transition.tracker.slug + '_form') }
             }
         }
         out << trackerFormJS()
