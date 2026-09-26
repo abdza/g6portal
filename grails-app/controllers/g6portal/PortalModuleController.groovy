@@ -657,9 +657,18 @@ class PortalModuleController {
           println "Error building settings preview: " + e
           flash.message = "Could not read settinglist.json: ${e.message}"
       }
+      // Schedules get the same treatment for the same reason: an hour moved to spread load or
+      // a job disabled during an incident must not be silently undone by an import.
+      def schedulers = []
+      try {
+          schedulers = module.previewschedulers()
+      } catch(Exception e) {
+          println "Error building schedulers preview: " + e
+          flash.message = "Could not read schedulerlist.json: ${e.message}"
+      }
       respond module, view:'importpreview', model:[curuser:curuser, diff:difftext,
               file_on:file_on, staff_on:staff_on, tree_on:tree_on, menu_on:menu_on,
-              settings:settings]
+              settings:settings, schedulers:schedulers]
   }
 
   def confirmimport(Long id) {
@@ -711,6 +720,17 @@ class PortalModuleController {
           }
       }
       def kept = settingchoices.findAll { it.value == 'keep' }.keySet().sort()
+      // Same hidden-key + radio pairing for schedules; see the note above on why the key
+      // travels in the value rather than the param name.
+      def schedulerchoices = [:]
+      params.each { k, v ->
+          def pname = k?.toString()
+          if(pname?.startsWith('schedulerkey_')) {
+              def choice = params['schedulerchoice_' + pname.substring('schedulerkey_'.length())]
+              if(choice) schedulerchoices[v.toString()] = choice.toString()
+          }
+      }
+      def keptschedules = schedulerchoices.findAll { it.value == 'keep' }.keySet().sort()
       try {
           // regenerate the diff at import time so the log records exactly
           // what changed even if the module was modified after the preview
@@ -720,6 +740,10 @@ class PortalModuleController {
           if(kept) {
               difftext = "Settings kept at their existing values (not imported):\n" +
                          kept.collect { "  " + it }.join("\n") + "\n\n" + (difftext ?: '')
+          }
+          if(keptschedules) {
+              difftext = "Schedules kept as they are on this server (not imported):\n" +
+                         keptschedules.collect { "  " + it }.join("\n") + "\n\n" + (difftext ?: '')
           }
           // An endpoint's target is a program this server runs, and the endpoint admin
           // screens are superusers-only for that reason. Importing a module must not be a
@@ -740,7 +764,7 @@ class PortalModuleController {
                          "was unticked. The module is reachable by URL; re-import with it ticked\n" +
                          "to add them.\n\n" + (difftext ?: '')
           }
-          portalService.import_module(id, file_on, staff_on, tree_on, settingchoices, endpoints_on, menu_on)
+          portalService.import_module(id, file_on, staff_on, tree_on, settingchoices, endpoints_on, menu_on, schedulerchoices)
           PortalModuleImportLog.withTransaction {
               // userID, not staffID: User has no staffID in g6portal (it is a g5portal name),
               // and ?. does not guard a missing property - it threw MissingPropertyException
@@ -752,6 +776,9 @@ class PortalModuleController {
           def notes = []
           if(kept) {
               notes << "${kept.size()} setting${kept.size()==1?'':'s'} kept at existing value${kept.size()==1?'':'s'}"
+          }
+          if(keptschedules) {
+              notes << "${keptschedules.size()} schedule${keptschedules.size()==1?'':'s'} kept as already set here"
           }
           if(endpoints_skipped) {
               notes << "endpoints not imported - a system administrator has to do that"

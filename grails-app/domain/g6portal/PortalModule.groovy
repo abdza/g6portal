@@ -245,6 +245,110 @@ class PortalModule {
         }
     }
 
+    // ---- Schedulers --------------------------------------------------------
+    // PortalScheduler rows are module-scoped, so a module's cron schedule can travel with it
+    // instead of having to be recreated by hand in every environment. They get the same
+    // per-row keep/overwrite choice as settings, and for the same reason: a schedule is
+    // routinely tuned per server - an hour moved to spread load, a job disabled while an
+    // issue is investigated - and a blind import would silently undo that.
+    //
+    // lastrun is deliberately NOT part of the export. It is per-server runtime state; carrying
+    // it would make every diff noisy and would import a lie about when THIS server last ran.
+
+    static String schedulercanon(slugs, hour_of_day, day_of_week, day_of_month, enabled) {
+        return [slugs, hour_of_day, day_of_week, day_of_month, (enabled ? '1' : '0')]
+                 .collect { it == null ? '' : it.toString() }.join('\u0001')
+    }
+
+    // One line a human can compare at a glance, since a schedule is five small columns
+    // rather than the single value a setting has.
+    static String schedulerdisplay(slugs, hour_of_day, day_of_week, day_of_month, enabled) {
+        return (slugs ?: '') +
+               ' | hour ' + (hour_of_day ?: '') +
+               ', day of week ' + (day_of_week ?: '') +
+               ', day of month ' + (day_of_month ?: '') +
+               ' | ' + (enabled ? 'enabled' : 'disabled')
+    }
+
+    static String schedulerkey(module, name) {
+        return (module ?: '') + '::' + name
+    }
+
+    // Read-only compare of schedulerlist.json against this server, same three statuses and
+    // same ordering as previewsettings.
+    def previewschedulers(migrationfolder = null, jsonSlurper = null) {
+        if(migrationfolder == null) {
+            def curfolder = System.getProperty("user.dir")
+            migrationfolder = PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration') + '/' + this.name
+        }
+        if(jsonSlurper == null) jsonSlurper = new JsonSlurper()
+        def out = []
+        def schedulerfile = new File(migrationfolder + '/schedulerlist.json')
+        if(!schedulerfile.exists()) return out
+        def schedulerarray = jsonSlurper.parseText(schedulerfile.text)
+        schedulerarray.each { ischeduler ->
+            def curscheduler = PortalScheduler.findByModuleAndName(ischeduler.module,ischeduler.name)
+            def incomingcanon = schedulercanon(ischeduler.slugs, ischeduler.hour_of_day, ischeduler.day_of_week,
+                                               ischeduler.day_of_month, ischeduler.enabled)
+            def currentcanon = null
+            if(curscheduler) {
+                currentcanon = schedulercanon(curscheduler.slugs, curscheduler.hour_of_day, curscheduler.day_of_week,
+                                              curscheduler.day_of_month, curscheduler.enabled)
+            }
+            def status = !curscheduler ? 'new' : (incomingcanon == currentcanon ? 'same' : 'changed')
+            out << [
+                key      : schedulerkey(ischeduler.module, ischeduler.name),
+                module   : ischeduler.module,
+                name     : ischeduler.name,
+                status   : status,
+                incoming : schedulerdisplay(ischeduler.slugs, ischeduler.hour_of_day, ischeduler.day_of_week,
+                                            ischeduler.day_of_month, ischeduler.enabled),
+                current  : curscheduler ? schedulerdisplay(curscheduler.slugs, curscheduler.hour_of_day,
+                                            curscheduler.day_of_week, curscheduler.day_of_month,
+                                            curscheduler.enabled) : null,
+                lastrun  : curscheduler?.lastrun
+            ]
+        }
+        def rank = ['changed':0, 'new':1, 'same':2]
+        return out.sort { a,b -> (rank[a.status] <=> rank[b.status]) ?: ((a.name ?: '') <=> (b.name ?: '')) }
+    }
+
+    // schedulerchoices maps schedulerkey() to 'keep' or 'import'. A missing key - and a null
+    // map, which is what every non-interactive caller passes - means import, so behaviour
+    // without an explicit choice matches every other part of the importer.
+    def importschedulers(migrationfolder,jsonSlurper,schedulerchoices = null) {
+        def schedulerfile = new File(migrationfolder + '/schedulerlist.json')
+        if(schedulerfile.exists()){
+            def schedulerarray = jsonSlurper.parseText(schedulerfile.text)
+            schedulerarray.each { ischeduler->
+                def curscheduler = PortalScheduler.findByModuleAndName(ischeduler.module,ischeduler.name)
+                if(curscheduler && schedulerchoices &&
+                   schedulerchoices[schedulerkey(ischeduler.module,ischeduler.name)] == 'keep') {
+                    println "importschedulers: keeping existing schedule for " + schedulerkey(ischeduler.module,ischeduler.name)
+                    return
+                }
+                if(!curscheduler){
+                  curscheduler = new PortalScheduler()
+                }
+                curscheduler.name = ischeduler.name
+                curscheduler.module = ischeduler.module
+                curscheduler.slugs = ischeduler.slugs
+                curscheduler.hour_of_day = ischeduler.hour_of_day
+                curscheduler.day_of_week = ischeduler.day_of_week
+                curscheduler.day_of_month = ischeduler.day_of_month
+                curscheduler.enabled = (ischeduler.enabled ? true : false)
+                // lastrun is left exactly as this server has it - untouched on an existing
+                // row, null on a new one. Importing it would misreport this server's history.
+                if(!curscheduler.validate()){
+                    curscheduler.errors.allErrors.each {
+                        println 'scheduler error:' + it
+                    }
+                }
+                curscheduler.save(flush:true)
+            }
+        }
+    }
+
     def importpages(migrationfolder,jsonSlurper) {
         println "Importing pages from " + migrationfolder
         def pagefile = new File(migrationfolder + '/pagelist.json')
@@ -933,7 +1037,7 @@ class PortalModule {
      *        be a way around that restriction, so only a superuser's import - or a package
      *        placed on the server's filesystem, which is more privileged still - sets it.
      */
-    def importmodule(file_on,staff_on,tree_on = false,settingchoices = null,endpoints_on = false,menu_on = false) {
+    def importmodule(file_on,staff_on,tree_on = false,settingchoices = null,endpoints_on = false,menu_on = false,schedulerchoices = null) {
         def curfolder = System.getProperty("user.dir")
         def migrationfolder = PortalSetting.namedefault('migrationfolder',curfolder + '/uploads/modulemigration') + '/' + this.name
         def jsonSlurper = new JsonSlurper()
@@ -956,6 +1060,8 @@ class PortalModule {
             }
             importpages(migrationfolder,jsonSlurper)
             importtrackers(migrationfolder,jsonSlurper)
+            // after pages: a schedule names the page slugs it runs
+            importschedulers(migrationfolder,jsonSlurper,schedulerchoices)
             if(tree_on) {
               // trees come in whenever the package carries them; node role holders only when
               // staff were asked for, since those are people rather than module structure
@@ -1288,9 +1394,9 @@ class PortalModule {
     }
 
     def exportsettings(migrationfolder) {
+        def settingfile = new File(migrationfolder + '/settinglist.json')
         def settings = PortalSetting.findAllByModule(this.name).sort { it.name }
         if(settings.size()){
-            def settingfile = new File(migrationfolder + '/settinglist.json')
             def settingarray = []
             settings.each { setting->
                 settingarray << [
@@ -1305,7 +1411,40 @@ class PortalModule {
             }
           settingfile.write(formatExportJson(settingarray))
         }
+        else {
+            // A module that has no settings any more must not keep re-importing the ones a
+            // previous export wrote - same reasoning as exportschedulers and as the unticked
+            // files/staff/trees branches in exportmodule.
+            settingfile.delete()
+        }
     }
+
+    def exportschedulers(migrationfolder) {
+        def schedulerfile = new File(migrationfolder + '/schedulerlist.json')
+        def schedulers = PortalScheduler.findAllByModule(this.name).sort { it.name }
+        if(schedulers.size()){
+            def schedulerarray = []
+            schedulers.each { scheduler->
+                schedulerarray << [
+                  module: scheduler.module,
+                  name: scheduler.name,
+                  slugs: scheduler.slugs,
+                  hour_of_day: scheduler.hour_of_day,
+                  day_of_week: scheduler.day_of_week,
+                  day_of_month: scheduler.day_of_month,
+                  enabled: scheduler.enabled
+                ]
+            }
+            schedulerfile.write(formatExportJson(schedulerarray))
+        }
+        else {
+            // A module that has no schedules any more must not keep re-importing the ones a
+            // previous export wrote - same reasoning as the unticked files/staff/trees branches
+            // in exportmodule.
+            schedulerfile.delete()
+        }
+    }
+
 
     def exportuserroles(migrationfolder) {
         def userroles = UserRole.findAllByModule(this.name).sort { a,b -> (a.user.userID?:'') <=> (b.user.userID?:'') ?: (a.role?:'') <=> (b.role?:'') }
@@ -1623,6 +1762,7 @@ class PortalModule {
               new File(migrationfolder + MENU_FILE).delete()
             }
             exportsettings(migrationfolder)
+            exportschedulers(migrationfolder)
             exportendpoints(migrationfolder)
             exportpages(migrationfolder)
             exporttrackers(migrationfolder)
