@@ -3,7 +3,7 @@ package g6portal
 class PortalTagLib {
 
     static defaultEncodeAs = 'html'
-    static encodeAsForTags = [fmbreadcrumbs: 'raw',rolelist: 'raw',ifnotrole: 'raw',ifrole: 'raw',user_selector: 'raw',continueparams: 'raw',hashlink: 'raw',createHashLink:'raw'] 
+    static encodeAsForTags = [fmbreadcrumbs: 'raw',rolelist: 'raw',ifnotrole: 'raw',ifrole: 'raw',user_selector: 'raw',local_select2: 'raw',continueparams: 'raw',hashlink: 'raw',createHashLink:'raw'] 
     static returnObjectForTags = ['ifroleb']
 
     def hashlink = { attrs,body->
@@ -201,6 +201,31 @@ class PortalTagLib {
             };
           }
         }
+      });
+      \$('#${attrs.property}').on('select2:select', function(e) { htmx.trigger(this,'change'); });
+        """
+        out << output
+    }
+
+    /**
+     * Turns a <select> that already carries all of its options inline into a searchable
+     * select2 widget. Unlike user_selector there is no ajax source: the option list is
+     * small enough to ship with the page, we only want the search box on top of it.
+     *
+     * attrs.property - id of the existing <select>
+     * attrs.parent   - optional selector for dropdownParent, keeps the panel from being
+     *                  clipped by the field container
+     * attrs.width    - optional css width, defaults to the 40% the other pickers use
+     */
+    def local_select2 = { attrs->
+        def dropdownParent = ""
+        if(attrs.parent) {
+            dropdownParent = """dropdownParent: \$('${attrs.parent}'),"""
+        }
+        def output = """
+      \$('#${attrs.property}').select2({
+        ${dropdownParent}
+        width: '${attrs.width ?: '40%'}'
       });
       \$('#${attrs.property}').on('select2:select', function(e) { htmx.trigger(this,'change'); });
         """
