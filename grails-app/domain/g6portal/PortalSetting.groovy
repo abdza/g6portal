@@ -141,4 +141,17 @@ class PortalSetting {
             return defaultval
         }
     }
+
+    /**
+     * A setting read as a list of choices, one per line - for dropdown option lists whose
+     * values may contain commas (an Array setting splits on commas). Blank lines and
+     * surrounding spaces are dropped, duplicates removed, order kept. An Array setting is
+     * accepted too, so either kind of setting works. Missing setting = empty list.
+     */
+    static List<String> lines(name) {
+        if(!name) return []
+        def v = namedefault(name.toString(), null)
+        def items = (v instanceof Collection) ? v.collect { it?.toString() } : (v ? v.toString().readLines() : [])
+        return items.collect { it?.trim()?.replaceAll(/\s+/, ' ') }.findAll { it }.unique()
+    }
 }

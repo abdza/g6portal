@@ -3,6 +3,12 @@ package g6portal
 import grails.validation.ValidationException
 import static org.springframework.http.HttpStatus.*
 
+// Explicit import even though Credentials is same-package: without it, a dirty/incremental
+// build that compiles this controller before Credentials is on the classpath silently binds
+// Credentials.check as a dynamic property, shipping a runtime MissingPropertyException on
+// every login. With the import, that situation fails loudly at compile time instead.
+import g6portal.Credentials
+
 import org.apache.directory.ldap.client.api.*
 import org.apache.directory.api.ldap.model.message.*
 import static grails.util.Holders.config
@@ -14,7 +20,8 @@ class UserController {
     static allowedMethods = [save: "POST", update: "PUT", delete: "DELETE", clearsession: "POST"]
 
     def completelist = {
-        def dparam = '%' + params.q?.trim().replace(' ','%') + '%'
+        // select2 sends no q when a picker first opens; without the ?: '' that threw and the picker opened on an error
+        def dparam = '%' + (params.q?.trim() ?: '').replace(' ','%') + '%'
         def cusers = []
         if(params.value){
           cusers << User.get(params.value)
@@ -56,7 +63,8 @@ class UserController {
     }
 
     def activelist = {
-        def dparam = '%' + params.q?.trim().replace(' ','%') + '%'
+        // select2 sends no q when a picker first opens; without the ?: '' that threw and the picker opened on an error
+        def dparam = '%' + (params.q?.trim() ?: '').replace(' ','%') + '%'
         def dusers = null
         if(params.role){
             def usernodes = PortalTreeNodeUser.createCriteria().list() {

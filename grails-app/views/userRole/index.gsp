@@ -41,10 +41,10 @@
                         <div class='fieldcontain' id='listmodulesearch'>
                         <label>Module:</label>
                         <g:if test='${session.enablesuperuser}'>
-                          <g:select class='searchfilter' name='module' id='module' from='${['All'] + g6portal.PortalModule.findAll()*.name}' value='${params.module?.encodeAsHTML()}'/>
+                          <g:moduleSelect name='module' class='searchfilter' allOption='All' value='${params.module}'/>
                         </g:if>
                         <g:else>
-                          <g:select class='searchfilter' name='module' id='module' from='${['All'] + session.adminmodules}' value='${params.module?.encodeAsHTML()}'/>
+                          <g:moduleSelect name='module' class='searchfilter' allOption='All' from='${session.adminmodules ?: []}' value='${params.module}'/>
                         </g:else>
                         </div>
                         <div class='fieldcontain' id='listrolesearch'>

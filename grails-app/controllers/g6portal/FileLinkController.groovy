@@ -509,62 +509,12 @@ class FileLinkController {
 
 
     /**
-     * Shared access rule for serving a stored file. Extracted from download() so that
-     * download and stream cannot drift apart — two copies of a security check is one
-     * copy too many.
-     *
-     * @param filelink - the FileLink being served
-     * @return boolean - true when the current session may read this file
+     * Shared access rule for serving a stored file, used by download() and stream() so they
+     * cannot drift apart. The rule itself lives in FileLink.readable() so the file tags can
+     * list exactly the files a download would serve.
      */
     private boolean hasFileAccess(FileLink filelink) {
-        def hasAccess = false
-
-        def whitelist_modules = PortalSetting.namedefault('download_module_whitelist',['portal'])
-        if(filelink.module in whitelist_modules && !filelink.allowedroles) {
-            hasAccess = true
-        } else if(filelink.allowedroles) {
-            def testroles = filelink.allowedroles.tokenize(',')*.trim()
-            if('All' in testroles) {
-                hasAccess = true
-            } else if(session.userid) {
-                def curuser = session.curuser
-                if('Authenticated' in testroles) {
-                    hasAccess = true
-                } else if(curuser && testroles.any { tr -> tr in curuser.modulerole(filelink.module) }) {
-                    hasAccess = true
-                } else if(curuser && curuser.currentrole()?.role in testroles) {
-                    hasAccess = true
-                }
-            }
-        } else if(session.userid) {
-            // Check if user is admin or has access to the file's module
-            if(session.enablesuperuser) {
-                hasAccess = true
-            } else if(session.adminmodules && filelink.module && filelink.module in session.adminmodules) {
-                hasAccess = true
-            }
-            // Also check tracker-level access (record owner/manager/pic roles) — runs even if adminmodules check failed
-            if(!hasAccess && filelink.tracker_id) {
-                def tracker = PortalTracker.get(filelink.tracker_id)
-                if(tracker && session.curuser) {
-                    def recordDatas = filelink.tracker_data_id ? tracker.firstRow(['id': filelink.tracker_data_id]) : null
-                    hasAccess = tracker.user_roles(session.curuser, recordDatas).size() > 0
-                }
-            }
-            // Fallback for trail attachment FileLinks that may lack tracker_id: look up by module
-            if(!hasAccess && !filelink.tracker_id && filelink.module && session.curuser) {
-                def trackers = PortalTracker.findAllByModule(filelink.module)
-                for(def t : trackers) {
-                    def recordDatas = filelink.tracker_data_id ? t.firstRow(['id': filelink.tracker_data_id]) : null
-                    if(t.user_roles(session.curuser, recordDatas).size() > 0) {
-                        hasAccess = true
-                        break
-                    }
-                }
-            }
-        }
-
-        return hasAccess
+        return FileLink.readable(filelink, session)
     }
 
     /**

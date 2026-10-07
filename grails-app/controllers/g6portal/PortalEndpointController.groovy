@@ -5,6 +5,11 @@ import groovy.json.JsonSlurper
 import java.util.concurrent.TimeUnit
 import static org.springframework.http.HttpStatus.*
 
+// Same-package, but imported explicitly so a dirty build fails at compile time rather than
+// binding Credentials.check dynamically and failing at runtime on every hg/git auth. See
+// the matching note in UserController.
+import g6portal.Credentials
+
 /**
  * Serves PortalEndpoint rows at /svc/{module}/{slug}/...
  *

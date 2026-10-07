@@ -3,7 +3,7 @@ package g6portal
 class PortalTagLib {
 
     static defaultEncodeAs = 'html'
-    static encodeAsForTags = [fmbreadcrumbs: 'raw',rolelist: 'raw',ifnotrole: 'raw',ifrole: 'raw',user_selector: 'raw',local_select2: 'raw',continueparams: 'raw',hashlink: 'raw',createHashLink:'raw'] 
+    static encodeAsForTags = [fmbreadcrumbs: 'raw',rolelist: 'raw',ifnotrole: 'raw',ifrole: 'raw',user_selector: 'raw',local_select2: 'raw',moduleSelect: 'raw',choiceSelect: 'raw',continueparams: 'raw',hashlink: 'raw',createHashLink:'raw'] 
     static returnObjectForTags = ['ifroleb']
 
     def hashlink = { attrs,body->
@@ -230,6 +230,87 @@ class PortalTagLib {
       \$('#${attrs.property}').on('select2:select', function(e) { htmx.trigger(this,'change'); });
         """
         out << output
+    }
+
+    /**
+     * Searchable module picker - one select2 for every "which module" field in the portal,
+     * now that there are hundreds of modules.
+     *
+     * attrs.name      - form field name (required)
+     * attrs.id        - element id, defaults to name
+     * attrs.value     - current module name
+     * attrs.from      - module names to offer; defaults to every PortalModule
+     * attrs.allOption - label of an extra first option submitted as-is (the list filters' 'All')
+     * attrs.noSelection - label of a blank first option (submits '')
+     * attrs.allowNew  - true lets the user type a name not in the list (select2 tags)
+     * attrs.class / attrs.style / attrs.width
+     *
+     * Options read "name - title" so people can search by either. The current value is always
+     * offered, even when it is not in 'from', so opening a record can never silently switch
+     * its module to the first entry.
+     */
+    def moduleSelect = { attrs ->
+        def fname = attrs.name?.toString()
+        if(!fname) return
+        def fid = (attrs.id ?: fname).toString()
+        def value = attrs.value?.toString()
+        def names = (attrs.from != null ? attrs.from : PortalModule.executeQuery('select m.name from PortalModule m'))
+        names = names.findAll { it }.collect { it.toString() }.unique().sort { it.toLowerCase() }
+        def titles = PortalModule.executeQuery('select m.name, m.title from PortalModule m where m.title is not null')
+                                 .collectEntries { [(it[0]): it[1]] }
+        def enc = { v -> v == null ? '' : v.toString().encodeAsHTML() }
+        def opt = { String v, String label ->
+            "<option value='${enc(v)}'${v == value ? ' selected' : ''}>${enc(label)}</option>"
+        }
+        out << "<select name='${enc(fname)}' id='${enc(fid)}' class='module-select ${enc(attrs.class ?: '')}'" +
+               (attrs.style ? " style='${enc(attrs.style)}'" : '') + ">"
+        if(attrs.noSelection != null) out << opt('', attrs.noSelection.toString())
+        if(attrs.allOption) out << opt(attrs.allOption.toString(), attrs.allOption.toString())
+        if(value && !(value in names) && value != attrs.allOption?.toString()) out << opt(value, value)
+        names.each { n -> out << opt(n, titles[n] ? (n + ' \u2014 ' + titles[n]) : n) }
+        out << "</select>"
+        out << asset.script() {
+            """\$('#${fid}').select2({
+                width: '${attrs.width ?: 'resolve'}',
+                dropdownAutoWidth: true${attrs.allowNew ? ', tags: true' : ''}
+            });"""
+        }
+    }
+
+    /**
+     * Searchable dropdown whose options come from a PortalSetting holding one value per line
+     * (a Text setting, so values may contain commas - an Array setting would split them).
+     * Falls back to a plain text box when the setting is missing or empty, so a portal that
+     * has not configured the list still works.
+     *
+     * attrs.name, attrs.id, attrs.value - as usual
+     * attrs.setting   - 'module.name' of the setting, e.g. 'portal.module_categories'
+     * attrs.maxlength - for the text-box fallback
+     */
+    def choiceSelect = { attrs ->
+        def fname = attrs.name?.toString()
+        if(!fname) return
+        def fid = (attrs.id ?: fname).toString()
+        def value = attrs.value?.toString()
+        def enc = { v -> v == null ? '' : v.toString().encodeAsHTML() }
+        def choices = PortalSetting.lines(attrs.setting?.toString())
+        if(!choices) {
+            out << "<input type='text' name='${enc(fname)}' id='${enc(fid)}' value='${enc(value)}'" +
+                   (attrs.maxlength ? " maxlength='${enc(attrs.maxlength)}'" : '') + "/>"
+            return
+        }
+        out << "<select name='${enc(fname)}' id='${enc(fid)}'>"
+        out << "<option value=''></option>"
+        // a stored value that has since left the list stays selectable, marked, so saving the
+        // form unchanged does not blank it
+        if(value && !(value in choices)) {
+            out << "<option value='${enc(value)}' selected>${enc(value)} (not in list)</option>"
+        }
+        choices.each { c -> out << "<option value='${enc(c)}'${c == value ? ' selected' : ''}>${enc(c)}</option>" }
+        out << "</select>"
+        out << asset.script() {
+            """\$('#${fid}').select2({ width: '${attrs.width ?: '40%'}', dropdownAutoWidth: true, allowClear: true, placeholder: '' });"""
+        }
     }
 
     def continueparams = { attrs->

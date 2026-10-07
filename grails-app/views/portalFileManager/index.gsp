@@ -44,10 +44,10 @@
                         <div class='fieldcontain' id='listsearch'>
                         <label>Module:</label>
                         <g:if test='${session.enablesuperuser}'>
-                          <g:select name='module' id='module' from='${['All'] + g6portal.PortalModule.findAll()*.name}' value='${params.module?.encodeAsHTML()}'/>
+                          <g:moduleSelect name='module' allOption='All' value='${params.module}'/>
                         </g:if>
                         <g:else>
-                          <g:select name='module' id='module' from='${['All'] + session.adminmodules}' value='${params.module?.encodeAsHTML()}'/>
+                          <g:moduleSelect name='module' allOption='All' from='${session.adminmodules ?: []}' value='${params.module}'/>
                         </g:else>
                         </div>
 			</fieldset>

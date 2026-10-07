@@ -24,6 +24,7 @@
                         <g:if test='${curuser?.isAdmin}'>
                             <li><g:link class="create" action="create"><g:message code="default.new.label" args="[entityName]" /></g:link></li>
                             <li><g:link class="create" action="updatelist">Update</g:link></li>
+                            <li><g:link class="list" controller="accessReview" action="index">Access Reviews</g:link></li>
                         </g:if>
                         <g:if test="${session['developermodules']}">
                             <li><g:link class="create" action="importform">Import Zip</g:link></li>
@@ -58,7 +59,22 @@
                         </div>
 			</fieldset>
 		    </g:form>
-                    <f:table collection="${portalModuleList}" />
+                    <%-- Explicit columns: <f:table> picks the first few properties on its own and
+                         cannot show the owner list. --%>
+                    <table class="table">
+                        <thead><tr><th>Name</th><th>Title</th><th>Status</th><th>Category</th><th>Owners</th></tr></thead>
+                        <tbody>
+                            <g:each in="${portalModuleList}" var="m">
+                                <tr>
+                                    <td><g:link action="show" id="${m.id}">${m.name}</g:link></td>
+                                    <td>${m.title}</td>
+                                    <td>${m.status}</td>
+                                    <td>${m.category}</td>
+                                    <td>${m.owners()*.name?.join(', ')}</td>
+                                </tr>
+                            </g:each>
+                        </tbody>
+                    </table>
 
                     <g:if test="${portalModuleCount > params.int('max')}">
                     <div class="pagination">

@@ -35,9 +35,7 @@
                     </g:hasErrors>
                     <g:form useToken="true" resource="${this.portalModule}" method="PUT">
                         <g:hiddenField name="version" value="${this.portalModule?.version}" />
-                        <fieldset class="form">
-                            <f:all bean="portalModule"/>
-                        </fieldset>
+                        <g:render template="form"/>
                         <fieldset class="buttons">
                             <input class="save" type="submit" value="${message(code: 'default.button.update.label', default: 'Update')}" />
                         </fieldset>

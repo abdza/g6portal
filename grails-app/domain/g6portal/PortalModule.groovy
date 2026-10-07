@@ -7,10 +7,69 @@ import java.text.SimpleDateFormat
 
 class PortalModule {
 
+    // Lifecycle of the module itself. How a module gets retired (a sunset project, its
+    // timeline) is not recorded here - only that it is retired.
+    static final List<String> STATUSES = ['Active', 'Inactive', 'Retired']
+
+    // Owners and maintainers are PortalModuleContact rows, not a plain hasMany of User: a
+    // unidirectional hasMany is a one-to-many, which would let a user own only one module.
+    // reviews: monthly access reviews (PortalAccessReviewService); deleted with the module
+    static hasMany = [contacts: PortalModuleContact, reviews: PortalModuleAccessReview]
+
     static constraints = {
+        title nullable: true, maxSize: 255
+        // explicit maxSize: from inList alone GORM sizes the column to the longest value today
+        // (varchar(8)), and dbCreate:update never widens it when a status is added later
+        status nullable: true, inList: STATUSES, maxSize: 30
+        department nullable: true, maxSize: 255
+        category nullable: true, maxSize: 100
+        description nullable: true, maxSize: 4000
+        benefit nullable: true, maxSize: 4000
     }
 
-    String name
+    // Core module properties
+    String name    // Module identifier (e.g., 'portal', 'tracker', 'admin'). The join key every
+                   // page, tracker, setting and role uses - never rename it; title is for people.
+
+    // Register information. All optional and generic: nothing here is specific to one
+    // organisation, so the same fields serve every portal this code is deployed to.
+    String title        // human-readable name, e.g. 'Service Request Management'
+    String description  // what the module does
+    String benefit      // what it gives the business
+    String status       // one of STATUSES; null = not recorded yet
+    String department   // owning unit, free text
+    String category     // free classification; suggestions come from existing values
+
+    /** Users accountable for this module (access reviews go to them). */
+    List<User> owners() { contactsByRole('Owner') }
+
+    /** Users who build and support this module. */
+    List<User> maintainers() { contactsByRole('Maintainer') }
+
+    List<User> contactsByRole(String role) {
+        if(!id) return []
+        return PortalModuleContact.findAllByModuleAndRole(this, role, [sort: 'id'])*.user.findAll { it }
+    }
+
+    /**
+     * Replaces this module's contacts of one role with the given users, keeping the rows
+     * that stay (so their ids and creation order survive an unchanged save).
+     */
+    void replaceContacts(String role, Collection<User> users) {
+        def wanted = (users ?: []).findAll { it }.unique { it.id }
+        // a module being created has no rows yet, and querying by an unsaved instance throws
+        def current = id ? PortalModuleContact.findAllByModuleAndRole(this, role) : []
+        current.findAll { c -> !wanted.any { it.id == c.user?.id } }.each { c ->
+            removeFromContacts(c)
+            c.delete()
+        }
+        wanted.findAll { u -> !current.any { it.user?.id == u.id } }.each { u ->
+            addToContacts(new PortalModuleContact(user: u, role: role))
+        }
+    }
+
+    /** Display name: the title when there is one, otherwise the key. */
+    String displayName() { title ?: name }
 
     def user_roles(curuser) {
       return roles = UserRole.findAllByUserAndModule(curuser,name)*.role

@@ -14,6 +14,7 @@ class PortalModuleController {
   PortalModuleService portalModuleService
   PortalService portalService
   def fileLinkUpdateService
+  def dataSource
 
   static allowedMethods = [save: "POST", update: "PUT", delete: "DELETE", importUserRoles: "POST", importSettings: "POST", deleteAllUserRoles: "POST", deleteAllSettings: "POST", confirmimport: "POST"]
 
@@ -342,6 +343,74 @@ class PortalModuleController {
     respond module,model:[curuser:curuser,admins:admins,developers:developers,pages:pages,trackers:trackers,settings:settings,roles:roles,importlogs:importlogs,trees:trees,treenodecounts:treenodecounts,endpoints:endpoints,schedulers:schedulers,filesize:filesize,filecount:filecount,fileunsized:fileunsized]
   }
 
+  /**
+   * Update DB on every tracker of a module, in one go - what you want straight after importing a
+   * module with several trackers. Runs exactly what each tracker's own Update DB button runs
+   * (PortalService.updateDb -> PortalTracker.updatedb: create missing tables, add missing columns,
+   * ensure the trail index). Like that button it only ever ADDS - it never drops a column or changes
+   * an existing column's type - so it is safe to run any number of times.
+   *
+   * One tracker failing does not stop the rest; each failure is logged to PortalErrorLog. The
+   * column counts before and after are reported, so the result says what actually changed.
+   * POST + form token, and only for the module's developers (who get each tracker's Edit link)
+   * or a system administrator.
+   */
+  def updatedball(Long id) {
+      def curuser = session.curuser
+      def module = id ? portalModuleService.get(id) : null
+      if(!module) { notFound(); return }
+      if(request.method != 'POST') { redirect action: 'show', id: id; return }
+      def abandon = false
+      withForm { }.invalidToken {
+          flash.message = "Invalid session for the forms"
+          abandon = true
+      }
+      if(abandon) { redirect action: 'show', id: id; return }
+      if(!(curuser?.isAdmin || module.name in (curuser?.developerlist() ?: []))) {
+          flash.message = "Only a developer of ${module.name} can update its trackers' database tables."
+          redirect action: 'show', id: id
+          return
+      }
+
+      def sql = new groovy.sql.Sql(dataSource)
+      def countCols = { String table ->
+          if(!table) return 0
+          // upper() on both sides: h2 keeps unquoted table names upper-case in INFORMATION_SCHEMA
+          def r = sql.firstRow("select count(*) as n from INFORMATION_SCHEMA.COLUMNS where upper(TABLE_NAME) = upper(?)", [table])
+          return (r?.n ?: 0) as Integer
+      }
+      def results = []
+      try {
+          PortalTracker.findAllByModule(module.name, [sort: 'slug']).each { tracker ->
+              def tables = [tracker.data_table()] + (tracker.tracker_type == 'Tracker' ? [tracker.trail_table()] : [])
+              def before = tables.sum { countCols(it) }
+              def res = [name: tracker.name, slug: tracker.slug, before: before, after: before, ok: true, error: null]
+              try {
+                  portalService.updateDb(tracker)
+                  res.after = tables.sum { countCols(it) }
+              }
+              catch(Exception e) {
+                  res.ok = false
+                  res.error = PortalErrorLog.describe(e)
+                  PortalErrorLog.capture(e, "Update DB (all trackers) on ${module.name}/${tracker.slug}",
+                                         [module: module.name, slug: tracker.slug, controller: 'portalModule', action: 'updatedball'])
+              }
+              results << res
+          }
+      }
+      finally {
+          try { sql.close() } catch(Exception ig) { }
+      }
+
+      def failed = results.findAll { !it.ok }
+      def added = results.sum(0) { it.ok ? (it.after - it.before) : 0 }
+      flash.updatedbResults = results
+      flash.message = "Update DB ran on ${results.size()} tracker(s) of ${module.name}: " +
+          (added ? "${added} column(s) added" : "nothing was missing") +
+          (failed ? "; ${failed.size()} FAILED (${failed*.slug.join(', ')}) - see the Trackers section" : "") + "."
+      redirect action: 'show', id: id
+  }
+
   def create() {
     def curuser = null
     if(session.curuser) {
@@ -369,7 +438,11 @@ class PortalModuleController {
         }
 
         try {
-          portalModuleService.save(portalModule)
+          // contacts and the module in one transaction: a validation failure keeps neither
+          PortalModule.withTransaction {
+            applyContacts(portalModule)
+            portalModuleService.save(portalModule)
+          }
         } catch (ValidationException e) {
           respond portalModule.errors, view:'create'
             return
@@ -383,6 +456,19 @@ class PortalModuleController {
           '*' { respond portalModule, [status: CREATED] }
         }
     }
+  }
+
+  // Owners and maintainers come from the form as user-id lists (ownerIds, maintainerIds).
+  // Only applied when the form actually carried the pickers (contactsSubmitted), so an
+  // API/JSON save that never mentions them cannot wipe a module's contacts by omission.
+  private void applyContacts(PortalModule portalModule) {
+      if(!params.contactsSubmitted) return
+      def usersFrom = { String key ->
+          def ids = params.list(key).collect { it?.toString()?.trim() }.findAll { it?.isLong() }.collect { it as Long }
+          ids ? User.getAll(ids).findAll { it } : []
+      }
+      portalModule.replaceContacts('Owner', usersFrom('ownerIds'))
+      portalModule.replaceContacts('Maintainer', usersFrom('maintainerIds'))
   }
 
   def edit(Long id) {
@@ -412,7 +498,11 @@ class PortalModuleController {
         }
 
         try {
-          portalModuleService.save(portalModule)
+          // contacts and the module in one transaction: a validation failure keeps neither
+          PortalModule.withTransaction {
+            applyContacts(portalModule)
+            portalModuleService.save(portalModule)
+          }
         } catch (ValidationException e) {
           respond portalModule.errors, view:'edit'
             return

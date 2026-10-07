@@ -44,7 +44,61 @@
                     <g:if test="${flash.message}">
                     <div class="message" role="status">${flash.message}</div>
                     </g:if>
-                    <f:display bean="portalModule" />
+                    <%-- Register information. Hand-laid rather than <f:display>, which cannot show
+                         the owner/maintainer lists or say when a contact has no role here. --%>
+                    <g:set var="pm" value="${this.portalModule}"/>
+                    <g:set var="pmroleusers" value="${g6portal.UserRole.findAllByModule(pm.name)*.user*.id as Set}"/>
+                    <div class="pm-register">
+                        <h2 class="pm-title">${pm.title ?: pm.name}
+                            <g:if test="${pm.status}"><span class="badge ${pm.status == 'Active' ? 'bg-success' : (pm.status == 'Retired' ? 'bg-dark' : 'bg-secondary')}">${pm.status}</span></g:if>
+                            <g:else><span class="badge bg-light text-dark">Status not recorded</span></g:else>
+                        </h2>
+                        <div class="pm-key"><code>${pm.name}</code>
+                            <g:if test="${pm.category}"> &middot; ${pm.category}</g:if>
+                            <g:if test="${pm.department}"> &middot; ${pm.department}</g:if>
+                        </div>
+                        <g:if test="${!trackers && !pages}">
+                            <div class="pm-note">No trackers or pages in this portal yet &mdash; the module is registered here but has not been migrated or built.</div>
+                        </g:if>
+                        <dl class="pm-dl">
+                            <% [['Owners', pm.owners()], ['Maintainers', pm.maintainers()]].each { pair -> %>
+                                <dt>${pair[0]}</dt>
+                                <dd>
+                                    <g:if test="${pair[1]}">
+                                        <g:each in="${pair[1]}" var="u" status="ui">${ui ? ', ' : ''}${u.name}<g:if test="${!(u.id in pmroleusers)}"> <span class="pm-warn" title="Has no role in this module, so does not use it">(no role in this module)</span></g:if></g:each>
+                                    </g:if>
+                                    <g:else><span class="text-muted">Not recorded</span></g:else>
+                                </dd>
+                            <% } %>
+                            <%-- latest monthly access review (PortalAccessReviewService) --%>
+                            <g:set var="pmreview" value="${g6portal.PortalModuleAccessReview.findByModule(pm, [sort: 'period', order: 'desc'])}"/>
+                            <dt>Access review</dt>
+                            <dd>
+                                <g:if test="${pmreview}">
+                                    <g:link controller="accessReview" action="show" id="${pmreview.id}">${g6portal.PortalAccessReviewService.periodLabel(pmreview.period)}: ${pmreview.status}</g:link>
+                                    <g:if test="${pmreview.pending}"> &middot; due <g:formatDate date="${pmreview.dueDate}" format="d MMM yyyy"/></g:if>
+                                </g:if>
+                                <g:else><span class="text-muted">None yet</span></g:else>
+                            </dd>
+                            <dt>Description</dt>
+                            <dd><g:if test="${pm.description}"><span class="pm-text">${pm.description}</span></g:if><g:else><span class="text-muted">Not recorded</span></g:else></dd>
+                            <dt>Benefit</dt>
+                            <dd><g:if test="${pm.benefit}"><span class="pm-text">${pm.benefit}</span></g:if><g:else><span class="text-muted">Not recorded</span></g:else></dd>
+                        </dl>
+                    </div>
+                    <style>
+                        .pm-register { border: 1px solid #e4e6eb; border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; background: #fff; }
+                        .pm-register .pm-title { font-size: 1.4rem; font-weight: 600; margin: 0 0 .2rem; }
+                        .pm-register .pm-title .badge { font-size: .7rem; vertical-align: middle; }
+                        .pm-register .pm-key { color: #6b7280; font-size: .9rem; margin-bottom: .75rem; }
+                        .pm-register .pm-note { background: #fff8e6; border-radius: 8px; padding: .5rem .8rem; font-size: .85rem; margin-bottom: .75rem; }
+                        .pm-register .pm-dl { display: grid; grid-template-columns: 140px 1fr; gap: .4rem 1rem; margin: 0; }
+                        .pm-register .pm-dl dt { color: #6b7280; font-weight: 500; }
+                        .pm-register .pm-dl dd { margin: 0; }
+                        .pm-register .pm-text { white-space: pre-line; }
+                        .pm-register .pm-warn { color: #b7791f; font-size: .8rem; }
+                        @media (max-width: 600px) { .pm-register .pm-dl { grid-template-columns: 1fr; } }
+                    </style>
                     <h3>Files</h3>
                     <div class="nav" role="navigation">
                         <ul>
@@ -86,8 +140,35 @@
                         <g:if test="${this.portalModule.name in session['developermodules']}">
                             <li><g:link controller='portalTracker' class="create" action="create" params="['module':this.portalModule.name]">Add Tracker</g:link></li>
                         </g:if>
+                        <g:if test="${trackers && (curuser?.isAdmin || this.portalModule.name in session['developermodules'])}">
+                            <li>
+                                <%-- Same as each tracker's own Update DB, for all of them: only adds missing
+                                     tables/columns, never drops or retypes, so it is safe to repeat. --%>
+                                <g:form action="updatedball" id="${this.portalModule.id}" method="post" useToken="true" style="display:inline; margin:0;">
+                                    <input type="submit" class="save" value="Update DB (all ${trackers.size()} trackers)"
+                                           title="Create any missing tables and columns for every tracker in this module"
+                                           onclick="return confirm('Run Update DB on all ${trackers.size()} tracker(s) of ${this.portalModule.name}? It only adds missing tables and columns.');" />
+                                </g:form>
+                            </li>
+                        </g:if>
                         </ul>
                     </div>
+                    <g:if test="${flash.updatedbResults}">
+                        <div class="message" role="status">
+                            <strong>Update DB results</strong>
+                            <table class="table table-sm" style="margin:6px 0 0">
+                                <tr><th>Tracker</th><th>Slug</th><th>Columns before</th><th>After</th><th>Result</th></tr>
+                                <g:each in="${flash.updatedbResults}" var="r">
+                                    <tr>
+                                        <td>${r.name}</td><td>${r.slug}</td><td>${r.before}</td><td>${r.after}</td>
+                                        <td><g:if test="${!r.ok}"><span style="color:#b91c1c"><b>Failed:</b> ${r.error}</span></g:if>
+                                            <g:elseif test="${r.after > r.before}"><span style="color:#1a7f37">${r.after - r.before} column(s) added</span></g:elseif>
+                                            <g:else>already up to date</g:else></td>
+                                    </tr>
+                                </g:each>
+                            </table>
+                        </div>
+                    </g:if>
                     <table class='table'>
                     <tr><th>#</th><th>Title</th><th>Slug</th><th>Type</th><th>Fields</th><th>Transitions</th><th>Action</th></tr>
                     <g:each in='${trackers}' var='tracker' status='i'>

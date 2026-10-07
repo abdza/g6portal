@@ -31,6 +31,16 @@ class PortalService {
     // caller, which was the first version and made every call site carry the plumbing.
     def mailService
     def userService
+    def portalAccessReviewService
+
+    /**
+     * Daily module access review, for a scheduled page (portal:access_review_daily):
+     *     return portalService.runAccessReview()
+     * Does nothing while portal.access_review_enabled is off. See PortalAccessReviewService.
+     */
+    Map runAccessReview() {
+        return portalAccessReviewService.run(new Date())
+    }
     private static final ThreadLocal<Set<String>> includeStack = ThreadLocal.withInitial { [] as Set }
 
     private static final ThreadLocal<Set<String>> runStack = ThreadLocal.withInitial { [] as Set }

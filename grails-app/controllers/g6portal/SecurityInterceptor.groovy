@@ -265,6 +265,11 @@ class SecurityInterceptor {
             object = FileLink.findByModuleAndSlug(module,slug)
         }
         if(object) {
+            // Page documents (file group, no tracker) follow FileLink.readable(), which keeps the
+            // old portal's rule for them; the controller applies the same check.
+            if(object.filegroup && !object.tracker_id && FileLink.readable(object, session)) {
+                return true
+            }
             if(object.allowedroles){
                 def testroles = object.allowedroles.tokenize(',')*.trim()
                 if('All' in testroles) {
@@ -475,6 +480,19 @@ class SecurityInterceptor {
             redirect(controller: "user", action: "login")
             return false
         }
+		}
+		else if(controllerName=='accessReview') {
+        // Module owners are usually not admins of anything, so the default rule below would
+        // turn them away from their own review. Any logged-in user may reach the controller;
+        // AccessReviewController checks ownership / admin on every action itself. Not logged
+        // in (e.g. straight from the e-mail link): log in first, then come back here.
+        if(curuser) {
+            return true
+        }
+        rememberForLogin()
+        flash.message = "Please log in to open your access review"
+        redirect(controller: "user", action: "login")
+        return false
 		}
 		else {
         if(curuser) {
