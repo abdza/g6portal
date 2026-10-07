@@ -393,10 +393,26 @@ class PortalTracker {
         }
     }
 
+    // INFORMATION_SCHEMA lookups that work on every database g6 runs on. Postgres folds an
+    // unquoted name to lower case, h2 to UPPER case, and MSSQL ignores case - while updatedb
+    // creates some names quoted (the data table, field columns) and some unquoted (the trail
+    // table and its columns, dataupdate_id, record_status). An exact lower-case comparison
+    // missed h2's upper-case names, so Update DB tried to re-create what already existed
+    // ("Duplicate column DATAUPDATE_ID", trail table "already exists"). upper() on both
+    // sides finds them all, and the names travel as parameters rather than spliced SQL.
+    static boolean tableExists(Sql sql, String table) {
+        return sql.firstRow("select 1 as x from INFORMATION_SCHEMA.TABLES where upper(TABLE_NAME) = upper(?)", [table]) != null
+    }
+
+    static boolean columnExists(Sql sql, String table, String column) {
+        return sql.firstRow("select 1 as x from INFORMATION_SCHEMA.COLUMNS where upper(TABLE_NAME) = upper(?) and upper(COLUMN_NAME) = upper(?)",
+                            [table, column]) != null
+    }
+
     def updatedb(datasource){
         def sql = new Sql(datasource)
         def query = ""
-        if(!sql.firstRow("select * from INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '" + this.data_table() + "'")){
+        if(!tableExists(sql, this.data_table())){
             if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                 query = 'create table if not exists "' + this.data_table() + '" (id SERIAL PRIMARY KEY, dataupdate_id numeric(19,0) null )'
             }
@@ -406,8 +422,7 @@ class PortalTracker {
             sql.execute(query)
         }
         if(this.tracker_type!='DataStore') {
-            def rsq = "select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.data_table() + "' and COLUMN_NAME = 'record_status'"
-            if(!sql.firstRow(rsq)){
+            if(!columnExists(sql, this.data_table(), 'record_status')){
                 if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                     sql.execute('alter table "' + this.data_table() + '" add record_status varchar(255) NULL' )
                 }
@@ -416,8 +431,7 @@ class PortalTracker {
                 }
             }
         }
-        def didq = "select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.data_table() + "' and COLUMN_NAME = 'dataupdate_id'"
-        if(!sql.firstRow(didq)){
+        if(!columnExists(sql, this.data_table(), 'dataupdate_id')){
             if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                 sql.execute('alter table "' + this.data_table() + '" add dataupdate_id numeric(19,0) NULL' )
             }
@@ -426,9 +440,7 @@ class PortalTracker {
             }
         }
         if(this.tracker_type=='Tracker') {
-            def testq = "select * from INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '" + this.trail_table() + "'"
-
-            if(!sql.firstRow(testq)){
+            if(!tableExists(sql, this.trail_table())){
                 if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                     query = 'create table ' + this.trail_table() + ' (id SERIAL PRIMARY KEY, attachment_id numeric(19,0), description text, record_id numeric(19,0), update_date timestamp, updater_id numeric(19,0), status varchar(255), changes text, allowedroles varchar(255))'
                 }
@@ -452,8 +464,7 @@ class PortalTracker {
             ]
             trailColumns.each { col ->
                 try {
-                    def colCheck = "select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + trailTableName + "' and COLUMN_NAME = '" + col.name + "'"
-                    if (!sql.firstRow(colCheck)) {
+                    if (!columnExists(sql, trailTableName, col.name)) {
                         if (isPostgres) {
                             sql.execute('alter table "' + trailTableName + '" add ' + col.name + ' ' + col.ddl_pg)
                         } else {

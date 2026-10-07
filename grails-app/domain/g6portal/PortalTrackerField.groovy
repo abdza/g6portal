@@ -178,8 +178,8 @@ class PortalTrackerField {
             if(this.field_type!='HasMany') {
                 try{
                     def query = ''
-                    println "Will create: select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.tracker.data_table() + "' and COLUMN_NAME = '" + this.name.trim() + "'"
-                    if(!sql.firstRow("select * from INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + this.tracker.data_table() + "' and COLUMN_NAME = '" + this.name.trim() + "'")){
+                    // case-insensitive: see PortalTracker.columnExists
+                    if(!PortalTracker.columnExists(sql, this.tracker.data_table(), this.name.trim())){
                         println "Field not found"
                         if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                             query = 'alter table "' + this.tracker.data_table() + '" add "' + this.name.trim() + '" ' + sqltype + ' NULL'

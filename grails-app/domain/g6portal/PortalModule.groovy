@@ -975,19 +975,29 @@ class PortalModule {
         PortalModule.withSession { sqlsession ->
             def conn = sqlsession.connection()
             def sql = new Sql(conn)
-            def isPostgres = conn.metaData.databaseProductName.toLowerCase().contains('postgresql')
+            def product = conn.metaData.databaseProductName.toLowerCase()
+            def isPostgres = product.contains('postgresql')
+            // h2 has no NVARCHAR(MAX); a VARCHAR declared without a length is its unbounded form,
+            // reported as CHARACTER_MAXIMUM_LENGTH 1000000000.
+            def isH2 = product.contains('h2')
             try {
                 columnsToExpand.each { check ->
+                    // upper() on both sides: Hibernate's unquoted names are UPPER case on h2,
+                    // which an exact comparison never matched - so on h2 every import tried to
+                    // ADD columns that already existed and expanded none of them.
                     def info = sql.firstRow("""
                         SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH
                         FROM INFORMATION_SCHEMA.COLUMNS
-                        WHERE TABLE_NAME = :table AND COLUMN_NAME = :column
+                        WHERE upper(TABLE_NAME) = upper(:table) AND upper(COLUMN_NAME) = upper(:column)
                     """, [table: check.table, column: check.column])
                     def alreadyUnbounded = isPostgres
                         ? info?.DATA_TYPE == 'text'
-                        : info?.CHARACTER_MAXIMUM_LENGTH == -1
+                        : (isH2 ? ((info?.CHARACTER_MAXIMUM_LENGTH ?: 0) as Long) >= 1000000000L
+                                : info?.CHARACTER_MAXIMUM_LENGTH == -1)
                     if (!info) {
-                        if (isPostgres) {
+                        if (isH2) {
+                            sql.execute("ALTER TABLE ${check.table} ADD COLUMN ${check.column} VARCHAR" as String)
+                        } else if (isPostgres) {
                             sql.execute("ALTER TABLE ${check.table} ADD COLUMN ${check.column} TEXT" as String)
                         } else {
                             sql.execute("ALTER TABLE ${check.table} ADD ${check.column} NVARCHAR(MAX) NULL" as String)
@@ -996,7 +1006,9 @@ class PortalModule {
                     } else if (alreadyUnbounded) {
                         println "ensureColumnSizes: [OK]      ${check.table}.${check.column} already unbounded"
                     } else {
-                        if (isPostgres) {
+                        if (isH2) {
+                            sql.execute("ALTER TABLE ${check.table} ALTER COLUMN ${check.column} SET DATA TYPE VARCHAR" as String)
+                        } else if (isPostgres) {
                             sql.execute("ALTER TABLE ${check.table} ALTER COLUMN ${check.column} TYPE TEXT" as String)
                         } else {
                             sql.execute("ALTER TABLE ${check.table} ALTER COLUMN ${check.column} NVARCHAR(MAX)" as String)
