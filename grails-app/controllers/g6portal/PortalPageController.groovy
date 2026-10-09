@@ -399,6 +399,9 @@ setTimeout(check,2000);
             }
         }
         else if(page.render=='File') {
+            if(content instanceof Map && content['path']) {
+                return streamFile(content, page, curuser)
+            }
             if(content) {
                 def thefile = new File(content)
                 if(thefile.exists()){
@@ -836,6 +839,109 @@ setTimeout(check,2000);
             }
             '*'{ render status: NOT_FOUND }
         }
+    }
+
+    // Content types a runable File page may ask to have shown in the browser rather than
+    // downloaded. Anything a browser would execute or lay out (HTML, SVG, XML, script)
+    // is left out on purpose: these files are typically user uploads, and serving one
+    // inline from the portal's own origin would be stored XSS.
+    private static final List<String> INLINE_TYPES = ['image/jpeg', 'image/png', 'image/gif',
+        'image/webp', 'video/mp4', 'video/quicktime', 'video/webm', 'video/3gpp',
+        'audio/mpeg', 'audio/mp4', 'audio/webm', 'application/pdf']
+
+    /**
+     * The Map form of a runable File page's return value:
+     *
+     *     [path: '/abs/path', contentType: 'video/mp4', inline: true, filename: 'clip.mp4']
+     *
+     * Unlike the plain String form this streams with HTTP Range support, which is what
+     * lets a <video> element seek - and what iOS Safari insists on before it will play a
+     * video at all. The page's own script has already decided whether the caller may have
+     * the file; this only refuses paths outside the upload folder, so a page bug cannot
+     * be turned into a way to read arbitrary files off the server.
+     */
+    private def streamFile(Map content, PortalPage page, def curuser) {
+        def thefile = new File(content['path'].toString())
+        def bases = [System.getProperty('user.dir') + '/uploads',
+                     PortalSetting.namedefault('uploadfolder', System.getProperty('user.dir') + '/uploads')]
+                    .collect { new File(it.toString()).getCanonicalPath() + File.separator }
+        def canonical = thefile.getCanonicalPath()
+        if(!bases.any { canonical.startsWith(it) } || !thefile.isFile()) {
+            PortalErrorLog.record(params, curuser, controllerName, actionName,
+                                  "File page returned a path that is missing or outside uploads: " + canonical,
+                                  page.slug, page.module)
+            response.status = 404
+            return render(text: 'File not found', contentType: 'text/plain')
+        }
+
+        def ctype = (content['contentType'] ?: 'application/octet-stream').toString().toLowerCase()
+        def inline = content['inline'] && ctype in INLINE_TYPES
+        def fname = (content['filename'] ?: thefile.getName()).toString().replaceAll(/[^A-Za-z0-9._-]/, '_')
+        long total = thefile.length()
+        long start = 0
+        long end = total - 1
+
+        // A single range only - which is all a media element ever asks for. Anything else
+        // (multiple ranges, a malformed header) gets the whole file, which RFC 7233 allows.
+        def range = request.getHeader('Range')
+        def m = range ? (range =~ /^bytes=(\d*)-(\d*)$/) : null
+        boolean partial = false
+        if(m && m.matches() && (m.group(1) || m.group(2))) {
+            if(m.group(1)) {
+                start = m.group(1) as long
+                end = m.group(2) ? Math.min((m.group(2) as long), total - 1) : total - 1
+            }
+            else {
+                // bytes=-N: the last N bytes
+                start = Math.max(0L, total - (m.group(2) as long))
+            }
+            if(start >= total || start > end) {
+                response.status = 416
+                response.setHeader('Content-Range', "bytes */${total}")
+                response.flushBuffer()
+                return
+            }
+            partial = true
+        }
+
+        long length = end - start + 1
+        response.status = partial ? 206 : 200
+        response.contentType = ctype
+        response.setHeader('Accept-Ranges', 'bytes')
+        response.setHeader('Content-Disposition', (inline ? 'inline' : 'attachment') + ";filename=${fname}")
+        // Whatever the page decided about access was decided for this caller, so no proxy
+        // may keep a copy to hand to somebody else.
+        response.setHeader('Cache-Control', 'private, max-age=300')
+        if(partial) {
+            response.setHeader('Content-Range', "bytes ${start}-${end}/${total}")
+        }
+        response.setContentLengthLong(length)
+        try {
+            thefile.withInputStream { is ->
+                // skip() may stop short, and skipNBytes() is Java 12+
+                long toskip = start
+                while(toskip > 0) {
+                    long s = is.skip(toskip)
+                    if(s <= 0) { break }
+                    toskip -= s
+                }
+                def out = response.outputStream
+                byte[] buf = new byte[64 * 1024]
+                long left = length
+                while(left > 0) {
+                    int n = is.read(buf, 0, (int) Math.min(buf.length as long, left))
+                    if(n < 0) { break }
+                    out.write(buf, 0, n)
+                    left -= n
+                }
+                out.flush()
+            }
+        }
+        catch(IOException e) {
+            // The player closing the connection mid-stream is routine - it does this every
+            // time somebody seeks. Not worth an error log row.
+        }
+        return
     }
 
     /**
