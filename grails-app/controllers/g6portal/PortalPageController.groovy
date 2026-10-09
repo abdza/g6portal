@@ -854,6 +854,8 @@ setTimeout(check,2000);
      *
      *     [path: '/abs/path', contentType: 'video/mp4', inline: true, filename: 'clip.mp4']
      *
+     * Optional cacheSeconds (default 300) sets how long the browser may keep its copy.
+     *
      * Unlike the plain String form this streams with HTTP Range support, which is what
      * lets a <video> element seek - and what iOS Safari insists on before it will play a
      * video at all. The page's own script has already decided whether the caller may have
@@ -910,8 +912,11 @@ setTimeout(check,2000);
         response.setHeader('Accept-Ranges', 'bytes')
         response.setHeader('Content-Disposition', (inline ? 'inline' : 'attachment') + ";filename=${fname}")
         // Whatever the page decided about access was decided for this caller, so no proxy
-        // may keep a copy to hand to somebody else.
-        response.setHeader('Cache-Control', 'private, max-age=300')
+        // may keep a copy to hand to somebody else. The page may lengthen the browser's
+        // copy (cacheSeconds) for files that never change, such as map tiles.
+        long maxAge = 300
+        try { maxAge = Math.max(0L, Math.min(31536000L, (content['cacheSeconds'] ?: 300) as long)) } catch(Exception e) { maxAge = 300 }
+        response.setHeader('Cache-Control', "private, max-age=${maxAge}")
         if(partial) {
             response.setHeader('Content-Range', "bytes ${start}-${end}/${total}")
         }
