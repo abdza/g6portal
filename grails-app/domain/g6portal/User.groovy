@@ -617,4 +617,238 @@ class User {
         }
     }
 
+    def getmanager() {
+        _reqCache("_gm_${id}") {
+            def manageruser = null
+            def unode = PortalTreeNodeUser.get(roletargetid)
+            if (unode){
+                if(unode.node.mainrole) {  //node got a mainrole
+                    if(unode.role in unode.node.mainrole.tokenize(',')){  //user role is the mainrole, so get the parent main role
+                        if(unode.node.parent){
+                            manageruser = unode.node.parent.mainuser()
+                        }
+                    }
+                    else {  //user role is not the main role, so manager is the mainrole of the node
+                        manageruser = unode.node.mainuser()
+                    }
+                }
+                else{  //node doesn't have a main role, so the the mainrole of the parent node
+                    if(unode.node.parent){
+                        manageruser = unode.node.parent.mainuser()
+                    }
+                }
+            }
+            return manageruser
+        }
+    }
+
+    /**
+     * The state used for this user's public holidays: the `State` value of the domain record
+     * behind their current org-tree node, or null (national holidays only) when the node has
+     * no domain record or that record has no State.
+     */
+    def homestate() {
+        _reqCache("_hs_${id}") {
+            def ddomain = currentrole()?.node?.getdomain()
+            if(ddomain && 'State' in ddomain){
+                return ddomain['State']
+            }
+            return null
+        }
+    }
+
+    def leavedays(startdate,enddate){
+
+        def working_days = workingdays(startdate,enddate)
+        def leavetracker = PortalTracker.findByModuleAndSlug('leave','leave')
+        def days = []
+        if(leavetracker) {
+            working_days.each { wd->
+                def staffleave = leavetracker.rows(['staff_id':this.id,'leave_start':'<=' + wd.format('yyyy-MM-dd'),'leave_end':'>=' + wd.format('yyyy-MM-dd')])
+                if(staffleave) {
+                    days << wd
+                }
+            }
+        }
+        return days
+    }
+
+    /**
+     * Is `datestr` (yyyy-MM-dd) a public holiday for a branch in `state`?
+     *
+     * A row applies when it is national - states 'All' - or when it names this state.
+     * A null state means national holidays only.
+     *
+     * This replaces a pair of queries that every working-day method used to run inline:
+     * one filtered by state, then, if that missed, an UNFILTERED fallback. Because the
+     * second carried no state constraint it matched a holiday row for ANY state, so every
+     * state's holidays applied to every branch and the state argument narrowed nothing.
+     *
+     * The range test was also inverted - `holiday_start >= d and holiday_end <= d` is only
+     * ever true when start and end are both exactly d, so a holiday stored as one
+     * multi-day row was skipped entirely. Every row on file today is single-day, which is
+     * why nobody noticed.
+     */
+    private static boolean is_holiday(holidaytracker, String datestr, state) {
+        if(!holidaytracker) return false
+        def wanted = state ? ['All', state.toString()] : ['All']
+        return holidaytracker.firstRow(['holiday_start': '<=' + datestr,
+                                        'holiday_end'  : '>=' + datestr,
+                                        'states'       : wanted]) ? true : false
+    }
+
+    def static default_workingdays(startdate,enddate){
+        if (startdate instanceof String || startdate instanceof GString) {
+            startdate = Date.parse("yyyy-MM-dd",startdate)
+        }
+        if (enddate instanceof String || enddate instanceof GString) {
+            enddate = Date.parse("yyyy-MM-dd",enddate)
+        }
+        def curdate = startdate
+        def workingday = []
+        def holidaytracker = PortalTracker.findByModuleAndSlug('holidays','holidays')
+        while(curdate<=enddate){
+            def curdatestr = curdate.format('yyyy-MM-dd')
+            def gotholiday = false
+            if(curdate.day==6){
+                gotholiday = true
+            }
+            if(!gotholiday){
+                // National holidays only - this method knows no branch, so no state.
+                gotholiday = is_holiday(holidaytracker, curdatestr, null)
+            }
+            if(!gotholiday){
+                if(!(curdate in workingday)){
+                    workingday << curdate
+                }
+            }
+            curdate++
+        }
+        return workingday
+    }
+
+    def personal_workingdays(startdate,enddate){
+        if (startdate instanceof String || startdate instanceof GString) {
+            startdate = Date.parse("yyyy-MM-dd",startdate)
+        }
+        if (enddate instanceof String || enddate instanceof GString) {
+            enddate = Date.parse("yyyy-MM-dd",enddate)
+        }
+        def curdate = startdate
+        def workingday = []
+        def state = homestate()
+        def alternateday_states = PortalSetting.namedefault('alternateday_states',[])
+        def alternate_weekend = (state && state in alternateday_states)
+        def holidaytracker = PortalTracker.findByModuleAndSlug('holidays','holidays')
+        def leavetracker = PortalTracker.findByModuleAndSlug('leave','leave')
+        while(curdate<=enddate){
+            def curdatestr = curdate.format('yyyy-MM-dd')
+            def gotholiday = false
+            if(curdate.day==6){
+                gotholiday = true
+            }
+            else if(curdate.day==5){
+                if(alternate_weekend){
+                    gotholiday = true
+                }
+            }
+            else if(curdate.day==0){
+                if(!alternate_weekend){
+                    gotholiday = true
+                }
+            }
+            if(!gotholiday){
+                gotholiday = is_holiday(holidaytracker, curdatestr, state)
+            }
+            def days = []
+            if(leavetracker) {
+                def staffleave = leavetracker.rows(['staff_id':this.id,'leave_start':'<=' + curdate.format('yyyy-MM-dd'),'leave_end':'>=' + curdate.format('yyyy-MM-dd')])
+                if(staffleave) {
+                    gotholiday = true
+                }
+            }
+            if(!gotholiday){
+                if(!(curdate in workingday)){
+                    workingday << curdate
+                }
+            }
+            curdate++
+        }
+        return workingday
+    }
+
+    /**
+     * The working days between two dates for a given STATE, rather than for a given user.
+     *
+     * This is the body that workingdays() has always had; it is exposed on its own because
+     * a deadline usually belongs to a record, not to whoever happens to be looking at it.
+     * A turnaround time computed from the reader's branch moves when a different person
+     * opens the case, which is not a property anybody wants in an SLA.
+     *
+     * `state` null means national holidays only. That still excludes Sunday - unlike
+     * default_workingdays(), which does not and therefore lands a day early per weekend
+     * crossed. Prefer this method to that one wherever there is no logged-in user.
+     */
+    def static workingdays_in_state(startdate,enddate,state=null){
+        if (startdate instanceof String || startdate instanceof GString) {
+            startdate = Date.parse("yyyy-MM-dd",startdate)
+        }
+        if (enddate instanceof String || enddate instanceof GString) {
+            enddate = Date.parse("yyyy-MM-dd",enddate)
+        }
+        def curdate = startdate
+        def workingday = []
+        def alternateday_states = PortalSetting.namedefault('alternateday_states',[])
+        def alternate_weekend = (state && state in alternateday_states)
+        def holidaytracker = PortalTracker.findByModuleAndSlug('holidays','holidays')
+        while(curdate<=enddate){
+            def curdatestr = curdate.format('yyyy-MM-dd')
+            def gotholiday = false
+            if(curdate.day==6){
+                gotholiday = true
+            }
+            else if(curdate.day==5){
+                if(alternate_weekend){
+                    gotholiday = true
+                }
+            }
+            else if(curdate.day==0){
+                if(!alternate_weekend){
+                    gotholiday = true
+                }
+            }
+            if(!gotholiday){
+                gotholiday = is_holiday(holidaytracker, curdatestr, state)
+            }
+            if(!gotholiday){
+                if(!(curdate in workingday)){
+                    workingday << curdate
+                }
+            }
+            curdate++
+        }
+        return workingday
+    }
+
+    /**
+     * The nth working day strictly after `from`, for a state. Returns null when the scan
+     * window runs out, so a caller can decide what to do rather than being handed a wrong
+     * date silently. The window is deliberately generous - three times the count plus a
+     * fortnight absorbs any realistic run of public holidays.
+     */
+    def static nth_workingday(from,int n,state=null){
+        if(!from || n < 1) return null
+        if (from instanceof String || from instanceof GString) {
+            from = Date.parse("yyyy-MM-dd",from)
+        }
+        def scanEnd = from + (n * 3 + 14)
+        def after = (workingdays_in_state(from,scanEnd,state) ?: []).findAll { it > from }.sort()
+        return (after.size() >= n) ? after[n - 1] : null
+    }
+
+    def workingdays(startdate,enddate){
+        // Unchanged behaviour: this user's own branch state, delegated to the shared body.
+        def state = homestate()
+        return workingdays_in_state(startdate,enddate,state)
+    }
 }

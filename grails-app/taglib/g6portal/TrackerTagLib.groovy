@@ -684,6 +684,13 @@ class TrackerTagLib {
                             out << attrs.field.fieldval(attrs.value,sql)
                         }
                     }
+                    else if(attrs.field.field_type=='Checkbox' && !attrs.field.field_options && attrs.field.field_format){
+                        // Opt-in labels for a single checkbox: field_format "Yes,No" shows Yes/No instead of
+                        // the raw true/false (MSSQL bit) or t/f. Display only - forms and exports are unchanged.
+                        def labels = attrs.field.field_format.tokenize(',')*.trim()
+                        def checked = attrs.value != null && attrs.value.toString().trim().toLowerCase() in ['true','1','on','yes','y','t']
+                        out << (checked ? labels[0] : (labels.size() > 1 ? labels[1] : ''))
+                    }
                     else if(attrs.field.field_type=='File'){
                         def fl = attrs.field.fieldval(attrs.value,sql)
                         // added in case file upload is optional
@@ -1766,7 +1773,7 @@ content: event.description
             def userroles = attrs.tracker.user_roles(curuser,datas)
             // userroles would consist of tracker roles that is valid for the current user
             if(!userroles && !attrs.tracker.anonymous_view){
-                out << "<script>alert('You are not authorised to view that record');window.location='" + createLink(controller:'tracker',action:'display',params:['slug':attrs.tracker.slug])  + "';</script>"
+                out << "<script>alert('You are not authorised to view that record');window.location='" + createLink(controller:'portalTracker',action:'list',params:['module':attrs.tracker.module,'slug':attrs.tracker.slug])  + "';</script>"
                 return
             }
             def fields = []
@@ -1907,7 +1914,7 @@ content: event.description
             def userroles = attrs.tracker.user_roles(curuser,datas)
             // userroles would consist of tracker roles that is valid for the current user
             if(!userroles && !attrs.tracker.anonymous_view){
-                out << "<script>alert('You are not authorised to view that record');window.location='" + createLink(controller:'tracker',action:'display',params:['slug':attrs.tracker.slug])  + "';</script>"
+                out << "<script>alert('You are not authorised to view that record');window.location='" + createLink(controller:'portalTracker',action:'list',params:['module':attrs.tracker.module,'slug':attrs.tracker.slug])  + "';</script>"
                 return
             }
             def fields = []

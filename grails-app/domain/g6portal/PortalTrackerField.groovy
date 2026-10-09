@@ -116,6 +116,18 @@ class PortalTrackerField {
         return toreturn
     }
 
+    /**
+     * Validates database identifiers (table names, column names)
+     */
+    private String validateIdentifier(String identifier) {
+        if (!identifier) return ""
+        // Only allow alphanumeric characters, underscores
+        if (!identifier.matches(/^[a-zA-Z_][a-zA-Z0-9_]*$/)) {
+            throw new SecurityException("Invalid database identifier: ${identifier}")
+        }
+        return identifier
+    }
+
     def updatedb(datasource){
         println "In field updatedb for :" + this
         if(this.field_type!='FieldGroup'){
@@ -178,21 +190,25 @@ class PortalTrackerField {
             if(this.field_type!='HasMany') {
                 try{
                     def query = ''
+                    // Both names are concatenated into DDL below, so refuse anything that is not a
+                    // plain identifier rather than trust the quoting.
+                    def dataTableName = validateIdentifier(this.tracker.data_table())
+                    def fieldName = validateIdentifier(this.name.trim())
                     // case-insensitive: see PortalTracker.columnExists
-                    if(!PortalTracker.columnExists(sql, this.tracker.data_table(), this.name.trim())){
+                    if(!PortalTracker.columnExists(sql, dataTableName, fieldName)){
                         println "Field not found"
                         if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
-                            query = 'alter table "' + this.tracker.data_table() + '" add "' + this.name.trim() + '" ' + sqltype + ' NULL'
+                            query = 'alter table "' + dataTableName + '" add "' + fieldName + '" ' + sqltype + ' NULL'
                         }
                         else {
-                            query = "alter table " + this.tracker.data_table() + " add [" + this.name.trim() + "] " + sqltype + " NULL"
+                            query = "alter table " + dataTableName + " add [" + fieldName + "] " + sqltype + " NULL"
                         }
                         println "Updatedb query:" + query
                         sql.execute(query)
                     }
                     if(createindex) {
-                        def tablename = this.tracker.data_table()
-                        def fname = this.name
+                        def tablename = dataTableName
+                        def fname = fieldName
                         def inquery = "if not exists (select * from sys.indexes where name='ix_" + fname + "' and object_id=object_id('" + tablename + "'))begin create nonclustered index ix_" + fname + " on [" + tablename + "] ([" + fname + "]); end"
                         if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
                             inquery = 'create index if not exists ix_' + fname + ' on "' + tablename + '" ("' + fname + '")'
