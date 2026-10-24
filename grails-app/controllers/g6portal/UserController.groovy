@@ -790,9 +790,14 @@ class UserController {
 
     def authenticate = {
         def encpass = ''
-        def user = User.findByUserID(params.username,[cache:false])
-        if(!user){
-            user = User.findByLanid(params.username,[cache:false])
+        // A blank username must not reach the lookups: findByLanid(null) matches
+        // the first account that has no LAN id
+        def user = null
+        if(params.username?.trim()){
+            user = User.findByUserID(params.username,[cache:false])
+            if(!user){
+                user = User.findByLanid(params.username,[cache:false])
+            }
         }
         if(!user){
             println "User " + params.username + " not found"

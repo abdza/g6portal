@@ -230,6 +230,7 @@ class PortalEndpointController {
         def username = decoded.substring(0, idx)
         def password = decoded.substring(idx + 1)
 
+        if(!username.trim()) return challenge(endpoint)
         def user = User.findByUserID(username, [cache: false]) ?:
                    User.findByLanid(username, [cache: false])
         // Same check as the login form (Active Directory, then local password).
