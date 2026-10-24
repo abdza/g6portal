@@ -292,6 +292,9 @@ class FileLinkController {
                         println "Will copy to " + copytarget
                         f.transferTo(new File(copytarget))
                         fileLink.path = copytarget
+                        // A re-upload can land on the same path, which beforeUpdate cannot see
+                        // (it also re-measures size when last_updated changes).
+                        fileLink.last_updated = new Date()
                     } 
                 }
                 fileLinkService.save(fileLink)
@@ -452,7 +455,7 @@ class FileLinkController {
                     }
                     response.setContentType(mimeType)
                     if (isAttachment) {
-                        response.setHeader("Content-disposition", "attachment;filename=${thefile.getName().replace(' ','_').replaceAll('[^a-zA-Z0-9._-]', '_')}")
+                        response.setHeader("Content-Disposition", ContentDisposition.attachment(thefile.getName()))
                     }
 
                     if(params.thumbsize && mimeType.startsWith('image/')){
@@ -620,7 +623,7 @@ class FileLinkController {
         response.setContentType(mimeType)
         response.setHeader('Accept-Ranges', 'bytes')
         response.setHeader('Content-Length', String.valueOf(contentLength))
-        response.setHeader('Content-Disposition', "inline;filename=\"" + thefile.getName().replace('"','') + "\"")
+        response.setHeader('Content-Disposition', ContentDisposition.inline(thefile.getName()))
         if(partial){
             response.status = 206
             response.setHeader('Content-Range', "bytes " + start + "-" + end + "/" + filelength)

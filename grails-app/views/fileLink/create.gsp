@@ -32,7 +32,7 @@
                     </g:hasErrors>
                     <g:uploadForm useToken="true" resource="${this.fileLink}" method="POST">
                         <fieldset class="form">
-                            <f:all bean="fileLink"/>
+                            <f:all bean="fileLink" except="last_updated"/>
                         </fieldset>
 			<fieldset class="form">
 				<div class="fieldcontain">

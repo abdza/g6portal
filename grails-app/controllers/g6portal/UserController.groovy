@@ -228,7 +228,26 @@ class UserController {
         respond new User(params)
     }
 
+    // Self-registration is governed by server.allow_registration (application.yml). user.register
+    // and user.save are on the interceptor's anonymous whitelist, so the setting has to be enforced
+    // here - hiding the link alone left POST /user/save open to anyone. Someone who may create users
+    // through user/create (an admin, or an admin of any module - the interceptor's rule) is not
+    // registering themselves and is never blocked.
+    boolean registrationOpen() {
+        grailsApplication.config.getProperty('server.allow_registration', Boolean, false)
+    }
+
+    boolean canCreateUsers() {
+        def creator = session.curuser
+        return creator && (creator.isAdmin || creator.adminlist()?.size() > 0)
+    }
+
     def register() {
+        if(!registrationOpen() && !canCreateUsers()) {
+            flash.message = "Account registration is not available. Please contact the portal administrators."
+            redirect(controller:"user", action:"login")
+            return
+        }
         respond new User(params)
     }
 
@@ -246,6 +265,11 @@ class UserController {
         else {
             if (user == null) {
                 notFound()
+                return
+            }
+            if(!registrationOpen() && !canCreateUsers()) {
+                flash.message = "Account registration is not available. Please contact the portal administrators."
+                redirect(controller:"user", action:"login")
                 return
             }
             if(params.password2 && params.password!=params.password2) {
@@ -391,7 +415,15 @@ class UserController {
                     user.isAdmin = params.isAdmin ? true : false
                 }
                 if(params.containsKey('roletargetid')) {
-                    user.roletargetid = params.roletargetid ? params.int('roletargetid') : null
+                    // Only one of this user's own tree positions (or none) - an id typed here that
+                    // belongs to someone else would make this user act as that person.
+                    def wanted = params.roletargetid ? params.int('roletargetid') : null
+                    if(wanted == null || PortalTreeNodeUser.holderId(wanted) == user.id) {
+                        user.roletargetid = wanted
+                    }
+                    else {
+                        request.roletargetRejected = "Role target ${wanted} is not one of ${user.name}'s tree positions - left unchanged.".toString()
+                    }
                 }
             }
 
@@ -404,7 +436,8 @@ class UserController {
 
             request.withFormat {
                 form multipartForm {
-                    flash.message = message(code: 'default.updated.message', args: [message(code: 'user.label', default: 'User'), user.id])
+                    flash.message = message(code: 'default.updated.message', args: [message(code: 'user.label', default: 'User'), user.id]) +
+                                    (request.roletargetRejected ? ' ' + request.roletargetRejected : '')
                     redirect user
                 }
                 '*'{ respond user, [status: OK] }
@@ -593,6 +626,14 @@ class UserController {
                 session['roletargetid']=[]
                 def troles = user.treeroles(params)
                 def firstone = true
+                // A roletargetid that is not one of the user's own rows (the row was handed to
+                // someone else, or deleted) must not survive the login - otherwise the "fill it
+                // only when empty" rule below keeps them acting as another person's position.
+                if(user.roletargetid && !(troles?.any { it.id == user.roletargetid })) {
+                    // persisted directly, as in giverole: the save() below may not be flushed
+                    User.withTransaction { User.executeUpdate("update User u set u.roletargetid = null where u.id = :id", [id: user.id]) }
+                    user.roletargetid = null
+                }
                 if(troles){
                     def curcount = 0
                     troles.each {
@@ -666,6 +707,13 @@ class UserController {
                 }
                 return true
             }
+            // No tree position at all: a leftover roletargetid can only point at a row that is
+            // someone else's now (or gone), so drop it. Written directly - the plain save() below
+            // is not flushed on this path (lastlogin never reaches the database here either).
+            if(user.roletargetid) {
+                User.withTransaction { User.executeUpdate("update User u set u.roletargetid = null where u.id = :id", [id: user.id]) }
+                user.roletargetid = null
+            }
             user.lastlogin = new Date()
             user.save()
         }
@@ -678,10 +726,13 @@ class UserController {
         if(session.userid){
             User.withTransaction { ctrans->
                 def duser = User.get(session.userid)
-                if(duser) {
+                // The role list was built at login; a row in it may have been handed to someone
+                // else since. Only switch to a row that is still this user's.
+                def targetid = session['roletargetid'] ? session['roletargetid'][chosenrole] : null
+                if(duser && targetid && PortalTreeNodeUser.holderId(targetid) == duser.id) {
                     duser.clearModuleroleCache()
                     duser.role = session['role'][chosenrole]
-                    duser.roletargetid = session['roletargetid'][chosenrole]
+                    duser.roletargetid = targetid
                     duser.save(flush:true)
                     session.curuser = duser
                     session['chosenrole'] = chosenrole

@@ -246,8 +246,8 @@ class PortalTrackerField {
             if(session && session.userid){
                 // curuser = User.get(session.userid)
                 curuser = session.curuser
-                binding.setVariable("curuser",curuser)
             }
+            binding.setVariable("curuser",curuser)   // null without a user - see userlist()
             def shell = new GroovyShell(this.class.classLoader,binding)
             return shell.evaluate(this.field_options)
         }
@@ -271,8 +271,8 @@ class PortalTrackerField {
             if(session && session.userid){
                 // curuser = User.get(session.userid)
                 curuser = session.curuser
-                binding.setVariable("curuser",curuser)
             }
+            binding.setVariable("curuser",curuser)   // null without a user - see userlist()
             def shell = new GroovyShell(this.class.classLoader,binding)
             return shell.evaluate(this.field_format)
         }
@@ -296,8 +296,8 @@ class PortalTrackerField {
             if(session && session.userid){
                 // curuser = User.get(session.userid)
                 curuser = session.curuser
-                binding.setVariable("curuser",curuser)
             }
+            binding.setVariable("curuser",curuser)   // null without a user - see userlist()
             def shell = new GroovyShell(this.class.classLoader,binding)
             return shell.evaluate(this.field_query)
         }
@@ -489,8 +489,11 @@ class PortalTrackerField {
                 if(session && session.userid){
                     // curuser = User.get(session.userid)
                     curuser = session.curuser
-                    binding.setVariable("curuser",curuser)
                 }
+                // Always bound, null when the session has no user (e.g. it expired while the
+                // form was open): an options script that tests curuser then sees null instead
+                // of failing with "No such property: curuser".
+                binding.setVariable("curuser",curuser)
                 def shell = new GroovyShell(this.class.classLoader,binding)
                 def listusers = shell.evaluate(this.field_options)
                 if(params.q) {

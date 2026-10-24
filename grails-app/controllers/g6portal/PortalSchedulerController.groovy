@@ -80,6 +80,10 @@ class PortalSchedulerController {
                         // means "default mode", which is what a scheduled run wants.
                         binding.setVariable("params",[:])
                         binding.setVariable("curuser",null)
+                        // Lets a page that also answers on a URL tell a scheduled run apart from
+                        // an anonymous request: only this in-process call can set a binding
+                        // variable, so a page can skip its cron token when scheduled_run is true.
+                        binding.setVariable("scheduled_run",true)
                         def shell = new GroovyShell(this.class.classLoader,binding)
                         content = shell.evaluate(scriptpage.content)
                     }

@@ -210,7 +210,7 @@
                     <div class="col-12">
                       <button class="btn btn-primary w-100" type="submit">Login</button>
                     </div>
-                    <g:if test="${grailsApplication.config.getProperty('server.allow_registration')=='true'}">
+                    <g:if test="${grailsApplication.config.getProperty('server.allow_registration', Boolean, false)}">
                     <div class="col-12">
                       <p class="small mb-0">Don't have account? <g:link controller='user' action='register'>Create an account</g:link></p>
                     </div>

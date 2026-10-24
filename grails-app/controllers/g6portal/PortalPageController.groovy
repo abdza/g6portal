@@ -126,7 +126,7 @@ class PortalPageController {
                                 if(tmpFile.exists()) {
                                     xlsxJobs.remove(tkn)
                                     response.setContentType("application/octet-stream")
-                                    response.setHeader("Content-Disposition", "attachment;filename=${job.filename}.xlsx")
+                                    response.setHeader("Content-Disposition", ContentDisposition.attachment("${job.filename}.xlsx".toString()))
                                     response.setContentLength((int)tmpFile.length())
                                     tmpFile.withInputStream { is -> response.outputStream << is }
                                     response.outputStream.flush()
@@ -158,7 +158,7 @@ class PortalPageController {
 
                         xlsxJobs[bgToken] = [done: false, file: null, error: null, filename: page.slug]
 
-                        Thread.start {
+                        PortalBackgroundTrail.start('portalPage.xlsx', [details:page.module + ':' + page.slug, userid:session.userid]) {
                             def bgConnection = null
                             def bgSql = null
                             try {
@@ -387,7 +387,7 @@ setTimeout(check,2000);
                 redirect(action: "index", params: params)
             }
             response.setContentType("application/octet-stream")
-            response.setHeader("Content-disposition","attachment;filename=" + content['filename'] + ".xlsx")
+            response.setHeader("Content-Disposition", ContentDisposition.attachment(content['filename'].toString() + ".xlsx"))
             try {
                 content['wb'].write(response.outputStream)
                 response.outputStream.flush()
@@ -407,7 +407,7 @@ setTimeout(check,2000);
                 if(thefile.exists()){
                     try{
                         response.setContentType("application/octet-stream")
-                        response.setHeader("Content-disposition", "attachment;filename=${thefile.getName().replace(' ','_')}")
+                        response.setHeader("Content-Disposition", ContentDisposition.attachment(thefile.getName()))
                         if(params.thumbsize){
                             resize(thefile.getBytes(),response.outputStream,params.int('thumbsize'),params.int('thumbsize'))
                         }

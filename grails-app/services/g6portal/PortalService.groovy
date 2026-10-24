@@ -507,7 +507,7 @@ class PortalService {
                 sdsettinglog.save(flush:true)
 
                 executorService.submit({
-                    // Your background task here
+                    PortalBackgroundTrail.track('portalService.perform_data_dump') {
                     println "Doing data dump"
                     println "Hello"
                     println "In session"
@@ -696,6 +696,7 @@ class PortalService {
                     def dsetting = PortalSetting.findByName('datadump_processing')
                     dsetting.number = 0
                     dsetting.save(flush:true)
+                    }
                     }
                 })
             }
@@ -1082,8 +1083,8 @@ class PortalService {
                 else { out << "Binary files a/${rel} and b/${rel} differ\n" }
                 return
             }
-            def alines = oldf.exists() ? oldf.text.split('\n', -1) as List : []
-            def blines = newf.exists() ? newf.text.split('\n', -1) as List : []
+            def alines = oldf.exists() ? oldf.getText("UTF-8").split('\n', -1) as List : []
+            def blines = newf.exists() ? newf.getText("UTF-8").split('\n', -1) as List : []
             // Drop the empty string after a trailing newline. subList, not [0..-2]: an empty
             // file splits to [''], and [0..-2] on a one-element list is subList(0,-1) - it threw
             // "fromIndex = -1" and killed the whole import preview for any module with an

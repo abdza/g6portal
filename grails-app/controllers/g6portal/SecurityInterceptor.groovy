@@ -26,7 +26,83 @@ class SecurityInterceptor {
         .except(controller:'portalEndpoint', action:'serve')
     }
 
-    boolean before() { 
+    /**
+     * Opens the audit trail timing for this request, then authorizes it. afterView() closes the
+     * timing once the view has rendered. Spring never calls afterView() for a request this
+     * interceptor turned away, so a denied request or redirect to login is finished here.
+     */
+    boolean before() {
+        def frame = PortalAuditWriter.startFrame(request, buildTrail())
+        boolean allowed = false
+        Throwable failure = null
+        try {
+            allowed = authorize()
+            return allowed
+        }
+        catch(Throwable t) {
+            failure = t
+            throw t
+        }
+        finally {
+            if(!allowed) {
+                PortalAuditWriter.finishFrame(request, response, frame, failure)
+            }
+        }
+    }
+
+    /**
+     * The audit trail row for this request; it is saved later by PortalAuditWriter, off the
+     * request thread, once the timing is filled in. The user is read straight from the session
+     * here, before authorize() runs, so rows for a superuser's first request and for a session
+     * that gets logged out are no longer saved without (or instead of) a user.
+     */
+    private PortalAuditTrail buildTrail() {
+        try {
+            def storeparams = [:]
+            if(request.method=='GET'){
+                def neverstore = ['password']
+                params.each { pkey,pval->
+                    try {
+                        if(pkey!=pkey.toUpperCase() && !(pkey.toLowerCase() in neverstore)){
+                            storeparams[pkey]=pval
+                        }
+                    }
+                    catch(Exception e){
+                        println 'error interceptor:' + e
+                    }
+                }
+            }
+            def trail = new PortalAuditTrail()
+            trail.controller = PortalAuditWriter.truncate(controllerName, 255)
+            trail.action = PortalAuditWriter.truncate(actionName, 255)
+            if(request.method=='GET'){
+                trail.params = PortalAuditWriter.truncate(storeparams.toString(), 1024)
+            }
+            else{
+                trail.params = 'It was a post request'
+            }
+            trail.module = PortalAuditWriter.truncate(params.module, 255)
+            trail.slug = PortalAuditWriter.truncate(params.slug, 255)
+            trail.ipaddr = request.getRemoteAddr()
+            trail.uri = PortalAuditWriter.truncate(request.forwardURI, 255)
+            trail.useragent = PortalAuditWriter.truncate(request.getHeader("User-Agent"), 255)
+            trail.date = new Date()
+            def httpsession = request.getSession(false)
+            if(httpsession?.getAttribute('userid')) {
+                trail.user_id = httpsession.getAttribute('userid') as Integer
+            }
+            if(httpsession?.getAttribute('realuserid')) {
+                trail.realuser_id = httpsession.getAttribute('realuserid') as Integer
+            }
+            return trail
+        }
+        catch(Exception e) {
+            println "Error with audit trail:" + e
+            return null
+        }
+    }
+
+    private boolean authorize() {
     // println "Date:" + new Date()
 		// println "Params:" + params
 		// println "Session:" + session
@@ -94,39 +170,6 @@ class SecurityInterceptor {
         module = params.module
 		}
 
-    def storeparams = [:]
-    if(request.method=='GET'){
-		    def neverstore = ['password']
-		    params.each { pkey,pval->
-            try {
-                if(pkey!=pkey.toUpperCase() && !(pkey.toLowerCase() in neverstore)){
-                    storeparams[pkey]=pval
-                }
-            }
-            catch(Exception e){
-                println 'error interceptor:' + e
-            }
-        }
-    }
-
-    def trail = new PortalAuditTrail()
-    trail.controller=controllerName
-    trail.action=actionName
-    if(request.method=='GET'){
-      if(storeparams.toString().size()<256){
-          trail.params=storeparams
-        }
-        else{
-          trail.params=storeparams[0..255]
-        }
-    }
-    else{
-        trail.params = 'It was a post request'
-    }
-    trail.ipaddr = request.getRemoteAddr()
-    trail.uri = request.forwardURI
-    trail.useragent=request.getHeader("User-Agent")
-    trail.date=new Date()
     if(module) {
         if(config.grails?.domainlimit){
             def url_domain = request.getRequestURL() - request.getRequestURI()
@@ -157,11 +200,7 @@ class SecurityInterceptor {
                     return true
                 }
             }
-            if(session?.userid){
-                trail.user_id = session.userid
-            }
             if(session?.realuserid){
-                trail.realuser_id = session.realuserid
                 def module_whitelist = PortalSetting.namedefault('portal.module_whitelist',[]) + ['portal']
                 if(module && !(module in realuser.adminlist() + module_whitelist)) {
                     flash.message = "You are not authorized to view that module" 
@@ -181,15 +220,6 @@ class SecurityInterceptor {
                                     action: 'securityinterceptor session setup', module: module, slug: slug])
         }
     }
-    try {
-        PortalAuditTrail.withTransaction { atrans-> 
-            trail.save(flush:true)
-        }
-    }
-    catch(Exception e){
-        println "Error with audit trail:" + e
-    }
-
     def whitelist = PortalSetting.namedefault('portal.whitelist',['portalPage.setup','portalTracker.data_dump','portalTrackerField.onchange','portalPage.home','user.register','user.save','user.connexion','portalScheduler.run','portalEmail.run','portalSearch.index','portalTrackerData.customfield','portalTrackerData.create','portalTrackerData.save','portalTrackerData.doupload'])
     def modtest = module + '.' + slug
     def contest = controllerName + '.' + actionName
@@ -267,7 +297,7 @@ class SecurityInterceptor {
         if(object) {
             // Page documents (file group, no tracker) follow FileLink.readable(), which keeps the
             // old portal's rule for them; the controller applies the same check.
-            if(object.filegroup && !object.tracker_id && FileLink.readable(object, session)) {
+            if(object.filegroup && !object.tracker_slug && FileLink.readable(object, session)) {
                 return true
             }
             if(object.allowedroles){
@@ -295,7 +325,7 @@ class SecurityInterceptor {
                 if(object.module in whitelist_modules) {
                     return true
                 }
-                if(object.tracker_id && object.tracker_data_id) {
+                if(object.tracker_slug && object.tracker_data_id) {
                     return true
                 }
             }
@@ -600,8 +630,15 @@ class SecurityInterceptor {
 	return true 
     }
 
+    // Runs after the view has rendered, so the timing includes GSP render time.
     void afterView() {
-        // no-op
+        Throwable failure = null
+        try {
+            failure = throwable
+        }
+        catch(Throwable ignored) {
+        }
+        PortalAuditWriter.finishFrame(request, response, null, failure)
     }
 
     /**

@@ -264,7 +264,7 @@ class PortalTreeController {
             return
         }
         def staff_on = params.staff ? true : false
-        def treearray = new JsonSlurper().parseText(parked.text)
+        def treearray = new JsonSlurper().parseText(parked.getText("UTF-8"))
         if(!(treearray instanceof List)) {
             treearray = [treearray]
         }
@@ -313,7 +313,7 @@ class PortalTreeController {
             return
         }
         def staff_on = params.staff ? true : false
-        def treearray = new JsonSlurper().parseText(parked.text)
+        def treearray = new JsonSlurper().parseText(parked.getText("UTF-8"))
         if(!(treearray instanceof List)) {
             treearray = [treearray]
         }

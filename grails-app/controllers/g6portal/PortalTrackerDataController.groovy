@@ -564,7 +564,7 @@ class PortalTrackerDataController {
 
     private void launchBackgroundUpload(Long updateId) {
         def bgMailService = mailService
-        Thread.start {
+        PortalBackgroundTrail.start('portalTrackerData.upload', [details:'PortalTrackerData ' + updateId, userid:session.userid]) {
             try {
                 PortalTrackerData.withNewSession {
                     PortalTrackerData.withTransaction {
@@ -758,42 +758,7 @@ class PortalTrackerDataController {
             return
         }
 
-        // Is it ready yet?
-        if(params.async_token && params.async_status) {
-            def job = dumpJobs[params.async_token as String]
-            if(!job) {
-                render(contentType: 'application/json', text: '{"ready":false,"error":"Job not found or expired"}')
-            } else if(job.error) {
-                render(contentType: 'application/json', text: new groovy.json.JsonBuilder([ready:false, error:job.error.toString()]).toString())
-            } else {
-                render(contentType: 'application/json', text: "{\"ready\":${job.done}}")
-            }
-            return
-        }
-
-        // Hand the file over, then forget the job and delete the temp file.
-        if(params.async_token && !params.async_status) {
-            def tkn = params.async_token as String
-            def job = dumpJobs[tkn]
-            if(job?.done && job?.file) {
-                def tmpFile = new File(job.file as String)
-                if(tmpFile.exists()) {
-                    dumpJobs.remove(tkn)
-                    response.setContentType("application/octet-stream")
-                    response.setHeader("Content-Disposition", "attachment;filename=${job.filename}.xlsx")
-                    response.setContentLength((int)tmpFile.length())
-                    tmpFile.withInputStream { is -> response.outputStream << is }
-                    response.outputStream.flush()
-                    tmpFile.delete()
-                } else {
-                    response.sendError(404, "Dump file not found")
-                }
-            } else if(job?.error) {
-                dumpJobs.remove(tkn)
-                response.sendError(500, "Dump failed: ${job.error}")
-            } else {
-                response.sendError(404, "Dump not ready or expired")
-            }
+        if(serveDumpJob()) {
             return
         }
 
@@ -811,15 +776,15 @@ class PortalTrackerDataController {
         def bgId = id
         def label = tracker.slug + (bgParams.forimport?.toString() == '1' ? '_forimport' : '')
 
-        dumpJobs[bgToken] = [done: false, file: null, error: null, filename: label]
+        dumpJobs[bgToken] = [done: false, file: null, error: null, filename: label + '.xlsx']
 
-        Thread.start {
+        PortalBackgroundTrail.start('portalTrackerData.datadump', [details:'tracker ' + bgId + ' ' + label, userid:session.userid]) {
             try {
                 // Its own Hibernate session: the request's is gone the moment the polling page
                 // is returned, and the readable dump resolves names through GORM per row.
                 PortalTrackerData.withNewSession {
                     def built = buildDumpFile(bgId, bgParams, bgCurUser, bgSessionAttrs)
-                    dumpJobs[bgToken] = [done: true, file: built.absolutePath, error: null, filename: label]
+                    dumpJobs[bgToken] = [done: true, file: built.absolutePath, error: null, filename: label + '.xlsx']
                     println "Data dump completed: ${built.absolutePath} (${built.length()} bytes)"
                 }
             } catch(Throwable e) {
@@ -839,6 +804,147 @@ class PortalTrackerDataController {
         }
 
         render(contentType: 'text/html', text: dumpWaitingPage(bgToken, tracker.name))
+    }
+
+    /**
+     * The polling and hand-over half of an async dump, shared by datadump and moduledump: the
+     * waiting page polls its own URL with ?async_token=..&async_status=1, then fetches it with
+     * just the token. Returns true when this request was one of those and has been answered.
+     */
+    private boolean serveDumpJob() {
+        // Is it ready yet?
+        if(params.async_token && params.async_status) {
+            def job = dumpJobs[params.async_token as String]
+            if(!job) {
+                render(contentType: 'application/json', text: '{"ready":false,"error":"Job not found or expired"}')
+            } else if(job.error) {
+                render(contentType: 'application/json', text: new groovy.json.JsonBuilder([ready:false, error:job.error.toString()]).toString())
+            } else {
+                render(contentType: 'application/json', text: "{\"ready\":${job.done}}")
+            }
+            return true
+        }
+
+        // Hand the file over, then forget the job and delete the temp file.
+        if(params.async_token && !params.async_status) {
+            def tkn = params.async_token as String
+            def job = dumpJobs[tkn]
+            if(job?.done && job?.file) {
+                def tmpFile = new File(job.file as String)
+                if(tmpFile.exists()) {
+                    dumpJobs.remove(tkn)
+                    response.setContentType("application/octet-stream")
+                    response.setHeader("Content-Disposition", ContentDisposition.attachment(job.filename as String))
+                    response.setContentLengthLong(tmpFile.length())
+                    tmpFile.withInputStream { is -> response.outputStream << is }
+                    response.outputStream.flush()
+                    tmpFile.delete()
+                } else {
+                    response.sendError(404, "Dump file not found")
+                }
+            } else if(job?.error) {
+                dumpJobs.remove(tkn)
+                response.sendError(500, "Dump failed: ${job.error}")
+            } else {
+                response.sendError(404, "Dump not ready or expired")
+            }
+            return true
+        }
+        return false
+    }
+
+    /**
+     * Data Dump (for re-import) of every tracker in a module, as one zip holding one xlsx per
+     * tracker - for moving a whole module's data between environments without visiting each
+     * tracker. Each file is exactly what that tracker's own "Data Dump (for re-import)" gives
+     * (buildDumpFile with forimport=1), named {slug}_forimport.xlsx so it can be fed back in
+     * through that tracker's data update.
+     *
+     * One tracker failing (a missing table, say) does not stop the rest: it is left out of the
+     * zip, logged to PortalErrorLog, and listed in dump_report.txt alongside the row counts.
+     * id is the PortalModule id. Same async shape as datadump.
+     */
+    def moduledump(Long id) {
+        if(serveDumpJob()) {
+            return
+        }
+        def curuser = session.curuser
+        def module = id ? PortalModule.get(id) : null
+        if(!module) {
+            notFound()
+            return
+        }
+        // The interceptor lets any module's admin through when no module param is given, so the
+        // module's own rights are checked here: this hands out every row of every tracker.
+        if(!(curuser?.isAdmin || module.name in (curuser?.adminlist() ?: []) || module.name in (curuser?.developerlist() ?: []))) {
+            flash.message = "Only an admin or developer of ${module.name} can dump its data."
+            redirect controller: 'portalModule', action: 'show', id: id
+            return
+        }
+
+        def bgToken = java.util.UUID.randomUUID().toString()
+        def bgCurUser = session.curuser
+        def bgSessionAttrs = [curuser: session.curuser, userid: session.userid]
+        def moduleName = module.name
+        def trackerIds = PortalTracker.findAllByModule(moduleName, [sort: 'slug'])*.id
+        def label = moduleName + '_forimport_' + new Date().format('yyyyMMdd_HHmm')
+
+        dumpJobs[bgToken] = [done: false, file: null, error: null, filename: label + '.zip']
+
+        PortalBackgroundTrail.start('portalTrackerData.moduledump', [details:'module ' + moduleName + ' (' + trackerIds.size() + ' trackers)', userid:session.userid]) {
+            try {
+                PortalTrackerData.withNewSession {
+                    def report = ["Data dump (for re-import) of module ${moduleName}",
+                                  "Built ${new Date().format('yyyy-MM-dd HH:mm:ss')} for ${bgCurUser?.userID ?: ''}", ""]
+                    def zipFile = File.createTempFile("g6moduledump_", ".zip")
+                    zipFile.deleteOnExit()
+                    def failed = 0
+                    new java.util.zip.ZipOutputStream(new FileOutputStream(zipFile)).withCloseable { zos ->
+                        trackerIds.each { tid ->
+                            def tracker = PortalTracker.get(tid)
+                            File built = null
+                            try {
+                                // A clean params map, not the request's: listquery reads every
+                                // key as a column filter.
+                                built = buildDumpFile(tid, [forimport: '1'], bgCurUser, bgSessionAttrs)
+                                def entryName = tracker.slug + '_forimport.xlsx'
+                                zos.putNextEntry(new java.util.zip.ZipEntry(entryName))
+                                built.withInputStream { is -> zos << is }
+                                zos.closeEntry()
+                                report << "OK      ${entryName}  (${tracker.name})"
+                            }
+                            catch(Throwable e) {
+                                failed++
+                                report << "FAILED  ${tracker?.slug}  (${tracker?.name}): " + PortalErrorLog.describe(e)
+                                PortalErrorLog.capture(e, "module data dump of ${moduleName}/${tracker?.slug} for ${bgCurUser?.userID}",
+                                                       [controller: 'portalTrackerData', action: 'moduledump',
+                                                        module: moduleName, slug: tracker?.slug])
+                            }
+                            finally {
+                                built?.delete()
+                            }
+                        }
+                        report << ""
+                        report << "${trackerIds.size() - failed} of ${trackerIds.size()} tracker(s) dumped" + (failed ? ", ${failed} failed" : "") + "."
+                        zos.putNextEntry(new java.util.zip.ZipEntry('dump_report.txt'))
+                        zos.write(report.join('\r\n').getBytes('UTF-8'))
+                        zos.closeEntry()
+                    }
+                    dumpJobs[bgToken] = [done: true, file: zipFile.absolutePath, error: null, filename: label + '.zip']
+                    println "Module data dump completed: ${zipFile.absolutePath} (${zipFile.length()} bytes)"
+                }
+            } catch(Throwable e) {
+                println "Module data dump failed: " + e
+                e.printStackTrace()
+                PortalErrorLog.capture(e, "module data dump of ${moduleName} for ${bgCurUser?.userID}",
+                                       [controller: 'portalTrackerData', action: 'moduledump', module: moduleName])
+                dumpJobs[bgToken] = [done: true, file: null,
+                                     error: "Dump failed: " + e.getClass().simpleName +
+                                            (e.message ? " - " + e.message : "") + " (details in the error log)"]
+            }
+        }
+
+        render(contentType: 'text/html', text: dumpWaitingPage(bgToken, moduleName + ' - all ' + trackerIds.size() + ' tracker(s)'))
     }
 
     /** The page the browser sits on while the dump builds. */

@@ -107,7 +107,7 @@ class PortalModule {
     def importfiles(migrationfolder, jsonSlurper) {
         def filelinkfile = new File(migrationfolder + '/filelinklist.json')
         if(filelinkfile.exists()){
-            def filelinkarray = jsonSlurper.parseText(filelinkfile.text)
+            def filelinkarray = jsonSlurper.parseText(filelinkfile.getText("UTF-8"))
             filelinkarray.each { ifilelink->
                 try {
                     def exportpath = migrationfolder + '/files/fl_' + ifilelink.id + '_' + ifilelink.name.replace(" ","_")
@@ -170,7 +170,7 @@ class PortalModule {
     def importuserroles(migrationfolder,jsonSlurper) {
         def userrolefile = new File(migrationfolder + '/userrolelist.json')
         if(userrolefile.exists()){
-            def userrolearray = jsonSlurper.parseText(userrolefile.text)
+            def userrolearray = jsonSlurper.parseText(userrolefile.getText("UTF-8"))
             userrolearray.each { iuserrole->
                 def cuser = User.findByUserID(iuserrole.user)
                 if(cuser){
@@ -230,7 +230,7 @@ class PortalModule {
         def out = []
         def settingfile = new File(migrationfolder + '/settinglist.json')
         if(!settingfile.exists()) return out
-        def settingarray = jsonSlurper.parseText(settingfile.text)
+        def settingarray = jsonSlurper.parseText(settingfile.getText("UTF-8"))
         settingarray.each { isetting ->
             def cursetting = PortalSetting.findByModuleAndName(isetting.module,isetting.name)
             def incomingcanon = settingcanon(isetting.type, isetting.text, isetting.number,
@@ -274,7 +274,7 @@ class PortalModule {
     def importsettings(migrationfolder,jsonSlurper,settingchoices = null) {
         def settingfile = new File(migrationfolder + '/settinglist.json')
         if(settingfile.exists()){
-            def settingarray = jsonSlurper.parseText(settingfile.text)
+            def settingarray = jsonSlurper.parseText(settingfile.getText("UTF-8"))
             settingarray.each { isetting->
                 def cursetting = PortalSetting.findByModuleAndName(isetting.module,isetting.name)
                 if(cursetting && settingchoices &&
@@ -344,7 +344,7 @@ class PortalModule {
         def out = []
         def schedulerfile = new File(migrationfolder + '/schedulerlist.json')
         if(!schedulerfile.exists()) return out
-        def schedulerarray = jsonSlurper.parseText(schedulerfile.text)
+        def schedulerarray = jsonSlurper.parseText(schedulerfile.getText("UTF-8"))
         schedulerarray.each { ischeduler ->
             def curscheduler = PortalScheduler.findByModuleAndName(ischeduler.module,ischeduler.name)
             def incomingcanon = schedulercanon(ischeduler.slugs, ischeduler.hour_of_day, ischeduler.day_of_week,
@@ -378,7 +378,7 @@ class PortalModule {
     def importschedulers(migrationfolder,jsonSlurper,schedulerchoices = null) {
         def schedulerfile = new File(migrationfolder + '/schedulerlist.json')
         if(schedulerfile.exists()){
-            def schedulerarray = jsonSlurper.parseText(schedulerfile.text)
+            def schedulerarray = jsonSlurper.parseText(schedulerfile.getText("UTF-8"))
             schedulerarray.each { ischeduler->
                 def curscheduler = PortalScheduler.findByModuleAndName(ischeduler.module,ischeduler.name)
                 if(curscheduler && schedulerchoices &&
@@ -413,7 +413,7 @@ class PortalModule {
         def pagefile = new File(migrationfolder + '/pagelist.json')
         if(pagefile.exists()){
             println "Got json file"
-            def pagearray = jsonSlurper.parseText(pagefile.text)
+            def pagearray = jsonSlurper.parseText(pagefile.getText("UTF-8"))
             pagearray.each { ipage->
                 println "Importing page: " + ipage.module + ":" + ipage.slug
                 PortalPage.withTransaction { dbtrans-> 
@@ -429,11 +429,11 @@ class PortalModule {
                         }
                         def contentfile = new File(migrationfolder + '/pages/content_' + ipage.slug + '.gsp')
                         if(contentfile.exists()){
-                            curpage.content = textconvert(contentfile.text)
+                            curpage.content = textconvert(contentfile.getText("UTF-8"))
                         }
                         def ppfile = new File(migrationfolder + '/pages/pp_' + ipage.slug + '.gsp')
                         if(ppfile.exists()){
-                            curpage.preprocess = textconvert(ppfile.text)
+                            curpage.preprocess = textconvert(ppfile.getText("UTF-8"))
                         }
                         curpage.title=ipage.title
                         curpage.slug=ipage.slug
@@ -482,56 +482,12 @@ class PortalModule {
         }
     }
 
-    /**
-     * Repoint file attachments at a tracker that was just deleted and recreated by the importer.
-     *
-     * FileLink.tracker_id is a loose Integer rather than a real association, so a module import
-     * used to leave every existing attachment pointing at a dead id - or worse, at whatever
-     * unrelated tracker had since been handed that id. Both the download access check
-     * (FileLinkController.download / SecurityInterceptor) and any query that keys attachments by
-     * tracker_id then read the wrong record, because tracker_data_id is only unique per tracker.
-     *
-     * Runs on the Hibernate session connection (raw_execute) so it sees the uncommitted delete and
-     * insert, and so it does not self-block on a second JDBC connection.
-     *
-     * @param oldTrackerIds ids the tracker held before it was deleted
-     * @param newtracker    the freshly saved replacement
-     */
-    def remapfilelinks(oldTrackerIds,newtracker) {
-        if(!oldTrackerIds || !newtracker?.id){
-            return 0
-        }
-        // ids come straight from portal_tracker.id, so inlining them is safe and avoids the
-        // MSSQL driver's "conversion from UNKNOWN to UNKNOWN" failure on bound IN lists.
-        def idlist = oldTrackerIds.findAll { it != null && it != newtracker.id }.collect { it as Long }
-        if(!idlist){
-            return 0
-        }
-        def inclause = '(' + idlist.join(',') + ')'
-        try {
-            def affected = PortalTracker.raw_rows("select count(*) as c from file_link where tracker_id in " + inclause)
-            def total = affected ? (affected[0]['c'] as Long) : 0L
-            if(total > 0){
-                PortalTracker.raw_execute("update file_link set tracker_id = " + newtracker.id +
-                                          " where tracker_id in " + inclause)
-                println "Remapped ${total} file_link rows from tracker ${idlist} to ${newtracker.id} " +
-                        "(${newtracker.module}/${newtracker.slug})"
-            }
-            return total
-        }
-        catch(Exception e){
-            println "Could not remap file_link rows for tracker ${newtracker.module}/${newtracker.slug}: ${e}"
-            PortalErrorLog.record(null,null,'module','remap filelinks',e,newtracker.slug,newtracker.module)
-            return 0
-        }
-    }
-
     def importtrackers(migrationfolder,jsonSlurper) {
         println "Importing trackers"
         def trackerfile = new File(migrationfolder + '/trackerlist.json')
 
         if(trackerfile.exists()){
-            def trackerarray = jsonSlurper.parseText(trackerfile.text)
+            def trackerarray = jsonSlurper.parseText(trackerfile.getText("UTF-8"))
             trackerarray.each { itracker->
                 println "Importing tracker: " + itracker
                 PortalTracker.withTransaction { dbtrans-> 
@@ -539,13 +495,8 @@ class PortalModule {
                     // Preserve upload records before deleting tracker; savedparams uses field IDs
                     // which change after import, so remap to field names for safe restore.
                     def savedTrackerDatas = []
-                    // file_link.tracker_id is a plain Integer, not a FK, so nothing remaps it when the
-                    // tracker below is deleted and recreated with a fresh id. Remember the outgoing ids
-                    // so the attachments can be repointed at the new tracker after it is saved.
-                    def oldTrackerIds = []
                     if(curtracker.size()>0){
                         curtracker.each { ct->
-                            oldTrackerIds << ct.id
                             def fieldIdToName = [:]
                             ct.fields.each { f -> fieldIdToName[f.id] = f.name }
                             ct.datas.each { ctd->
@@ -631,7 +582,6 @@ class PortalModule {
                         } catch(Exception tbe) {
                             println "Could not create tables for tracker ${curtracker.slug}: ${tbe}"
                         }
-                        remapfilelinks(oldTrackerIds,curtracker)
                         itracker.fields.each { ifield->
                             def curfield = PortalTrackerField.findByTrackerAndName(curtracker,ifield.name)
                             def isNewField = (curfield == null)
@@ -1027,7 +977,7 @@ class PortalModule {
     def importtrees(migrationfolder,jsonSlurper,staff_on) {
         def treefile = new File(migrationfolder + '/treelist.json')
         if(treefile.exists()){
-            def treearray = jsonSlurper.parseText(treefile.text)
+            def treearray = jsonSlurper.parseText(treefile.getText("UTF-8"))
             treearray.each { itree->
                 PortalTree.importdata(itree,staff_on)
             }
@@ -1052,7 +1002,7 @@ class PortalModule {
     def importendpoints(migrationfolder,jsonSlurper) {
         def endpointfile = new File(migrationfolder + '/endpointlist.json')
         if(endpointfile.exists()){
-            def endpointarray = jsonSlurper.parseText(endpointfile.text)
+            def endpointarray = jsonSlurper.parseText(endpointfile.getText("UTF-8"))
             endpointarray.each { iendpoint->
                 def curendpoint = PortalEndpoint.findByModuleAndSlug(iendpoint.module,iendpoint.slug)
                 if(curendpoint){
@@ -1337,7 +1287,7 @@ class PortalModule {
         if(!menufile.exists()) {
             return
         }
-        def imenu = jsonSlurper.parseText(menufile.text)
+        def imenu = jsonSlurper.parseText(menufile.getText("UTF-8"))
         def shape = menushape(imenu, this.name)
         println "Importing menu for " + this.name + " (" + (imenu?.items?.size() ?: 0) + " items)"
 
@@ -1427,7 +1377,7 @@ class PortalModule {
             menufile.delete()
             return
         }
-        menufile.write(formatExportJson([label: label, icon: icon, items: items]))
+        menufile.write(formatExportJson([label: label, icon: icon, items: items]), "UTF-8")
     }
 
     def exportfilelinks(migrationfolder) {
@@ -1460,7 +1410,7 @@ class PortalModule {
                     ]
                 }
             }
-            filelinkfile.write(formatExportJson(filelinkarray))
+            filelinkfile.write(formatExportJson(filelinkarray), "UTF-8")
         }
     }
 
@@ -1480,7 +1430,7 @@ class PortalModule {
                   datum_type: setting.datum_type
                 ]
             }
-          settingfile.write(formatExportJson(settingarray))
+          settingfile.write(formatExportJson(settingarray), "UTF-8")
         }
         else {
             // A module that has no settings any more must not keep re-importing the ones a
@@ -1506,7 +1456,7 @@ class PortalModule {
                   enabled: scheduler.enabled
                 ]
             }
-            schedulerfile.write(formatExportJson(schedulerarray))
+            schedulerfile.write(formatExportJson(schedulerarray), "UTF-8")
         }
         else {
             // A module that has no schedules any more must not keep re-importing the ones a
@@ -1529,7 +1479,7 @@ class PortalModule {
                     role: userrole.role
                 ]
             }
-            userrolefile.write(formatExportJson(userrolearray))
+            userrolefile.write(formatExportJson(userrolearray), "UTF-8")
         }
     }
 
@@ -1544,10 +1494,10 @@ class PortalModule {
                     new File(migrationfolder + '/pages').mkdirs()
                 }
                 def contentfile = new File(migrationfolder + '/pages/content_' + page.slug + '.gsp')
-                contentfile.write(page.content?:'')
+                contentfile.write(page.content?:'', "UTF-8")
                 if(page.preprocess) {
                     def ppfile = new File(migrationfolder + '/pages/pp_' + page.slug + '.gsp')
-                    ppfile.write(page.preprocess)
+                    ppfile.write(page.preprocess, "UTF-8")
                 }
                 def datasources = null
                 if(page.datasources){
@@ -1576,7 +1526,7 @@ class PortalModule {
                     datasources: datasources
                 ]
             }
-            pagefile.write(formatExportJson(pagearray))
+            pagefile.write(formatExportJson(pagearray), "UTF-8")
         }
     }
 
@@ -1757,7 +1707,7 @@ class PortalModule {
                     indexes: indexarray
                 ]
             }
-            trackerfile.write(formatExportJson(trackerarray))
+            trackerfile.write(formatExportJson(trackerarray), "UTF-8")
         }
     }
 
@@ -1765,7 +1715,7 @@ class PortalModule {
         def trees = PortalTree.findAllByModule(this.name).sort { it.name }
         if(trees.size()){
             def treefile = new File(migrationfolder + '/treelist.json')
-            treefile.write(PortalTree.exportjson(trees,staff_on))
+            treefile.write(PortalTree.exportjson(trees,staff_on), "UTF-8")
         }
     }
 
@@ -1798,7 +1748,7 @@ class PortalModule {
                     max_body_mb: endpoint.max_body_mb
                 ]
             }
-            endpointfile.write(formatExportJson(endpointarray))
+            endpointfile.write(formatExportJson(endpointarray), "UTF-8")
         }
     }
 

@@ -187,7 +187,9 @@ class PortalFileManagerController {
                         module: module,
                         slug: slug,
                         path: canonicalPath,
-                        size: (int) theFile.length()
+                        size: (int) theFile.length(),
+                        // Registered after the fact: the file's own date, not today's.
+                        last_updated: new Date(theFile.lastModified())
                     )
                     fl.save(flush: true)
                 }
@@ -310,7 +312,7 @@ class PortalFileManagerController {
                 if(thefile.exists()){
                     try{
                         response.setContentType("application/octet-stream")
-                        response.setHeader("Content-disposition", "attachment;filename=${thefile.getName().replace(' ','_')}")
+                        response.setHeader("Content-Disposition", ContentDisposition.attachment(thefile.getName()))
                         def bis = null
                         try{
                             bis = thefile.newInputStream()

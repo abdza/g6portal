@@ -49,12 +49,18 @@ class PortalTreeNodeController {
             def curnodeuser = portalTreeNodeUserService.get(params.usernodeid)
             def seluser = userService.get(params.user)
             if(curnodeuser && seluser) {
+                def previousUserId = curnodeuser.user?.id
                 curnodeuser.role = params.role
                 curnodeuser.user = seluser
                 portalTreeNodeUserService.save(curnodeuser)
+                // The row now belongs to someone else: the previous holder must stop acting as it.
+                if(previousUserId != seluser.id) {
+                    PortalTreeNodeUser.releaseRoleTargets(curnodeuser.id, seluser.id)
+                }
             }
         }
         else if(params.nodeaction=='delete'){
+            PortalTreeNodeUser.releaseRoleTargets(params.long('usernodeid'))
             portalTreeNodeUserService.delete(params.usernodeid)
         }
         def pathid = curnode.getpath()*.id

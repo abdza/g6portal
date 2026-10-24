@@ -473,8 +473,10 @@ class PortalTreeNode {
                     def newuser = User.findByUserID(user.@userid.toString(),[cache:true])
                     if(newuser){
                         def newrole = null
+                        def previousUserId = null
                         if(user.@id.toString().isNumber()){
                             newrole = PortalTreeNodeUser.get(user.@id.toInteger())
+                            previousUserId = newrole?.user?.id
                             newrole.user = newuser
                             newrole.role = user.@role.toString()
                         }
@@ -483,6 +485,10 @@ class PortalTreeNode {
                         }
                         if(!newrole.save()){
                             println "Error creating cnode:" + newrole.errors.allErrors
+                        }
+                        else if(previousUserId != null && previousUserId != newuser.id) {
+                            // An edited user id re-points the existing row: release the old holder.
+                            PortalTreeNodeUser.releaseRoleTargets(newrole.id, newuser.id)
                         }
                     }
                 }

@@ -151,6 +151,11 @@
                                 </g:form>
                             </li>
                         </g:if>
+                        <g:if test="${trackers && (curuser?.isAdmin || this.portalModule.name in session['adminmodules'] || this.portalModule.name in session['developermodules'])}">
+                            <%-- Each tracker's "Data Dump (for re-import)", for all of them: one zip, one xlsx per tracker. --%>
+                            <li><g:link controller="portalTrackerData" action="moduledump" id="${this.portalModule.id}" class="create" target="_blank"
+                                        title="Download a zip with one re-importable Excel file per tracker in this module">Data Dump (all ${trackers.size()} trackers)</g:link></li>
+                        </g:if>
                         </ul>
                     </div>
                     <g:if test="${flash.updatedbResults}">

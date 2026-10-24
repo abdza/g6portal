@@ -310,7 +310,7 @@ class PortalTrackerController {
                             def flink = FileLink.get(row[ff.name])
                             if(flink) {
                                 flink.module = tracker.module
-                                flink.tracker_id = tracker.id
+                                flink.tracker_slug = tracker.slug
                                 flink.tracker_data_id = row['id']
                                 flink.save(flush:true)
                             }
@@ -336,8 +336,8 @@ class PortalTrackerController {
                 def recordId = row['record_id']
                 if(attachmentId) {
                     def updated = sql.executeUpdate(
-                        "UPDATE file_link SET module=:module, tracker_id=:tid, tracker_data_id=:rdid WHERE id=:id AND (tracker_id IS NULL OR tracker_data_id IS NULL)",
-                        [module: tracker.module, tid: tracker.id as Integer, rdid: recordId as Long, id: attachmentId as Long]
+                        "UPDATE file_link SET module=:module, tracker_slug=:tslug, tracker_data_id=:rdid WHERE id=:id AND (tracker_slug IS NULL OR tracker_data_id IS NULL)",
+                        [module: tracker.module, tslug: tracker.slug, rdid: recordId as Long, id: attachmentId as Long]
                     )
                     fixed += updated
                 }
@@ -684,7 +684,7 @@ class PortalTrackerController {
 
             excelJobs[bgToken] = [done: false, file: null, error: null, filename: bgTrackerSlug]
 
-            Thread.start {
+            PortalBackgroundTrail.start('portalTracker.excel', [details:tracker.module + ':' + bgTrackerSlug, userid:bgStoredUserId]) {
               try {
               PortalTracker.withNewSession {
                 tracker = PortalTracker.get(bgTrackerId)

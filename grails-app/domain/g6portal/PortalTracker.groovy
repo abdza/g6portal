@@ -1065,8 +1065,8 @@ class PortalTracker {
                                     path: copytarget,
                                     module: module,
                                     slug: slug+'_'+params.id+'_'+new java.text.SimpleDateFormat('yyyyMMddHHmm').format(new Date()),
+                                    tracker_slug: slug,
                                     tracker_data_id: params?.id,
-                                    tracker_id: this.id,
                                     size: (int) uploadedfile.size  // ADD THIS LINE
                                 )
                                 attachment.save()
@@ -1905,8 +1905,10 @@ class PortalTracker {
                                                             path: thetarget,
                                                             module: module,
                                                             slug: uniqueslug,
-                                                            tracker_data_id: params.id,
-                                                            tracker_id: this.id,
+                                                            tracker_slug: slug,
+                                                            // curdatas, not params: on a new record params.id is
+                                                            // still empty, and the file would lose its record.
+                                                            tracker_data_id: curdatas['id'] ?: params.id,
                                                             size: (int) uploadedfile.size
                                                         )
                                                         if(attachment.save()){
@@ -2059,7 +2061,11 @@ class PortalTracker {
         if(config.dataSource.url.contains("jdbc:postgresql") || config.dataSource.url.contains("jdbc:h2")){
         }
         else {
-            if(select=="select * ") {
+            // Not when paging: params.max adds OFFSET ... FETCH NEXT below, and MSSQL refuses
+            // TOP and OFFSET in the same query. A list whose tracker has no list fields (e.g.
+            // mid-import, while the tracker is being recreated) came through as "select * "
+            // and failed with "A TOP can not be used in the same query ... as a OFFSET".
+            if(select=="select * " && !params.max) {
                 if(defaultlimit) {
                     if(defaultlimit>0) {
                         select = "select top ${defaultlimit} * "

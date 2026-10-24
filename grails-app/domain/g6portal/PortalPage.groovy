@@ -108,11 +108,29 @@ class PortalPage {
         return bodyreturn
     }
 
+    // page id -> [content, compiled Script class]. Compiling is most of the cost of a call: a
+    // page that calls helper pages through runcontent in a loop spent nearly all its time
+    // recompiling them. Keyed on the content itself, not lastUpdated, so an edit made straight
+    // in the database is picked up too.
+    private static final Map<Long,List> scriptCache = new java.util.concurrent.ConcurrentHashMap<Long,List>()
+
     def runcontent(args) {
         Binding binding = new Binding()
         binding.setVariable("args",args)
-        def shell = new GroovyShell(this.class.classLoader,binding)
-        def results = shell.evaluate(this.content)
-        return results
+        def cached = this.id ? scriptCache.get(this.id) : null
+        Class scriptClass
+        if(cached && cached[0] == this.content) {
+            scriptClass = (Class) cached[1]
+        }
+        else {
+            scriptClass = new GroovyShell(this.class.classLoader)
+                              .parse(this.content, "runcontent_${this.id}".toString())
+                              .getClass()
+            if(this.id) { scriptCache.put(this.id, [this.content, scriptClass]) }
+        }
+        // A new instance and binding per call, as evaluate() gave: nothing carries over between runs.
+        def script = (Script) scriptClass.newInstance()
+        script.setBinding(binding)
+        return script.run()
     }
 }

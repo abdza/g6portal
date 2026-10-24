@@ -116,9 +116,22 @@ class User {
         }
     }
 
+    // The tree_node_user row this user is acting as - but only while it is still theirs.
+    // roletargetid is a plain id, and a tree edit can hand that row to someone else (the tree
+    // node user edit and the tree XML import both re-point an existing row in place). Trusting
+    // the id blindly made the previous holder act with the new holder's node and role.
+    // Everything that reads roletargetid goes through here; currentrole() falls back to the
+    // user's own rows when this returns null.
+    PortalTreeNodeUser ownroletarget() {
+        if(!roletargetid) return null
+        // Ownership is checked against the database (holderId), not the cached row.
+        if(PortalTreeNodeUser.holderId(roletargetid) != this.id) return null
+        return PortalTreeNodeUser.get(roletargetid)
+    }
+
     String targetname(){
         return _reqCache("_tn_${id}") {
-        def nodeuser=PortalTreeNodeUser.get(roletargetid)
+        def nodeuser=ownroletarget()
         if(nodeuser?.node){
             return nodeuser.node.getdomain()
         }
@@ -310,7 +323,7 @@ class User {
     
     def currentrole(tree=null) {
         return _reqCache("_cr_${id}_${tree?.id}") {
-        def toret = PortalTreeNodeUser.get(roletargetid)
+        def toret = ownroletarget()
         if(toret){
             if(tree) {
                 if(tree == toret.node.tree) {
@@ -620,7 +633,7 @@ class User {
     def getmanager() {
         _reqCache("_gm_${id}") {
             def manageruser = null
-            def unode = PortalTreeNodeUser.get(roletargetid)
+            def unode = ownroletarget()
             if (unode){
                 if(unode.node.mainrole) {  //node got a mainrole
                     if(unode.role in unode.node.mainrole.tokenize(',')){  //user role is the mainrole, so get the parent main role

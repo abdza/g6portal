@@ -14,6 +14,43 @@ class PortalTreeNodeUser {
 
     String role
 
+    /**
+     * The id of the user who holds row `tnuId` right now, read from the database. Not from
+     * get(): this domain is in the second-level cache, and a bulk or out-of-band edit of the
+     * table does not evict it - a cached row can name its previous holder for a long time.
+     */
+    static Long holderId(tnuId) {
+        if(tnuId == null) return null
+        def rows = PortalTreeNodeUser.executeQuery("select t.user.id from PortalTreeNodeUser t where t.id = :id",
+                                                   [id: (tnuId as Long)])
+        return rows ? (rows[0] as Long) : null
+    }
+
+    /**
+     * Clear User.roletargetid for everyone still pointing at tree_node_user row `tnuId`,
+     * except `keepUserId` (the row's holder now; null when the row is being deleted).
+     *
+     * Call it whenever a row changes hands (its user is replaced in place) or is deleted. The
+     * old holder's roletargetid would otherwise keep pointing at a row that is now someone
+     * else's, and they would act with that person's node and role. A cleared roletargetid is
+     * re-picked from the user's own rows at their next login.
+     *
+     * Plain HQL bulk update: it also evicts the cached User entities, so the change is seen
+     * at once. Returns the number of users released.
+     */
+    static int releaseRoleTargets(tnuId, keepUserId = null) {
+        if(tnuId == null) return 0
+        def tid = (tnuId as Long).intValue()
+        // A bulk update needs a transaction; withTransaction joins the caller's when there is one.
+        User.withTransaction {
+            if(keepUserId != null) {
+                return User.executeUpdate("update User u set u.roletargetid = null where u.roletargetid = :tid and u.id <> :uid",
+                                          [tid: tid, uid: keepUserId as Long])
+            }
+            return User.executeUpdate("update User u set u.roletargetid = null where u.roletargetid = :tid", [tid: tid])
+        } as int
+    }
+
     String toString(){
         // return role 
         def drole = role
