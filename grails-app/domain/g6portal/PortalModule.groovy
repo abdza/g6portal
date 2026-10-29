@@ -314,19 +314,20 @@ class PortalModule {
     // lastrun is deliberately NOT part of the export. It is per-server runtime state; carrying
     // it would make every diff noisy and would import a lie about when THIS server last ran.
 
-    static String schedulercanon(slugs, hour_of_day, day_of_week, day_of_month, enabled) {
-        return [slugs, hour_of_day, day_of_week, day_of_month, (enabled ? '1' : '0')]
+    static String schedulercanon(slugs, hour_of_day, day_of_week, day_of_month, enabled, catch_up = null) {
+        return [slugs, hour_of_day, day_of_week, day_of_month, (enabled ? '1' : '0'), (catch_up ? '1' : '0')]
                  .collect { it == null ? '' : it.toString() }.join('\u0001')
     }
 
     // One line a human can compare at a glance, since a schedule is five small columns
     // rather than the single value a setting has.
-    static String schedulerdisplay(slugs, hour_of_day, day_of_week, day_of_month, enabled) {
+    static String schedulerdisplay(slugs, hour_of_day, day_of_week, day_of_month, enabled, catch_up = null) {
         return (slugs ?: '') +
                ' | hour ' + (hour_of_day ?: '') +
                ', day of week ' + (day_of_week ?: '') +
                ', day of month ' + (day_of_month ?: '') +
-               ' | ' + (enabled ? 'enabled' : 'disabled')
+               ' | ' + (enabled ? 'enabled' : 'disabled') +
+               (catch_up ? ', catches up missed runs' : '')
     }
 
     static String schedulerkey(module, name) {
@@ -348,11 +349,11 @@ class PortalModule {
         schedulerarray.each { ischeduler ->
             def curscheduler = PortalScheduler.findByModuleAndName(ischeduler.module,ischeduler.name)
             def incomingcanon = schedulercanon(ischeduler.slugs, ischeduler.hour_of_day, ischeduler.day_of_week,
-                                               ischeduler.day_of_month, ischeduler.enabled)
+                                               ischeduler.day_of_month, ischeduler.enabled, ischeduler.catch_up)
             def currentcanon = null
             if(curscheduler) {
                 currentcanon = schedulercanon(curscheduler.slugs, curscheduler.hour_of_day, curscheduler.day_of_week,
-                                              curscheduler.day_of_month, curscheduler.enabled)
+                                              curscheduler.day_of_month, curscheduler.enabled, curscheduler.catch_up)
             }
             def status = !curscheduler ? 'new' : (incomingcanon == currentcanon ? 'same' : 'changed')
             out << [
@@ -361,10 +362,10 @@ class PortalModule {
                 name     : ischeduler.name,
                 status   : status,
                 incoming : schedulerdisplay(ischeduler.slugs, ischeduler.hour_of_day, ischeduler.day_of_week,
-                                            ischeduler.day_of_month, ischeduler.enabled),
+                                            ischeduler.day_of_month, ischeduler.enabled, ischeduler.catch_up),
                 current  : curscheduler ? schedulerdisplay(curscheduler.slugs, curscheduler.hour_of_day,
                                             curscheduler.day_of_week, curscheduler.day_of_month,
-                                            curscheduler.enabled) : null,
+                                            curscheduler.enabled, curscheduler.catch_up) : null,
                 lastrun  : curscheduler?.lastrun
             ]
         }
@@ -396,6 +397,8 @@ class PortalModule {
                 curscheduler.day_of_week = ischeduler.day_of_week
                 curscheduler.day_of_month = ischeduler.day_of_month
                 curscheduler.enabled = (ischeduler.enabled ? true : false)
+                // absent in files exported before the flag existed, which means off
+                curscheduler.catch_up = (ischeduler.catch_up ? true : false)
                 // lastrun is left exactly as this server has it - untouched on an existing
                 // row, null on a new one. Importing it would misreport this server's history.
                 if(!curscheduler.validate()){
@@ -1446,7 +1449,7 @@ class PortalModule {
         if(schedulers.size()){
             def schedulerarray = []
             schedulers.each { scheduler->
-                schedulerarray << [
+                def entry = [
                   module: scheduler.module,
                   name: scheduler.name,
                   slugs: scheduler.slugs,
@@ -1455,6 +1458,9 @@ class PortalModule {
                   day_of_month: scheduler.day_of_month,
                   enabled: scheduler.enabled
                 ]
+                // only when on, so modules that never use it export exactly what they did before
+                if(scheduler.catch_up) entry.catch_up = true
+                schedulerarray << entry
             }
             schedulerfile.write(formatExportJson(schedulerarray), "UTF-8")
         }

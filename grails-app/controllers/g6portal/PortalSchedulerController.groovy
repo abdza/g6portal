@@ -42,7 +42,7 @@ class PortalSchedulerController {
 
         def tick = logRun([run_type:'Tick', status:'Running', due_slot:slot, started:now,
                            triggered_by:triggered_by, host:host])
-        def counts = [due:0, succeeded:0, failed:0, missing:0, missed:0]
+        def counts = [due:0, succeeded:0, failed:0, missing:0, missed:0, caughtup:0]
         def problems = []
 
         // Small table and second-level cached; isDue() applies the exact hour/day matching
@@ -50,73 +50,27 @@ class PortalSchedulerController {
         schedules.findAll { it.isDue(now) }.each { schedule ->
             schedule.slugs?.tokenize(',')*.trim()?.findAll { it }?.each { script ->
                 counts.due++
-                def job = logRun([run_type:'Job', status:'Running', scheduler_id:schedule.id, tick_id:tick?.id,
-                                  name:schedule.name, module:schedule.module, slug:script,
-                                  due_slot:slot, started:new Date(), triggered_by:triggered_by, host:host])
-                def scriptpage = PortalPage.findByModuleAndSlug(schedule.module,script)
-                if(!scriptpage) {
-                    // Used to be skipped without a word - a renamed or deleted page just stopped running
-                    counts.missing++
-                    def msg = "No page '" + script + "' in module '" + schedule.module + "'"
-                    closeRun(job, 'Page missing', msg, null)
-                    problems << schedule.name + " - " + script + ": " + msg
-                    return
-                }
-                println "Running script " + scriptpage.module + ":" + scriptpage.slug + " - " + scriptpage.title
-                try {
-                    def content = null
-                    PortalTracker.withTransaction { transaction ->
-                        def sql = new Sql(sessionFactory.currentSession.connection())
-                        Binding binding = new Binding()
-                        binding.setVariable("datasource",sessionFactory.currentSession.connection())
-                        binding.setVariable("sessionFactory",sessionFactory)
-                        binding.setVariable("session",session)
-                        binding.setVariable("sql",sql)
-                        binding.setVariable("mailService",mailService)
-                        binding.setVariable("portalService",portalService)
-                        binding.setVariable("userService",userService)
-                        // A page written for /run/... reads params and curuser; without these it
-                        // died with MissingPropertyException on every scheduled run. Empty params
-                        // means "default mode", which is what a scheduled run wants.
-                        binding.setVariable("params",[:])
-                        binding.setVariable("curuser",null)
-                        // Lets a page that also answers on a URL tell a scheduled run apart from
-                        // an anonymous request: only this in-process call can set a binding
-                        // variable, so a page can skip its cron token when scheduled_run is true.
-                        binding.setVariable("scheduled_run",true)
-                        def shell = new GroovyShell(this.class.classLoader,binding)
-                        content = shell.evaluate(scriptpage.content)
-                    }
-                    counts.succeeded++
-                    closeRun(job, 'Success', null, content)
-                    try {
-                        // bulk update: leaves lastUpdated alone, which bounds the missed-run check
-                        PortalScheduler.withNewTransaction {
-                            PortalScheduler.executeUpdate("update PortalScheduler s set s.lastrun = :d where s.id = :id",
-                                                          [d:new Date(), id:schedule.id])
-                        }
-                    } catch(Throwable t) { println "Scheduler could not stamp lastrun on " + schedule.name + ": " + t }
-                }
-                catch(Throwable e){
-                    counts.failed++
-                    def desc = PortalErrorLog.describe(e)
-                    println 'Error running scheduler ' + schedule.name + '-' + script + ' : ' + desc
-                    closeRun(job, 'Failed', desc, null)
-                    problems << schedule.name + " - " + script + ": FAILED\n" + desc
-                    PortalErrorLog.record(params,null,controllerName,actionName,e,script,schedule.module)
-                }
+                runJob(schedule, script, slot, tick?.id, triggered_by, host, counts, problems)
             }
         }
 
+        def catchups = []
         try {
-            findMissed(schedules, slot, now, host, tick?.id, counts, problems)
+            catchups = findMissed(schedules, slot, now, host, tick?.id, counts, problems)
         } catch(Throwable t) {
             problems << "Missed-run check itself failed: " + PortalErrorLog.describe(t)
+        }
+        // Only after the due jobs, so a late catch-up can never delay this hour's own work
+        catchups.each { cu ->
+            cu.schedule.slugs?.tokenize(',')*.trim()?.findAll { it }?.each { script ->
+                counts.caughtup++
+                runJob(cu.schedule, script, cu.due_slot, tick?.id, triggered_by + ' (catch-up)', host, counts, problems)
+            }
         }
         housekeeping(now)
 
         def summary = "Due: ${counts.due}, succeeded: ${counts.succeeded}, failed: ${counts.failed}, " +
-                      "page missing: ${counts.missing}, missed runs found: ${counts.missed}"
+                      "page missing: ${counts.missing}, missed runs found: ${counts.missed}, caught up: ${counts.caughtup}"
         closeRun(tick, problems ? 'Problems' : 'Success', problems ? problems.join('\n\n') : null, summary)
         println "Scheduler tick done - " + summary
 
@@ -150,18 +104,84 @@ class PortalSchedulerController {
     }
 
     /**
+     * Runs one page of a schedule and logs it as a Job row against due_slot - the current hour
+     * for a normal run, the skipped hour for a catch-up.
+     */
+    private void runJob(PortalScheduler schedule, String script, Date due_slot, Long tick_id, String triggered_by,
+                        String host, Map counts, List problems) {
+        def job = logRun([run_type:'Job', status:'Running', scheduler_id:schedule.id, tick_id:tick_id,
+                          name:schedule.name, module:schedule.module, slug:script,
+                          due_slot:due_slot, started:new Date(), triggered_by:triggered_by, host:host])
+        def scriptpage = PortalPage.findByModuleAndSlug(schedule.module,script)
+        if(!scriptpage) {
+            // Used to be skipped without a word - a renamed or deleted page just stopped running
+            counts.missing++
+            def msg = "No page '" + script + "' in module '" + schedule.module + "'"
+            closeRun(job, 'Page missing', msg, null)
+            problems << schedule.name + " - " + script + ": " + msg
+            return
+        }
+        println "Running script " + scriptpage.module + ":" + scriptpage.slug + " - " + scriptpage.title
+        try {
+            def content = null
+            PortalTracker.withTransaction { transaction ->
+                def sql = new Sql(sessionFactory.currentSession.connection())
+                Binding binding = new Binding()
+                binding.setVariable("datasource",sessionFactory.currentSession.connection())
+                binding.setVariable("sessionFactory",sessionFactory)
+                binding.setVariable("session",session)
+                binding.setVariable("sql",sql)
+                binding.setVariable("mailService",mailService)
+                binding.setVariable("portalService",portalService)
+                binding.setVariable("userService",userService)
+                // A page written for /run/... reads params and curuser; without these it
+                // died with MissingPropertyException on every scheduled run. Empty params
+                // means "default mode", which is what a scheduled run wants.
+                binding.setVariable("params",[:])
+                binding.setVariable("curuser",null)
+                // Lets a page that also answers on a URL tell a scheduled run apart from
+                // an anonymous request: only this in-process call can set a binding
+                // variable, so a page can skip its cron token when scheduled_run is true.
+                binding.setVariable("scheduled_run",true)
+                def shell = new GroovyShell(this.class.classLoader,binding)
+                content = shell.evaluate(scriptpage.content)
+            }
+            counts.succeeded++
+            closeRun(job, 'Success', null, content)
+            try {
+                // bulk update: leaves lastUpdated alone, which bounds the missed-run check
+                PortalScheduler.withNewTransaction {
+                    PortalScheduler.executeUpdate("update PortalScheduler s set s.lastrun = :d where s.id = :id",
+                                                  [d:new Date(), id:schedule.id])
+                }
+            } catch(Throwable t) { println "Scheduler could not stamp lastrun on " + schedule.name + ": " + t }
+        }
+        catch(Throwable e){
+            counts.failed++
+            def desc = PortalErrorLog.describe(e)
+            println 'Error running scheduler ' + schedule.name + '-' + script + ' : ' + desc
+            closeRun(job, 'Failed', desc, null)
+            problems << schedule.name + " - " + script + ": FAILED\n" + desc
+            PortalErrorLog.record(params,null,controllerName,actionName,e,script,schedule.module)
+        }
+    }
+
+    /**
      * Records a Missed row for every due slot in the lookback window that has no Job row.
      * The window never reaches back before logging existed (the first Tick) or before the
      * schedule was last edited, so switching this on - or moving a job's hour - does not
      * report a flood of slots that were never really owed.
+     * Returns the missed slots of catch_up schedules that can still be run today, at most
+     * one per schedule. A slot is only ever reported Missed once, so it is only caught up once.
      */
-    private void findMissed(List<PortalScheduler> schedules, Date slot, Date now, String host, Long tick_id, Map counts, List problems) {
+    private List<Map> findMissed(List<PortalScheduler> schedules, Date slot, Date now, String host, Long tick_id, Map counts, List problems) {
+        def catchups = []
         def firstTick = PortalSchedulerRun.executeQuery(
             "select min(r.due_slot) from PortalSchedulerRun r where r.run_type = 'Tick'")[0]
-        if(!firstTick) return
+        if(!firstTick) return catchups
         def from = new Date(slot.time - MISSED_LOOKBACK_HOURS * 3600000L)
         if(firstTick > from) from = firstTick
-        if(!(from < slot)) return
+        if(!(from < slot)) return catchups
 
         def accounted = PortalSchedulerRun.executeQuery(
             "select r.scheduler_id, r.due_slot from PortalSchedulerRun r " +
@@ -186,10 +206,20 @@ class PortalSchedulerController {
                             module:schedule.module, slug:schedule.slugs, due_slot:ds, started:now,
                             finished:now, duration_ms:0L, error:why, host:host])
                     counts.missed++
-                    problems << schedule.name + ": missed the " + fmt(ds, 'yyyy-MM-dd HH:00') + " run. " + why
+                    // Same day only: a daily job caught up after midnight would run on a day it
+                    // was never due, and its next real slot is already close. A schedule due in
+                    // this very tick has just run, so it needs no second go.
+                    def catchup = schedule.catch_up && !schedule.isDue(now) &&
+                                  fmt(ds, 'yyyy-MM-dd') == fmt(now, 'yyyy-MM-dd')
+                    if(catchup && !catchups.any { it.schedule.id == schedule.id }) {
+                        catchups << [schedule:schedule, due_slot:ds]
+                    }
+                    problems << schedule.name + ": missed the " + fmt(ds, 'yyyy-MM-dd HH:00') + " run. " + why +
+                                (catchup ? " Catching it up now." : "")
                 }
             }
         }
+        return catchups
     }
 
     /** Marks runs that never finished, and prunes old rows. Both are single indexed statements. */

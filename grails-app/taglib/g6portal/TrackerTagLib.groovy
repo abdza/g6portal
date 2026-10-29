@@ -367,6 +367,10 @@ class TrackerTagLib {
                                         // field by #id (required-field checks, toggleAll, HTMX)
                                         // could not see it. The select2 branches above always did.
                                         out << "<select name='${attrs.field.name?.trim()}' id='${attrs.field.name?.trim()}' style='width: 40%;'>"
+                                        // Blank first choice, like the select2 branch above which
+                                        // starts empty: without it the browser preselects the first
+                                        // user and an untouched optional field saves that person.
+                                        out << "<option value=''${value ? '' : ' selected'}></option>"
                                         users.each { optuser->
                                             if(optuser.id==value){
                                                 out << "<option selected value='${optuser.id}'>${optuser.name}</option>"
@@ -640,6 +644,22 @@ class TrackerTagLib {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Href for the Home link on a tracker's own pages (list, record, create and transition
+     * forms). A module can send it to its own landing page with a `home_page` module setting,
+     * either a portal path (/view/mymodule/dashboard) or a full URL; without one it stays the
+     * tracker's list.
+     */
+    def trackerHomeUrl = { attrs->
+        def home = PortalSetting.namedefault("${attrs.module}.home_page".toString(), null)?.toString()?.trim()
+        if(home) {
+            out << (home ==~ /(?i)^https?:\/\/.*/ ? home : request.contextPath + (home.startsWith('/') ? home : '/' + home))
+        }
+        else {
+            out << createLink(controller:'portalTracker',action:'list',params:['module':attrs.module,'slug':attrs.slug])
         }
     }
 

@@ -15,6 +15,7 @@ class PortalScheduler {
         day_of_month(nullable:true)
         lastrun(nullable:true)
         enabled(nullable:true)
+        catch_up(nullable:true)
         // nullable so the column can be added to existing rows; null means "before we tracked it"
         lastUpdated(nullable:true)
     }
@@ -32,6 +33,10 @@ class PortalScheduler {
     String day_of_week
     String day_of_month
     Boolean enabled
+    // Run a slot the cron skipped on the next tick, provided that tick is still the same
+    // day. Opt-in: only safe for a page that can run late and twice without harm (it must
+    // skip work it has already done), which the scheduler cannot know for itself.
+    Boolean catch_up
     Date lastrun
     // Bounds the missed-run check: a slot from before the schedule was last edited was due
     // under the old settings, so it is not reported as missed under the new ones. lastrun is

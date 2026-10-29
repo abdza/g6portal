@@ -12,7 +12,7 @@
                 <a href="#list-portalTracker" class="skip" tabindex="-1"><g:message code="default.link.skip.label" default="Skip to content&hellip;"/></a>
                 <div class="nav" role="navigation">
                     <ul>
-                        <li><a class="home" href="${createLink(controller:'portalTracker',action:'list',params:['module':params.module,'slug':params.slug])}"><g:message code="default.home.label"/></a></li>
+                        <li><a class="home" href="<g:trackerHomeUrl module="${params.module}" slug="${params.slug}"/>"><g:message code="default.home.label"/></a></li>
                     </ul>
                 </div>
             </section>
