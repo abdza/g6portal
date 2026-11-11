@@ -395,6 +395,7 @@ class FileLinkController {
             }
             
             if(thefile.exists()){
+                FileLink.markAccessed(filelink)   // once per file per day; never throws
                 try{
                     // Enhanced file type validation
                     def allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'zip']
@@ -562,6 +563,7 @@ class FileLinkController {
             return
         }
 
+        FileLink.markAccessed(filelink)   // every Range request lands here; only the first per day writes
         long filelength = thefile.length()
         long start = 0L
         long end = filelength - 1

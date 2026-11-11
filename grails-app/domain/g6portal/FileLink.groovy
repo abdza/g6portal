@@ -14,6 +14,7 @@ class FileLink {
         tracker_data_id(nullable:true)
         size(nullable:true)
         last_updated(nullable:true, bindable:false)   // set by the hooks below, never from a form
+        last_access(nullable:true, bindable:false)    // set by markAccessed() only
     }
 
     String name
@@ -29,10 +30,75 @@ class FileLink {
     Integer tracker_data_id
     Integer size
     Date last_updated           // When the file was uploaded or last replaced (see beforeInsert)
+    Date last_access            // Day a user last downloaded/viewed it (see markAccessed)
 
     static mapping = {
         sort 'sortnum'
         cache true
+        // Written only by markAccessed() in raw SQL. Read-only to GORM so an ordinary save of a
+        // cached (stale) FileLink can never write an older last_access back over a newer one.
+        last_access sqlType: 'date', insertable: false, updateable: false
+    }
+
+    // Ids already stamped today by THIS server, so repeat downloads skip the database entirely.
+    // Cleared when the day changes. Each server keeps its own; the WHERE clause in
+    // markAccessed() is what keeps several servers on one database consistent.
+    private static final java.util.concurrent.ConcurrentHashMap<Long, Boolean> ACCESS_STAMPED = new java.util.concurrent.ConcurrentHashMap<>()
+    private static volatile long ACCESS_DAY = -1L
+
+    /**
+     * Records that a user fetched this file today: file_link.last_access = today, written at
+     * most once per file per day, so a file downloaded thousands of times costs one tiny update.
+     * Lets files nobody has opened for years be found (e.g. for archiving).
+     *
+     *   update ... set last_access = today where id = ? and (last_access is null or last_access < today)
+     * A file already stamped today - by any server - matches no row and nothing is written; two
+     * simultaneous downloads serialise on the row lock and the second also matches nothing.
+     * Raw SQL, not save(): no beforeUpdate hooks, no second-level cache churn, no version bump.
+     * "Today" is the app's local date, not the DB server's getdate() (which may be UTC).
+     *
+     * Call it only where a USER is served the file. Background jobs, exports and scripts that
+     * read files must not, or every file would look in use. Never throws: a failed stamp must
+     * not break the download.
+     */
+    static void markAccessed(FileLink fl) {
+        Long fid = fl?.id as Long
+        if(fid == null) return
+        try {
+            def today = java.time.LocalDate.now()
+            long day = today.toEpochDay()
+            if(day != ACCESS_DAY) {
+                ACCESS_STAMPED.clear()
+                ACCESS_DAY = day
+            }
+            if(ACCESS_STAMPED.putIfAbsent(fid, Boolean.TRUE) != null) return
+            // Plain JDBC with typed setters, not groovy.sql.Sql: Sql.executeUpdate asks the driver
+            // for parameter metadata, which some drivers cannot answer for this WHERE. The typed
+            // setters also make the date comparison behave the same on h2, Postgres and MSSQL.
+            // The dataSource bean is transaction-aware: outside a transaction this is a pooled
+            // autocommit connection; inside one it is that transaction's, and close() is a no-op.
+            def conn = grails.util.Holders.grailsApplication.mainContext.getBean('dataSource').getConnection()
+            try {
+                def ps = conn.prepareStatement("update file_link set last_access = ? where id = ? and (last_access is null or last_access < ?)")
+                try {
+                    def d = java.sql.Date.valueOf(today)
+                    ps.setDate(1, d)
+                    ps.setLong(2, fid)
+                    ps.setDate(3, d)
+                    ps.executeUpdate()
+                }
+                finally {
+                    ps.close()
+                }
+            }
+            finally {
+                conn.close()
+            }
+        }
+        catch(Throwable e) {
+            ACCESS_STAMPED.remove(fid)   // let the next download retry
+            println "FileLink.markAccessed(" + fid + ") failed: " + e
+        }
     }
 
     String toString() {

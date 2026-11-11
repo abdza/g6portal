@@ -142,6 +142,17 @@ class User {
     }
 
     def switchable() {
+        // portal.switch_blacklist: user IDs that may not switch while listed, admins
+        // included - lets a super user hide the Switch / User details buttons while taking
+        // screenshots for guides. Cosmetic, not a security control. A List setting or a
+        // comma/space separated Text setting both work.
+        def blacklist = PortalSetting.namedefault('portal.switch_blacklist',[])
+        if(blacklist instanceof CharSequence) {
+            blacklist = blacklist.toString().tokenize(', \t\r\n')
+        }
+        if(userID && userID.toString().trim() in (blacklist ?: []).collect { it?.toString()?.trim() }) {
+            return false
+        }
         if(isAdmin) {
             return true
         }
@@ -249,6 +260,98 @@ class User {
         }
         println "User.updatelanid for " + this.userID + ": " + (gotupdate ? "succeeded, lanid=" + this.lanid : "failed")
         return gotupdate
+    }
+
+    /**
+     * Look users up in Active Directory by employeeID, in bulk. Uses the same
+     * connection settings as updatelanid: the primary domain (adserver, adport,
+     * adsecure, addn, adpassword, topdn) first, then the secondary one (the same
+     * names ending in 2) for anyone not found there. A domain whose server setting
+     * is still the placeholder is skipped. One connection per domain; IDs are
+     * searched in OR-batches so a few thousand IDs cost a few dozen queries.
+     *
+     * Returns [found: [userID: [mail, lanid, name, disabled, domain]], errors: [String]].
+     * A user ID absent from `found` was not in either domain (or a domain was
+     * unreachable or not configured - check `errors` before treating it as "not in AD").
+     */
+    static Map adLookup(Collection userIds, int batchSize = 40) {
+        def found = [:]
+        def errors = []
+        // employeeID values are plain identifiers; drop anything else so a stray
+        // value can never alter the LDAP filter.
+        def pending = (userIds ?: []).collect { it?.toString()?.trim() }.findAll { it && it ==~ /[A-Za-z0-9._-]+/ }.unique()
+        def domains = [
+            [label:'primary', server:PortalSetting.namedefault("adserver","defaultserver"),
+             port:PortalSetting.namedefault("adport",636), secure:PortalSetting.namedefault("adsecure",true),
+             dn:PortalSetting.namedefault("addn","defaultdn"),
+             password:PortalSetting.namedefault("adpassword","defaultpass"),
+             base:PortalSetting.namedefault("topdn","defaulttopdn")],
+            [label:'secondary', server:PortalSetting.namedefault("adserver2","defaultserver2"),
+             port:PortalSetting.namedefault("adport2",636), secure:PortalSetting.namedefault("adsecure2",true),
+             dn:PortalSetting.namedefault("addn2","defaultdn2"),
+             password:PortalSetting.namedefault("adpassword2",'defaultpass'),
+             base:PortalSetting.namedefault("topdn2","defaulttopdn2")]
+        ].findAll { it.server && !(it.server.toString() in ['defaultserver','defaultserver2']) }
+        if(!domains) {
+            errors << "Active Directory is not configured (no adserver setting)"
+        }
+        def attrval = { entry, String name ->
+            try { entry.get(name)?.getString()?.trim() } catch(Exception e) { null }
+        }
+        for(dom in domains) {
+            def todo = pending.findAll { !found.containsKey(it) }
+            if(!todo) break
+            def connection = null
+            try {
+                connection = new LdapNetworkConnection(dom.server.toString(), dom.port.toString().toInteger(), dom.secure.toString().toBoolean())
+                // connect() copies its timeout from the config (setTimeOut before it is overwritten),
+                // so set it there: an unreachable or firewalled AD then fails in seconds instead of
+                // holding the request until the proxy gives up and the user sees nothing at all.
+                connection.getConfig().setTimeout(PortalSetting.namedefault("adtimeout", 5000).toString().toLong())
+                connection.bind(dom.dn.toString(), dom.password.toString())
+                todo.collate(batchSize).each { batch ->
+                    def filter = "(|" + batch.collect { "(employeeID=" + it + ")" }.join('') + ")"
+                    def cursor = connection.search(dom.base.toString(), filter, SearchScope.SUBTREE,
+                        "employeeID", "mail", "sAMAccountName", "displayName", "userAccountControl")
+                    try {
+                        while(cursor.next()) {
+                            def entry
+                            try {
+                                entry = cursor.get()
+                            }
+                            catch(org.apache.directory.api.ldap.model.cursor.CursorLdapReferralException referral) {
+                                // AD ends a domain-root search with referrals (DomainDnsZones,
+                                // ForestDnsZones, Configuration). next() has already moved past the
+                                // reference and get() throws for it; it is not an error and not a
+                                // user, so skip it - letting it escape abandoned the domain mid-way
+                                // and counted every later batch as "not found".
+                                continue
+                            }
+                            def eid = attrval(entry, "employeeID")
+                            if(!eid || found.containsKey(eid)) continue
+                            def uac = attrval(entry, "userAccountControl")
+                            found[eid] = [mail:attrval(entry, "mail"), lanid:attrval(entry, "sAMAccountName"),
+                                          name:attrval(entry, "displayName"),
+                                          disabled:(uac && uac.isLong() && (uac.toLong() & 2L) != 0L),
+                                          domain:dom.label]
+                        }
+                    }
+                    finally {
+                        try { cursor.close() } catch(Exception ce) { }
+                    }
+                }
+            }
+            catch(Exception exp) {
+                errors << ("Could not search the " + dom.label + " domain: " + exp.class.simpleName + ": " + exp.message)
+                PortalErrorLog.record(null,null,"user","adLookup","Error searching ldap server " + dom.label + ": " + PortalErrorLog.describe(exp))
+            }
+            finally {
+                if(connection) {
+                    try { connection.close() } catch(Exception ce) { }
+                }
+            }
+        }
+        return [found:found, errors:errors]
     }
 
     def treeroles(params){

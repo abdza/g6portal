@@ -34,7 +34,7 @@
                     <g:uploadForm useToken="true" resource="${this.fileLink}" method="PUT">
                         <g:hiddenField name="version" value="${this.fileLink?.version}" />
                         <fieldset class="form">
-                            <f:all bean="fileLink" except="last_updated"/>
+                            <f:all bean="fileLink" except="last_updated,last_access"/>
                         </fieldset>
 			<fieldset class="form">
 				<div class="fieldcontain">

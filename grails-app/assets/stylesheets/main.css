@@ -297,10 +297,36 @@ textarea {
     vertical-align: top;
 }
 
-input[type=checkbox], input[type=radio] {
+/* Not applied to Bootstrap's .form-check-input: that class draws the box itself
+   (appearance: none) with a border and background, and this reset - being more specific -
+   stripped both, leaving an unticked Bootstrap checkbox completely invisible. */
+input[type=checkbox]:not(.form-check-input), input[type=radio]:not(.form-check-input) {
     background-color: transparent;
     border: 0;
     padding: 0;
+}
+
+/* Checkboxes and radios, site-wide: big enough and outlined strongly enough to be seen
+   at a glance, whether Bootstrap-styled or the browser's native control. */
+.form-check-input {
+    width: 1.2em;
+    height: 1.2em;
+    margin-top: 0.15em;
+    border: 2px solid #6c757d;
+    background-color: #fff;
+    cursor: pointer;
+}
+.form-check-input:hover { border-color: #0d6efd; }
+.form-check-input:focus { border-color: #0d6efd; box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25); }
+.form-check-input:checked { background-color: #0d6efd; border-color: #0d6efd; }
+.form-check-input:disabled { cursor: default; }
+.form-check-label { cursor: pointer; }
+input[type=checkbox]:not(.form-check-input), input[type=radio]:not(.form-check-input) {
+    width: 1.2em;
+    height: 1.2em;
+    accent-color: #0d6efd;
+    cursor: pointer;
+    vertical-align: middle;
 }
 
 .required-indicator {
